@@ -31,12 +31,16 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from network_fmri import curation, datalad_ds, session_map
 
 _HEURISTIC = Path(__file__).resolve().parent / "heuristic.py"
 _PROJECT = curation._flywheel_config()["project"]
+
+# Seconds to wait between export retries (linear backoff: attempt N waits N * this).
+_RETRY_BACKOFF_S = 5
 
 
 def _client():
@@ -89,12 +93,17 @@ def _curate(fw_subject, sessions, heuristic, env, live):
     return proc.stdout + proc.stderr
 
 
-def _export(fw_subjects, out, env):
+def _export(fw_subjects, out, env, retries=2):
     """Download curated (tagged) files for these Flywheel subjects into a BIDS tree.
 
     Writes to ``<out>`` via fw-heudiconv-export's destination/directory-name. Include
     the reassignment SOURCE subjects (e.g. s03 for s10's 22752) so reassigned sessions
     — tagged under the target subject — materialize under the right sub-*.
+
+    Retries ``retries`` times on a non-zero exit. Large downloads intermittently die
+    on a transient Flywheel ``ChunkedEncodingError``/``IncompleteRead`` mid-file; the
+    whole subject is re-fetched on retry, which is cheap when each parallel task
+    exports a single subject to its own directory.
     """
     out = Path(out)
     cmd = [
@@ -102,11 +111,31 @@ def _export(fw_subjects, out, env):
         "--subject", *sorted(fw_subjects),
         "--destination", str(out.parent or "."), "--directory-name", out.name,
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
-    if proc.returncode != 0:
-        sys.stderr.write(proc.stdout + proc.stderr)
-        raise SystemExit(f"export failed for {sorted(fw_subjects)} (rc={proc.returncode})")
-    return proc.stdout + proc.stderr
+    proc = None
+    for attempt in range(retries + 1):
+        proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        if proc.returncode == 0:
+            return proc.stdout + proc.stderr
+        sys.stderr.write(
+            f"[export] attempt {attempt + 1}/{retries + 1} failed "
+            f"(rc={proc.returncode}) for {sorted(fw_subjects)}\n"
+        )
+        if attempt < retries:
+            time.sleep(_RETRY_BACKOFF_S * (attempt + 1))
+    sys.stderr.write(proc.stdout + proc.stderr)
+    raise SystemExit(f"export failed for {sorted(fw_subjects)} (rc={proc.returncode})")
+
+
+def resolve_fw_subjects(fw, canonical):
+    """Flywheel subject labels touched by one canonical subject — READ-ONLY, no writes.
+
+    Same plan as :func:`curate_subject` (own/aliased sessions plus reassigned-in
+    sessions under a forced subject), but returns only the fw-subject set. Lets an
+    export-only run skip curation entirely — safe to fan out one task per subject
+    since it never tags Flywheel.
+    """
+    subjects = _project_subjects(fw)
+    return {job["fw_subject"] for job in session_map.plan_jobs(subjects, canonical)}
 
 
 def curate_subject(fw, canonical, live=False):
@@ -167,6 +196,36 @@ def _curate_main(argv):
         print(f"[export] {len(sorted(all_fw_subjects))} fw-subjects -> {args.out}")
 
 
+def _export_main(argv):
+    """Export-only path — download already-curated files, no Flywheel writes.
+
+    Curation (``--live``) is a one-time write per cohort; once done, export is a
+    pure read. This subcommand fans out cleanly: run one task per ``--subject``,
+    each with its own ``--out``, so a Slurm array turns a fragile whole-roster
+    download into many small, independent, retryable jobs.
+    """
+    ap = argparse.ArgumentParser(
+        prog="fw2bids export",
+        description="Export already-curated (tagged) BIDS files (no Flywheel writes).",
+    )
+    ap.add_argument("cohort", choices=list(_COHORTS))
+    ap.add_argument("--subject", action="append",
+                    help="limit to these subjects (repeatable); default: whole cohort roster")
+    ap.add_argument("--out", metavar="BIDS_DIR", required=True,
+                    help="export destination; point each parallel task at its OWN dir")
+    ap.add_argument("--retries", type=int, default=2,
+                    help="retry a failed export this many times (transient Flywheel drops)")
+    args = ap.parse_args(argv)
+
+    roster = args.subject or curation.roster(args.cohort)
+    fw = _client()
+    fw_subjects: set[str] = set()
+    for canonical in roster:
+        fw_subjects |= resolve_fw_subjects(fw, canonical)
+    _export(fw_subjects, args.out, dict(os.environ), retries=args.retries)
+    print(f"[export] {sorted(fw_subjects)} -> {args.out}")
+
+
 def _datalad_main(argv):
     ap = argparse.ArgumentParser(
         prog="fw2bids datalad",
@@ -187,6 +246,8 @@ def main(argv=None):
     # unchanged); `datalad` routes to the DataLad-ify path.
     if argv and argv[0] == "datalad":
         return _datalad_main(argv[1:])
+    if argv and argv[0] == "export":
+        return _export_main(argv[1:])
     return _curate_main(argv)
 
 

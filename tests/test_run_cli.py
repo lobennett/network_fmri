@@ -6,6 +6,8 @@ routes to dataladify. Underlying functions are monkeypatched so nothing real
 runs (no Flywheel, no datalad).
 """
 
+import pytest
+
 from network_fmri import run
 
 
@@ -45,3 +47,85 @@ def test_datalad_routes_to_dataladify(monkeypatch):
 
     run.main(["datalad", "/other", "--message", "reimport"])
     assert seen == {"path": "/other", "message": "reimport"}
+
+
+def test_export_routes_to_export_only(monkeypatch):
+    """`fw2bids export <cohort> --out DIR` resolves fw-subjects and exports the whole
+    roster WITHOUT curating (no Flywheel writes)."""
+    calls = {"resolve": [], "export": []}
+
+    monkeypatch.setattr(run, "_client", lambda: "FW")
+    monkeypatch.setattr(run.curation, "roster", lambda c: ["s1035", "s1057"])
+    monkeypatch.setattr(run, "resolve_fw_subjects",
+                        lambda fw, canonical: (calls["resolve"].append(canonical) or {canonical}))
+    monkeypatch.setattr(run, "_export",
+                        lambda subs, out, env, retries=2: calls["export"].append((sorted(subs), out, retries)))
+    # curate must NOT be reached on the export path
+    monkeypatch.setattr(run, "curate_subject",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not curate")))
+
+    run.main(["export", "validation", "--out", "/stage/parts/all", "--retries", "3"])
+
+    assert calls["resolve"] == ["s1035", "s1057"]
+    assert calls["export"] == [(["s1035", "s1057"], "/stage/parts/all", 3)]
+
+
+def test_export_subject_flag_limits_roster(monkeypatch):
+    """`--subject` scopes the export to one subject (the per-array-task invocation)
+    and bypasses the cohort roster entirely."""
+    calls = {"resolve": [], "export": []}
+
+    monkeypatch.setattr(run, "_client", lambda: "FW")
+    monkeypatch.setattr(run.curation, "roster",
+                        lambda c: (_ for _ in ()).throw(AssertionError("roster must not be read")))
+    monkeypatch.setattr(run, "resolve_fw_subjects",
+                        lambda fw, canonical: (calls["resolve"].append(canonical) or {canonical}))
+    monkeypatch.setattr(run, "_export",
+                        lambda subs, out, env, retries=2: calls["export"].append((sorted(subs), out)))
+
+    run.main(["export", "validation", "--subject", "s286", "--out", "/stage/parts/s286"])
+
+    assert calls["resolve"] == ["s286"]
+    assert calls["export"] == [(["s286"], "/stage/parts/s286")]
+
+
+class _Proc:
+    def __init__(self, rc, stdout="out", stderr="err"):
+        self.returncode = rc
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def test_export_retries_transient_failure(monkeypatch):
+    """A single transient non-zero exit (e.g. Flywheel IncompleteRead) is retried
+    and then succeeds — the download is re-attempted, not aborted."""
+    attempts = {"n": 0}
+
+    def fake_run(cmd, **kw):
+        attempts["n"] += 1
+        return _Proc(1 if attempts["n"] == 1 else 0)
+
+    monkeypatch.setattr(run.subprocess, "run", fake_run)
+    monkeypatch.setattr(run.time, "sleep", lambda s: None)
+
+    out = run._export({"s286"}, "/stage/parts/s286", {}, retries=2)
+
+    assert attempts["n"] == 2          # failed once, retried, succeeded
+    assert out == "outerr"
+
+
+def test_export_raises_after_exhausting_retries(monkeypatch):
+    """Persistent failure raises SystemExit only after all retries are spent."""
+    attempts = {"n": 0}
+
+    def fake_run(cmd, **kw):
+        attempts["n"] += 1
+        return _Proc(1)
+
+    monkeypatch.setattr(run.subprocess, "run", fake_run)
+    monkeypatch.setattr(run.time, "sleep", lambda s: None)
+
+    with pytest.raises(SystemExit):
+        run._export({"s286"}, "/x", {}, retries=1)
+
+    assert attempts["n"] == 2          # initial try + 1 retry

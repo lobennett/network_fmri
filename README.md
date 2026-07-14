@@ -98,6 +98,19 @@ uv run fw2bids discovery --live --out $SCRATCH/bids_staging/discovery   # tag + 
 Stage on `$SCRATCH` and run bids-validator before writing the canonical Oak tree.
 (`--live` tags the shared project; `--out` requires `--live`.)
 
+Curation is a one-time write per cohort; once done, **export is a pure read** and
+can be split subject-by-subject with `fw2bids export`:
+
+```bash
+uv run fw2bids export validation --subject s286 --out $SCRATCH/parts/s286
+```
+
+`export` never writes to Flywheel, retries transient download drops
+(`--retries N`), and takes one subject to its own dir — so a whole cohort export
+becomes an embarrassingly-parallel Slurm array (one small, independent, retryable
+job per subject) instead of a single fragile whole-roster download. Merge the
+per-subject parts into one tree afterward (`rsync -a $SCRATCH/parts/*/ $DEST/`).
+
 ### 4c. Make the staged tree a DataLad dataset (`datalad`)
 
 Version-control the staged BIDS tree with DataLad so large NIfTIs are git-annex'd
