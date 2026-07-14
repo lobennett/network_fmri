@@ -261,7 +261,7 @@ wheels = [
 [[package]]
 name = "fw-heudiconv"
 version = "0.4.3"
-source = { git = "https://github.com/lobennett/fw-heudiconv.git?rev=5c72773#5c727739170ebed4aeb4410d05446e1695992d60" }
+source = { git = "https://github.com/lobennett/fw-heudiconv.git?rev=fb70a0a#fb70a0a648614685d148f5fe1dba792b33990156" }
 dependencies = [
     { name = "bids-validator" },
     { name = "flywheel-sdk" },
@@ -317,7 +317,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "flywheel-sdk", specifier = "==21.5.0" },
-    { name = "fw-heudiconv", git = "https://github.com/lobennett/fw-heudiconv.git?rev=5c72773" },
+    { name = "fw-heudiconv", git = "https://github.com/lobennett/fw-heudiconv.git?rev=fb70a0a" },
 ]
 
 [package.metadata.requires-dev]
