@@ -14,6 +14,7 @@ dependencies = [
 
 [project.scripts]
 fw2bids = "network_fmri.run:main"
+nf-qa-runs = "network_fmri.qa_runs:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]
