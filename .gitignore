@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.egg-info/
+# venv + uv cache live on $SCRATCH, never in the repo (HOME is NFS-quota'd).
+# uv.lock IS committed (reproducibility).
+
+# Transitional migration-parity harness (vs. legacy Oak) — not part of the
+# single-source generator; kept local, removed after cutover.
+dev/

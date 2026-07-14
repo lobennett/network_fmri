@@ -1,0 +1,159 @@
+{
+  "flywheel": {
+    "project": "r01network",
+    "subject_aliases": {
+      "s19-2": "s19",
+      "s29-2": "s29",
+      "s43-2": "s43",
+      "ex26207": "s297"
+    },
+    "skip_subjects": [
+      "n01"
+    ],
+    "session_overrides": {
+      "s03": {
+        "22752": {
+          "reassign_to": "s10",
+          "reason": "Session 22752 (2021-02-12) labeled under s03 on Flywheel but belongs to s10"
+        },
+        "25210": {
+          "note": "Rescue T1w session acquired 2022-05-24 after the original SagMPRAGE (ses-05) produced bad recon (162 Euler defects); becomes ses-13 in BIDS"
+        }
+      },
+      "s29": {
+        "22424": {
+          "exclude": true,
+          "reason": "Fmap-only test session (2020-11-11) -- single-echo protocol, no usable functional data, no behavioral data"
+        }
+      }
+    }
+  },
+  "samples": {
+    "discovery": [
+      "s03",
+      "s10",
+      "s19",
+      "s29",
+      "s43"
+    ],
+    "validation": [
+      "s76",
+      "s180",
+      "s216",
+      "s247",
+      "s286",
+      "s295",
+      "s300",
+      "s320",
+      "s321",
+      "s336",
+      "s373",
+      "s394",
+      "s415",
+      "s480",
+      "s599",
+      "s645",
+      "s874",
+      "s956",
+      "s1035",
+      "s1057",
+      "s1058",
+      "s1127",
+      "s1134",
+      "s1175",
+      "s1189",
+      "s1258",
+      "s1267",
+      "s1270",
+      "s1273",
+      "s1292",
+      "s1314",
+      "s1326",
+      "s1338",
+      "s1351",
+      "s1391",
+      "s1399",
+      "s1402",
+      "s1408",
+      "s1445",
+      "s1481",
+      "s1486"
+    ],
+    "excluded": {
+      "s214": "dropped for being unreliable",
+      "s222": "dropped for poor behavioral performance",
+      "s250": "dropped (lens prescription issue)",
+      "s297": "discontinued (ear issues after scanning)",
+      "s432": "withdrew from study",
+      "s823": "withdrew from study",
+      "s968": "withdrew from study",
+      "s1165": "withdrew from study",
+      "s1178": "withdrew from study",
+      "s1266": "withdrew from study",
+      "s1320": "withdrew from study"
+    },
+    "discovery_oak": [
+      "s03",
+      "s10",
+      "s19",
+      "s29",
+      "s43"
+    ],
+    "validation_oak": [
+      "s76",
+      "s180",
+      "s216",
+      "s247",
+      "s286",
+      "s295",
+      "s300",
+      "s320",
+      "s321",
+      "s336",
+      "s373",
+      "s394",
+      "s415",
+      "s480",
+      "s599",
+      "s645",
+      "s874",
+      "s956",
+      "s1035",
+      "s1057",
+      "s1058",
+      "s1127",
+      "s1134",
+      "s1175",
+      "s1189",
+      "s1258",
+      "s1267",
+      "s1270",
+      "s1273",
+      "s1292",
+      "s1314",
+      "s1326",
+      "s1338",
+      "s1351",
+      "s1391",
+      "s1399",
+      "s1402",
+      "s1408",
+      "s1445",
+      "s1481",
+      "s1486"
+    ],
+    "excluded_oak": {
+      "s214": "dropped for being unreliable",
+      "s222": "dropped for poor behavioral performance",
+      "s250": "dropped (lens prescription issue)",
+      "s297": "discontinued (ear issues after scanning)",
+      "s432": "withdrew from study",
+      "s823": "withdrew from study",
+      "s968": "withdrew from study",
+      "s1165": "withdrew from study",
+      "s1178": "withdrew from study",
+      "s1266": "withdrew from study",
+      "s1320": "withdrew from study"
+    }
+  }
+}
