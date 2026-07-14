@@ -95,3 +95,22 @@ uv run fw2bids discovery --live --out $SCRATCH/bids_staging/discovery   # tag + 
 
 Stage on `$SCRATCH` and run bids-validator before writing the canonical Oak tree.
 (`--live` tags the shared project; `--out` requires `--live`.)
+
+### 4c. Make the staged tree a DataLad dataset (`datalad`)
+
+Version-control the staged BIDS tree with DataLad so large NIfTIs are git-annex'd
+while text sidecars (`.tsv`/`.json`) stay in plain git (`text2git`):
+
+```bash
+fw2bids datalad $SCRATCH/bids_staging/discovery
+```
+
+Idempotent — on an already-created dataset it just `datalad save`s (picking up
+new/changed files). It shells out to `datalad`, so it needs git-annex; run it on
+a **compute node** (`git-annex` is not on the login node):
+
+```bash
+module load system git-annex/8.20210622
+srun -p normal -c 4 --mem 16G -t 02:00:00 \
+  fw2bids datalad $SCRATCH/bids_staging/discovery
+```

@@ -33,7 +33,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from network_fmri import curation, session_map
+from network_fmri import curation, datalad_ds, session_map
 
 _HEURISTIC = Path(__file__).resolve().parent / "heuristic.py"
 _PROJECT = curation._flywheel_config()["project"]
@@ -138,9 +138,12 @@ def curate_subject(fw, canonical, live=False):
     return {job["fw_subject"] for job in jobs}
 
 
-def main(argv=None):
+_COHORTS = ("discovery", "validation", "excluded")
+
+
+def _curate_main(argv):
     ap = argparse.ArgumentParser(prog="fw2bids", description=__doc__.splitlines()[0])
-    ap.add_argument("cohort", choices=["discovery", "validation", "excluded"])
+    ap.add_argument("cohort", choices=list(_COHORTS))
     ap.add_argument("--subject", action="append", help="limit to these subjects (repeatable)")
     ap.add_argument("--live", action="store_true",
                     help="WRITE to Flywheel (default: dry-run, read-only). Snapshot first.")
@@ -162,6 +165,29 @@ def main(argv=None):
         # shared output directory (the 2nd subject's mkdir hits FileExistsError).
         _export(all_fw_subjects, args.out, dict(os.environ))
         print(f"[export] {len(sorted(all_fw_subjects))} fw-subjects -> {args.out}")
+
+
+def _datalad_main(argv):
+    ap = argparse.ArgumentParser(
+        prog="fw2bids datalad",
+        description="Make a staged BIDS tree a DataLad dataset (idempotent).",
+    )
+    ap.add_argument("bids_dir", help="staged BIDS directory to DataLad-ify")
+    ap.add_argument("--message", "-m", default="network_fmri: import BIDS",
+                    help="commit message for datalad save")
+    args = ap.parse_args(argv)
+    datalad_ds.dataladify(args.bids_dir, message=args.message)
+    print(f"[datalad] {args.bids_dir} is now a DataLad dataset")
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # Backward-compatible dispatch: a bare cohort is the implicit `curate` path
+    # (the existing `fw2bids <cohort> [--live] [--out ...]` invocation is
+    # unchanged); `datalad` routes to the DataLad-ify path.
+    if argv and argv[0] == "datalad":
+        return _datalad_main(argv[1:])
+    return _curate_main(argv)
 
 
 if __name__ == "__main__":
