@@ -24,6 +24,19 @@ calls that live in `scans.tsv` and the pipeline `bids-filter-file`s. See
   describes the task performed. It now pairs with the existing spatialTS behavioral
   → recovered run. Supersedes the prior "cuedTS BOLD irreconcilable" call.
 
+## Generator skips & injected metadata (src/network_fmri)
+
+- **`T1w MPRAGE PROMO` skipped** (`curation.SKIP_ACQUISITIONS`). The legacy PROMO
+  structural is superseded by the `NEW Sag_MPRAGE_T1` protocol scan
+  (`acq-SagMPRAGE`); its NIfTI is 4-D (a PROMO motion-nav series), invalid as a
+  `_T1w` (validator `T1W_FILE_WITH_TOO_MANY_DIMENSIONS`). Every canonical
+  discovery subject retains ≥1 SagMPRAGE, so this leaves no subject without a
+  T1w. SagMPRAGE is the sole canonical T1w.
+- **Fieldmap `Units: "Hz"` injected** (`heuristic.MetadataExtras`). The single
+  `_fieldmap` image is BIDS "case 3" and requires `Units` (validator
+  `UNITS_MUST_DEFINE`); these are scanner-computed B0 maps in Hz. The old Oak
+  dataset omitted this field.
+
 ## Curation remaps (config/curation_config.json → `flywheel`)
 
 The generator applies these deterministically; they are the single source of truth.

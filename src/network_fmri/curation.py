@@ -151,6 +151,11 @@ SKIP_ACQUISITIONS = {
     "GE HOS FOV28",
     "GE HOS FOV28_1",
     "GE HOS FOV28_2",
+    # Legacy PROMO structural: superseded by the "NEW Sag_MPRAGE_T1" protocol
+    # scan (acq-SagMPRAGE). Its NIfTI is 4D (a PROMO motion-nav series), which
+    # is not a valid _T1w (validator: T1W_FILE_WITH_TOO_MANY_DIMENSIONS). Treat
+    # SagMPRAGE as the sole canonical T1w. See docs/SCAN-NOTES.md changelog.
+    "T1w MPRAGE PROMO",
 }
 
 

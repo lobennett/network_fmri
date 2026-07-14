@@ -84,6 +84,16 @@ def _templates_for(entry):
     return []
 
 
+# fw-heudiconv reads this module-level dict (keyed by the create_key tuple) and
+# merges each entry into the tagged file's sidecar metadata at curate time. The
+# single ``_fieldmap`` image is BIDS "case 3" and REQUIRES ``Units``; these are
+# scanner-computed B0 field maps in Hz (validator: UNITS_MUST_DEFINE). Built via
+# _templates_for so the key stays in lockstep with the emitted fieldmap template.
+MetadataExtras = {
+    create_key(_templates_for({"modality": "fmap"})[0]): {"Units": "Hz"},
+}
+
+
 def infotodict(seqinfo):
     """Assign each seqinfo series to a BIDS key via the acquisition-label map.
 
