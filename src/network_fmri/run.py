@@ -52,6 +52,26 @@ def _project_subjects(fw):
     return proj.subjects()
 
 
+def _clear(fw_subject, sessions, env):
+    """Wipe any existing ``info.BIDS`` on this subject/session before curating.
+
+    Makes a live run idempotent and, crucially, prevents stale tags from a prior
+    curation (e.g. a duplicate gear NIfTI our heuristic no longer selects) from
+    surviving into ``export``, where two files at one BIDS path abort the download.
+    """
+    cmd = [
+        "fw-heudiconv-clear",
+        "--project", _PROJECT,
+        "--subject", fw_subject,
+        "--session", *sessions,
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    if proc.returncode != 0:
+        sys.stderr.write(proc.stdout + proc.stderr)
+        raise SystemExit(f"clear failed for {fw_subject} {sessions} (rc={proc.returncode})")
+    return proc.stdout + proc.stderr
+
+
 def _curate(fw_subject, sessions, heuristic, env, live):
     cmd = [
         "fw-heudiconv-curate",
@@ -107,6 +127,10 @@ def curate_subject(fw, canonical, live=False, out=None):
             env = dict(os.environ, FWBIDS_SESSION_MAP=map_path)
             if job["force_subject"]:
                 env["FWBIDS_FORCE_SUBJECT"] = job["force_subject"]
+            if live:
+                # Reset the BIDS namespace first so re-runs are idempotent and no
+                # stale/duplicate tag leaks into export (see _clear docstring).
+                log.append(_clear(job["fw_subject"], job["sessions"], dict(os.environ)))
             log.append(_curate(job["fw_subject"], job["sessions"], _HEURISTIC, env, live))
         if live and out:
             fw_subjects = {job["fw_subject"] for job in jobs}
