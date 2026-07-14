@@ -39,7 +39,7 @@ def test_replace_session_passthrough_without_env(monkeypatch):
 def test_templates_for_each_modality():
     func = h._templates_for({"modality": "func", "task": "goNogo"})
     assert func == ["sub-{subject}/{session}/func/sub-{subject}_{session}"
-                    "_task-goNogo_run-1_echo-{echo}_bold"]
+                    "_task-goNogo_run-{seqitem}_echo-{echo}_bold"]
     anat = h._templates_for({"modality": "anat", "suffix": "T1w", "acq": "SagMPRAGE"})
     assert anat[0].endswith("_acq-SagMPRAGE_run-1_T1w")
     dwi = h._templates_for({"modality": "dwi", "dir": "AP", "acq": "g105"})

@@ -9,7 +9,7 @@ dependencies = [
     # The BIDS-curation engine: our sherlock-compat fork, pinned to an immutable
     # commit (multi-echo + fieldmap/magnitude file-selection). The study-specific
     # heuristic + curation map live in this repo (src/network_fmri), not the fork.
-    "fw-heudiconv @ git+https://github.com/lobennett/fw-heudiconv.git@5c72773",
+    "fw-heudiconv @ git+https://github.com/lobennett/fw-heudiconv.git@fb70a0a",
 ]
 
 [project.scripts]

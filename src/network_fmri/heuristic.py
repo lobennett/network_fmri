@@ -65,7 +65,12 @@ def _templates_for(entry):
     mod = entry.get("modality")
     base = "sub-{subject}/{session}/" + mod + "/sub-{subject}_{session}"
     if mod == "func":
-        return [f"{base}_task-{entry['task']}_run-1_echo-{{echo}}_bold"]
+        # run-{seqitem}: one acquisition of a task -> run-1; a session with two
+        # acquisitions of the same task (aborted + redo, extra run, ...) ->
+        # run-1/run-2 in acquisition-timestamp order (fork sorts before numbering).
+        # We curate ALL runs; inclusion/exclusion of short runs is a downstream QA
+        # decision (see docs/DATA-SELECTION.md), not a curation-time drop.
+        return [f"{base}_task-{entry['task']}_run-{{seqitem}}_echo-{{echo}}_bold"]
     if mod == "anat":
         acq = entry.get("acq")
         acq_ent = f"_acq-{acq}" if acq else ""
