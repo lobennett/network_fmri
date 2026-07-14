@@ -20,6 +20,15 @@ This repo supplies only the study-specific pieces the engine needs:
 | `src/network_fmri/run.py` | the `fw2bids` runner |
 | `config/curation_config.json` | Flywheel block (aliases/overrides/skips) + cohort rosters |
 
+## Documentation
+
+- [`docs/SCAN-NOTES.md`](docs/SCAN-NOTES.md) — curation-layer facts + source-level
+  corrections applied on Flywheel, with a dated changelog (the authoritative record
+  of what was acquired / relabeled / removed).
+- [`docs/DATA-SELECTION.md`](docs/DATA-SELECTION.md) — how exclusions partition
+  across `.bidsignore` (invalid only) / `bids-filter-file` (processing selection) /
+  `scans.tsv` (why), and why that replaces the legacy `.bidsignore` + symlink-farm.
+
 ## End-to-end walkthrough (Sherlock, from scratch)
 
 ### 1. Build the runtime environment (on a compute node)
