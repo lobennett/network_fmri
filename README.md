@@ -95,20 +95,3 @@ uv run fw2bids discovery --live --out $SCRATCH/bids_staging/discovery   # tag + 
 
 Stage on `$SCRATCH` and run bids-validator before writing the canonical Oak tree.
 (`--live` tags the shared project; `--out` requires `--live`.)
-
-### 5. Verify reproduction vs. the legacy Oak dataset (migration only)
-
-During the cutover we confirm the new generator reproduces the dataset the old
-bespoke pipeline wrote to Oak. That check is a **transitional** dev tool
-(`dev/replicate_vs_oak.py`, kept local / not committed — it is deleted once the
-cohorts are confirmed and Oak is regenerated from here):
-
-```bash
-OAK=/oak/stanford/groups/russpold/data/network_grant/bids
-uv run python dev/replicate_vs_oak.py discovery  $OAK/discovery
-uv run python dev/replicate_vs_oak.py validation $OAK/validation
-uv run python dev/replicate_vs_oak.py excluded   $OAK/excluded
-```
-
-Each subject prints `PASS` (zero diff) or `DIFF (n)` with the offending paths.
-All-`PASS` across the three cohorts = full replication.
