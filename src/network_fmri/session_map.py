@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -80,10 +81,18 @@ def collect_sessions(
     return out
 
 
+def _norm_label(label: str) -> str:
+    """Normalize a Flywheel session label the way fw-heudiconv's ``force_label_format``
+    does before calling ReplaceSession — strip any ``ses-``/``sub-`` so the map key
+    matches the lookup key. Without this, a session literally labeled ``ses-2`` is
+    stored as ``ses-2`` but looked up as ``2`` (miss → unpadded ``ses-2``)."""
+    return re.sub("sub-", "", re.sub("ses-", "", label))
+
+
 def timeline(sessions: list[dict[str, Any]]) -> dict[str, str]:
-    """Sort sessions by timestamp → ``{accession: "NN"}`` (1-indexed, zero-pad)."""
+    """Sort sessions by timestamp → ``{normalized_label: "NN"}`` (1-indexed, zero-pad)."""
     ordered = sorted(sessions, key=lambda s: s["timestamp"])
-    return {s["label"]: f"{idx:02d}" for idx, s in enumerate(ordered, start=1)}
+    return {_norm_label(s["label"]): f"{idx:02d}" for idx, s in enumerate(ordered, start=1)}
 
 
 def build_flat_map(

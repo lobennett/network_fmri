@@ -34,6 +34,20 @@ def test_timeline_numbers_by_timestamp():
     assert got == {"22461": "01", "22568": "02", "25210": "03"}
 
 
+def test_timeline_normalizes_ses_prefixed_labels():
+    # A session literally labeled "ses-2" on Flywheel: the map key must be the
+    # force_label_format-normalized "2" (ses- stripped), because ReplaceSession is
+    # called with the stripped label. Otherwise it misses → unpadded "ses-2". (s415)
+    sessions = [
+        {"label": "unknown", "timestamp": "2023-02-03"},
+        {"label": "ses-2", "timestamp": "2023-02-04"},
+        {"label": "26616", "timestamp": "2023-03-03"},
+    ]
+    got = sm.timeline(sessions)
+    assert got == {"unknown": "01", "2": "02", "26616": "03"}
+    assert "ses-2" not in got  # not the raw label
+
+
 def test_collect_excludes_and_reassigns_out():
     s03 = FakeSubject(
         "s03",
