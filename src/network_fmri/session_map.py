@@ -90,9 +90,25 @@ def _norm_label(label: str) -> str:
 
 
 def timeline(sessions: list[dict[str, Any]]) -> dict[str, str]:
-    """Sort sessions by timestamp → ``{normalized_label: "NN"}`` (1-indexed, zero-pad)."""
+    """Sort sessions by timestamp → ``{normalized_label: "NN"}`` (1-indexed, zero-pad).
+
+    Raises if two sessions share a normalized label: ``ReplaceSession`` only sees
+    the label, so identical labels are indistinguishable and would silently
+    collapse into one BIDS session (dropping the other). Surface it loudly — the
+    fix is to relabel the offending session on Flywheel so labels are unique.
+    """
     ordered = sorted(sessions, key=lambda s: s["timestamp"])
-    return {_norm_label(s["label"]): f"{idx:02d}" for idx, s in enumerate(ordered, start=1)}
+    out: dict[str, str] = {}
+    for idx, s in enumerate(ordered, start=1):
+        key = _norm_label(s["label"])
+        if key in out:
+            raise ValueError(
+                f"Duplicate session label {s['label']!r} (normalizes to {key!r}) — "
+                "cannot assign a unique BIDS session number. Relabel one of the "
+                "colliding sessions on Flywheel so session labels are unique."
+            )
+        out[key] = f"{idx:02d}"
+    return out
 
 
 def build_flat_map(

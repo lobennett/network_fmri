@@ -48,6 +48,19 @@ def test_timeline_normalizes_ses_prefixed_labels():
     assert "ses-2" not in got  # not the raw label
 
 
+def test_timeline_raises_on_duplicate_labels():
+    # s297/ex26207: two Flywheel sessions both labeled "unknown" -> indistinguishable
+    # to ReplaceSession -> must fail loud, not silently collapse to one BIDS session.
+    import pytest
+
+    sessions = [
+        {"label": "unknown", "timestamp": "2023-01-01"},
+        {"label": "unknown", "timestamp": "2023-02-01"},
+    ]
+    with pytest.raises(ValueError, match="Duplicate session label"):
+        sm.timeline(sessions)
+
+
 def test_collect_excludes_and_reassigns_out():
     s03 = FakeSubject(
         "s03",
