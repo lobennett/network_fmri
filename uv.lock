@@ -307,6 +307,7 @@ source = { editable = "." }
 dependencies = [
     { name = "flywheel-sdk" },
     { name = "fw-heudiconv" },
+    { name = "network-qa" },
 ]
 
 [package.dev-dependencies]
@@ -318,10 +319,19 @@ dev = [
 requires-dist = [
     { name = "flywheel-sdk", specifier = "==21.5.0" },
     { name = "fw-heudiconv", git = "https://github.com/lobennett/fw-heudiconv.git?rev=fb70a0a" },
+    { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=c945ecd" },
 ]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]
+
+[[package]]
+name = "network-qa"
+version = "0.1.0"
+source = { git = "https://github.com/lobennett/network_qa.git?rev=c945ecd#c945ecd88fb180f65d54516aba9fb04649da9d5b" }
+dependencies = [
+    { name = "nibabel" },
+]
 
 [[package]]
 name = "nibabel"

@@ -7,15 +7,20 @@ Flywheel and writes the chronological ``{accession: "NN"}`` session map, then
 (2) drives ``fw-heudiconv-curate`` once per planned job (own/aliased sessions,
 plus reassigned-in sessions under a forced subject).
 
+Writing the BIDS dataset is two steps of the fw-heudiconv engine:
+  1. ``curate`` (``--live``) persists the BIDS naming into each file's ``info.BIDS``
+     on the shared Flywheel project (a WRITE — snapshot first).
+  2. ``export`` (``--out``) downloads the tagged files into a BIDS tree on disk.
+
 Curation is DRY-RUN by default (read-only; computes intended BIDS names without
-writing to the shared PHI Flywheel project). ``--live`` must be given explicitly
-to mutate Flywheel — do that only after a snapshot.
+writing). ``--live`` is required to tag Flywheel; ``--out DIR`` additionally
+exports the tagged files to ``DIR`` (only meaningful with ``--live``).
 
 Examples
 --------
     fw2bids discovery                         # dry-run all discovery subjects
     fw2bids discovery --subject s03           # dry-run one subject
-    fw2bids validation --live                 # WRITE (snapshot first)
+    fw2bids discovery --live --out $SCRATCH/bids_staging/discovery   # tag + export
 """
 
 from __future__ import annotations
@@ -64,8 +69,31 @@ def _curate(fw_subject, sessions, heuristic, env, live):
     return proc.stdout + proc.stderr
 
 
-def curate_subject(fw, canonical, live=False):
-    """Curate one canonical subject; return the concatenated dry-run log text."""
+def _export(fw_subjects, out, env):
+    """Download curated (tagged) files for these Flywheel subjects into a BIDS tree.
+
+    Writes to ``<out>`` via fw-heudiconv-export's destination/directory-name. Include
+    the reassignment SOURCE subjects (e.g. s03 for s10's 22752) so reassigned sessions
+    — tagged under the target subject — materialize under the right sub-*.
+    """
+    out = Path(out)
+    cmd = [
+        "fw-heudiconv-export", "--project", _PROJECT,
+        "--subject", *sorted(fw_subjects),
+        "--destination", str(out.parent or "."), "--directory-name", out.name,
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    if proc.returncode != 0:
+        sys.stderr.write(proc.stdout + proc.stderr)
+        raise SystemExit(f"export failed for {sorted(fw_subjects)} (rc={proc.returncode})")
+    return proc.stdout + proc.stderr
+
+
+def curate_subject(fw, canonical, live=False, out=None):
+    """Curate one canonical subject; return the concatenated dry-run log text.
+
+    When ``live`` and ``out`` are set, also export the tagged files to ``out``.
+    """
     subjects = _project_subjects(fw)
     smap = session_map.build_flat_map(subjects, [canonical])
     jobs = session_map.plan_jobs(subjects, canonical)
@@ -80,6 +108,9 @@ def curate_subject(fw, canonical, live=False):
             if job["force_subject"]:
                 env["FWBIDS_FORCE_SUBJECT"] = job["force_subject"]
             log.append(_curate(job["fw_subject"], job["sessions"], _HEURISTIC, env, live))
+        if live and out:
+            fw_subjects = {job["fw_subject"] for job in jobs}
+            log.append(_export(fw_subjects, out, dict(os.environ)))
     finally:
         os.unlink(map_path)
     return "\n".join(log)
@@ -91,13 +122,20 @@ def main(argv=None):
     ap.add_argument("--subject", action="append", help="limit to these subjects (repeatable)")
     ap.add_argument("--live", action="store_true",
                     help="WRITE to Flywheel (default: dry-run, read-only). Snapshot first.")
+    ap.add_argument("--out", metavar="BIDS_DIR",
+                    help="export the tagged files to this BIDS dir (requires --live)")
     args = ap.parse_args(argv)
+
+    if args.out and not args.live:
+        ap.error("--out requires --live (export needs the curated tags)")
 
     roster = args.subject or curation.roster(args.cohort)
     fw = _client()
     for canonical in roster:
-        curate_subject(fw, canonical, live=args.live)
-        print(f"[{canonical}] curated ({'LIVE' if args.live else 'dry-run'})")
+        curate_subject(fw, canonical, live=args.live, out=args.out)
+        action = "curated + exported" if (args.live and args.out) else \
+                 ("curated LIVE" if args.live else "dry-run")
+        print(f"[{canonical}] {action}")
 
 
 if __name__ == "__main__":

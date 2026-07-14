@@ -20,6 +20,11 @@ This repo supplies only the study-specific pieces the engine needs:
 | `src/network_fmri/run.py` | the `fw2bids` runner |
 | `config/curation_config.json` | Flywheel block (aliases/overrides/skips) + cohort rosters |
 
+### Companion packages (imported, not vendored)
+
+- [`fw-heudiconv`](https://github.com/lobennett/fw-heudiconv) `@sherlock-compat` — the BIDS-curation engine (multi-echo/fmap file-selection, deterministic run numbering).
+- [`network_qa`](https://github.com/lobennett/network_qa) — QA metrics/decisions (short-run flagging via `nf-qa-runs`); its verdicts feed the data-selection layer.
+
 ## Documentation
 
 - [`docs/SCAN-NOTES.md`](docs/SCAN-NOTES.md) — curation-layer facts + source-level
@@ -76,11 +81,20 @@ uv run fw2bids validation
 uv run fw2bids excluded
 ```
 
-Pass `--live` to actually curate Flywheel (**snapshot the project first**):
+### 4b. Write the BIDS directory (`--live --out`)
+
+Materializing BIDS on disk is fw-heudiconv's two-step: `curate` persists the BIDS
+naming into each file's `info.BIDS` on the Flywheel project (a **write** — snapshot
+first), then `export` downloads the tagged files to a directory. `fw2bids` does
+both when given `--live --out`:
 
 ```bash
-uv run fw2bids discovery --live
+# snapshot the r01network project first, then:
+uv run fw2bids discovery --live --out $SCRATCH/bids_staging/discovery   # tag + export
 ```
+
+Stage on `$SCRATCH` and run bids-validator before writing the canonical Oak tree.
+(`--live` tags the shared project; `--out` requires `--live`.)
 
 ### 5. Verify reproduction vs. the legacy Oak dataset (migration only)
 
