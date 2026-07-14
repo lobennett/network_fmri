@@ -109,16 +109,17 @@ def _export(fw_subjects, out, env):
     return proc.stdout + proc.stderr
 
 
-def curate_subject(fw, canonical, live=False, out=None):
-    """Curate one canonical subject; return the concatenated dry-run log text.
+def curate_subject(fw, canonical, live=False):
+    """Curate one canonical subject; return the set of Flywheel subject labels touched.
 
-    When ``live`` and ``out`` are set, also export the tagged files to ``out``.
+    Curation only — export is done once for the whole roster in ``main`` (a
+    per-subject export races on the shared output directory). The returned
+    fw-subject set lets the caller aggregate a single export ``--subject`` list.
     """
     subjects = _project_subjects(fw)
     smap = session_map.build_flat_map(subjects, [canonical])
     jobs = session_map.plan_jobs(subjects, canonical)
 
-    log = []
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
         json.dump(smap, fh)
         map_path = fh.name
@@ -130,14 +131,11 @@ def curate_subject(fw, canonical, live=False, out=None):
             if live:
                 # Reset the BIDS namespace first so re-runs are idempotent and no
                 # stale/duplicate tag leaks into export (see _clear docstring).
-                log.append(_clear(job["fw_subject"], job["sessions"], dict(os.environ)))
-            log.append(_curate(job["fw_subject"], job["sessions"], _HEURISTIC, env, live))
-        if live and out:
-            fw_subjects = {job["fw_subject"] for job in jobs}
-            log.append(_export(fw_subjects, out, dict(os.environ)))
+                _clear(job["fw_subject"], job["sessions"], dict(os.environ))
+            _curate(job["fw_subject"], job["sessions"], _HEURISTIC, env, live)
     finally:
         os.unlink(map_path)
-    return "\n".join(log)
+    return {job["fw_subject"] for job in jobs}
 
 
 def main(argv=None):
@@ -155,11 +153,15 @@ def main(argv=None):
 
     roster = args.subject or curation.roster(args.cohort)
     fw = _client()
+    all_fw_subjects: set[str] = set()
     for canonical in roster:
-        curate_subject(fw, canonical, live=args.live, out=args.out)
-        action = "curated + exported" if (args.live and args.out) else \
-                 ("curated LIVE" if args.live else "dry-run")
-        print(f"[{canonical}] {action}")
+        all_fw_subjects |= curate_subject(fw, canonical, live=args.live)
+        print(f"[{canonical}] {'curated LIVE' if args.live else 'dry-run'}")
+    if args.live and args.out:
+        # Single export for the whole roster — a per-subject export races on the
+        # shared output directory (the 2nd subject's mkdir hits FileExistsError).
+        _export(all_fw_subjects, args.out, dict(os.environ))
+        print(f"[export] {len(sorted(all_fw_subjects))} fw-subjects -> {args.out}")
 
 
 if __name__ == "__main__":
