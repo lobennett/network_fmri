@@ -106,11 +106,16 @@ def test_trim_routes_to_trim_bold_directory(monkeypatch):
         run, "_client", lambda: (_ for _ in ()).throw(AssertionError("wrong path"))
     )
 
-    run.main(["trim", "/stage/discovery"])
+    rc = run.main(["trim", "/stage/discovery"])
     assert calls["trim"] == [("/stage/discovery", None)]
+    # `fw2bids` console entrypoint does sys.exit(main()) -- returning the summary
+    # dict here would make sys.exit(dict) print it and exit 1, falsely marking
+    # every trim job FAILED. main() must return an int (0 on success).
+    assert rc == 0
 
-    run.main(["trim", "/stage/validation", "--subjects", "s10", "s19"])
+    rc2 = run.main(["trim", "/stage/validation", "--subjects", "s10", "s19"])
     assert calls["trim"][-1] == ("/stage/validation", ["s10", "s19"])
+    assert rc2 == 0
 
 
 class _Proc:

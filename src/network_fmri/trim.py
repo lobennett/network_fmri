@@ -9,6 +9,7 @@ dummy volumes must be removed from the staged BIDS tree before fMRIPrep runs.
 import json
 import logging
 import multiprocessing
+import os
 from pathlib import Path
 
 import nibabel as nib
@@ -28,17 +29,30 @@ def _trim_one_file(nifti_path: Path) -> str:
     to run concurrently across files.
     """
     json_path = nifti_path.with_name(nifti_path.name.replace(".nii.gz", ".json"))
-
-    # Idempotency check: skip if sidecar already records trimming
-    if json_path.exists():
-        sidecar = json.loads(json_path.read_text())
-        if sidecar.get("NumberOfVolumesDiscardedByUser") == N_DUMMY:
-            log.debug("Already trimmed: %s", nifti_path.name)
-            return "skipped_already_trimmed"
-    else:
-        sidecar = {}
+    tmp_path = nifti_path.parent / nifti_path.name.replace(
+        "_bold.nii.gz", "_bold_tmp.nii.gz"
+    )
 
     try:
+        # Idempotency check: skip if sidecar already records trimming. A
+        # malformed/undecodable sidecar (e.g. concatenated JSON left behind by
+        # a prior non-atomic write) must not raise -- treat it as empty and
+        # proceed to trim/re-stamp instead of crashing the whole file (and,
+        # under a Pool, the whole worker).
+        sidecar = {}
+        if json_path.exists():
+            try:
+                sidecar = json.loads(json_path.read_text())
+            except (json.JSONDecodeError, OSError) as e:
+                log.warning(
+                    "Malformed sidecar, treating as empty: %s (%s)", json_path.name, e
+                )
+                sidecar = {}
+            else:
+                if sidecar.get("NumberOfVolumesDiscardedByUser") == N_DUMMY:
+                    log.debug("Already trimmed: %s", nifti_path.name)
+                    return "skipped_already_trimmed"
+
         img = nib.load(str(nifti_path))
         n_vols = img.shape[3] if len(img.shape) > 3 else 1
 
@@ -48,17 +62,18 @@ def _trim_one_file(nifti_path: Path) -> str:
 
         # Trim first N_DUMMY volumes (write to temp file, then atomic rename)
         trimmed_data = img.slicer[:, :, :, N_DUMMY:]
-        tmp_path = nifti_path.parent / nifti_path.name.replace(
-            "_bold.nii.gz", "_bold_tmp.nii.gz"
-        )
         nib.save(trimmed_data, str(tmp_path))
         tmp_path.rename(nifti_path)
 
-        # Update sidecar
+        # Update sidecar. Write atomically (temp file + os.replace) so a
+        # concurrent/interrupted write can never produce concatenated
+        # ("Extra data") JSON in the sidecar on disk.
         sidecar["NumberOfVolumesDiscardedByUser"] = N_DUMMY
         if "NumVolumes" in sidecar:
             sidecar["NumVolumes"] = n_vols - N_DUMMY
-        json_path.write_text(json.dumps(sidecar, indent=2) + "\n")
+        tmp_json = json_path.with_suffix(".json.tmp")
+        tmp_json.write_text(json.dumps(sidecar, indent=2) + "\n")
+        os.replace(tmp_json, json_path)
 
         log.info("Trimmed %d -> %d volumes: %s", n_vols, n_vols - N_DUMMY, nifti_path.name)
         return "trimmed"
@@ -66,9 +81,6 @@ def _trim_one_file(nifti_path: Path) -> str:
     except Exception as e:
         log.error("Failed to process %s: %s", nifti_path.name, e)
         # Clean up temp file if it exists
-        tmp_path = nifti_path.parent / nifti_path.name.replace(
-            "_bold.nii.gz", "_bold_tmp.nii.gz"
-        )
         if tmp_path.exists():
             tmp_path.unlink()
         return "error"

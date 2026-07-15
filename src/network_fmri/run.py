@@ -273,7 +273,10 @@ def _trim_main(argv):
     print(f"Skipped (already trimmed): {summary['skipped_already_trimmed']}")
     print(f"Skipped (too short): {summary['skipped_too_short']}")
     print(f"Errors: {summary['errors']}")
-    return summary
+    # NOTE: must return an int, not the summary dict. The `fw2bids` console
+    # entrypoint does `sys.exit(main())`; sys.exit(<dict>) prints the dict to
+    # stderr and exits with code 1, falsely marking every trim job FAILED.
+    return 0
 
 
 def main(argv=None):

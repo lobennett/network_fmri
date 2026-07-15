@@ -116,6 +116,56 @@ def test_parallel_jobs_trims_all(tmp_path):
         assert sidecar["NumberOfVolumesDiscardedByUser"] == N_DUMMY
 
 
+def test_malformed_sidecar_does_not_crash(tmp_path):
+    """A sidecar left as concatenated ("valid-object + extra data") JSON by a
+    prior non-atomic write must not crash trimming -- it should be treated as
+    an empty sidecar and the file trimmed normally (production found 20 such
+    sidecars after a non-atomic write race)."""
+    nifti_path, json_path = _make_bold(tmp_path, n_vols=17)
+    json_path.write_text('{"A":1}\n{"B":2}')
+
+    summary = trim_bold_directory(tmp_path)
+
+    assert summary["errors"] == 0
+    assert summary["trimmed"] == 1
+
+    reloaded = nib.load(str(nifti_path))
+    assert reloaded.shape[3] == 10
+
+    sidecar = json.loads(json_path.read_text())
+    assert sidecar["NumberOfVolumesDiscardedByUser"] == N_DUMMY
+
+
+def test_malformed_sidecar_does_not_crash_pool(tmp_path):
+    """Same malformed-sidecar case, but through the multiprocessing.Pool path
+    (jobs=2) -- a raised exception here would abort the whole worker/subject."""
+    nifti_path, json_path = _make_bold(tmp_path, n_vols=17)
+    json_path.write_text('{"A":1}\n{"B":2}')
+
+    summary = trim_bold_directory(tmp_path, jobs=2)
+
+    assert summary["errors"] == 0
+    assert summary["trimmed"] == 1
+
+    reloaded = nib.load(str(nifti_path))
+    assert reloaded.shape[3] == 10
+
+    sidecar = json.loads(json_path.read_text())
+    assert sidecar["NumberOfVolumesDiscardedByUser"] == N_DUMMY
+
+
+def test_sidecar_written_atomically(tmp_path):
+    """After a normal trim, no leftover *.json.tmp temp files remain (the
+    sidecar is written via temp-file + os.replace, mirroring the NIfTI's
+    existing atomic temp-file + rename pattern)."""
+    _make_bold(tmp_path, n_vols=17)
+
+    trim_bold_directory(tmp_path)
+
+    leftover_tmp = list(tmp_path.glob("**/*.json.tmp"))
+    assert leftover_tmp == []
+
+
 def test_parallel_matches_serial(tmp_path_factory):
     serial_dir = tmp_path_factory.mktemp("serial")
     parallel_dir = tmp_path_factory.mktemp("parallel")
