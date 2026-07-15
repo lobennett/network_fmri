@@ -97,7 +97,7 @@ def test_trim_routes_to_trim_bold_directory(monkeypatch):
     monkeypatch.setattr(
         run,
         "trim_bold_directory",
-        lambda bids_dir, subjects=None: (
+        lambda bids_dir, subjects=None, jobs=1: (
             calls["trim"].append((bids_dir, subjects))
             or {"trimmed": 1, "skipped_already_trimmed": 0, "skipped_too_short": 0, "errors": 0}
         ),

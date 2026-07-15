@@ -260,9 +260,15 @@ def _trim_main(argv):
         help="restrict to these subject IDs (e.g. s10 sub-s19); "
         "default processes all sub-*. Enables array sharding.",
     )
+    ap.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        help="parallel workers over BOLD files (default 1 = serial)",
+    )
     args = ap.parse_args(argv)
 
-    summary = trim_bold_directory(args.bids_dir, subjects=args.subjects)
+    summary = trim_bold_directory(args.bids_dir, subjects=args.subjects, jobs=args.jobs)
     print(f"Trimmed: {summary['trimmed']}")
     print(f"Skipped (already trimmed): {summary['skipped_already_trimmed']}")
     print(f"Skipped (too short): {summary['skipped_too_short']}")

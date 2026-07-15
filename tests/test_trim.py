@@ -85,3 +85,48 @@ def test_subjects_filter(tmp_path):
     assert summary["trimmed"] == 1
     assert nib.load(str(s01_nifti)).shape[3] == 10
     assert nib.load(str(s02_nifti)).shape[3] == 17
+
+
+def _make_multi_bold(tmp_path, n_files=4):
+    paths = []
+    for i in range(n_files):
+        ses = "01" if i % 2 == 0 else "02"
+        nifti_path, json_path = _make_bold(
+            tmp_path, sub="s01", ses=ses, n_vols=17, task=f"t{i}", run=1
+        )
+        paths.append((nifti_path, json_path))
+    return paths
+
+
+def test_parallel_jobs_trims_all(tmp_path):
+    paths = _make_multi_bold(tmp_path, n_files=4)
+
+    summary = trim_bold_directory(tmp_path, jobs=2)
+
+    assert summary == {
+        "trimmed": 4,
+        "skipped_already_trimmed": 0,
+        "skipped_too_short": 0,
+        "errors": 0,
+    }
+    for nifti_path, json_path in paths:
+        reloaded = nib.load(str(nifti_path))
+        assert reloaded.shape[3] == 10
+        sidecar = json.loads(json_path.read_text())
+        assert sidecar["NumberOfVolumesDiscardedByUser"] == N_DUMMY
+
+
+def test_parallel_matches_serial(tmp_path_factory):
+    serial_dir = tmp_path_factory.mktemp("serial")
+    parallel_dir = tmp_path_factory.mktemp("parallel")
+
+    serial_paths = _make_multi_bold(serial_dir, n_files=5)
+    parallel_paths = _make_multi_bold(parallel_dir, n_files=5)
+
+    serial_summary = trim_bold_directory(serial_dir, jobs=1)
+    parallel_summary = trim_bold_directory(parallel_dir, jobs=3)
+
+    assert serial_summary == parallel_summary
+
+    for (serial_nifti, _), (parallel_nifti, _) in zip(serial_paths, parallel_paths):
+        assert nib.load(str(serial_nifti)).shape == nib.load(str(parallel_nifti)).shape
