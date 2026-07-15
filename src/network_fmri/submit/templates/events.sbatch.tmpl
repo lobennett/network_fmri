@@ -1,0 +1,21 @@
+#!/bin/bash
+#SBATCH -J {job_name}
+#SBATCH --cpus-per-task={nthreads}
+#SBATCH --mem={mem_gb}G
+#SBATCH --time={time}
+#SBATCH -p {partition}
+#SBATCH -o {log_dir}/%x-%j.out
+#SBATCH -e {log_dir}/%x-%j.err
+{mail_line}
+
+set -euo pipefail
+
+{env_exports}
+
+# network-events `run` orchestrates the behavioral half over the staged cohort:
+# migrate (per the reviewed reconciliation manifest) -> create events TSVs ->
+# behavioral QC -> events trim. The raw behavioral dir on OAK is read-only.
+{run_prefix} network-events run \
+    --behavioral-dir {behavioral_dir} \
+    --bids-dir {cohort_dir} \
+    --manifest {manifest}

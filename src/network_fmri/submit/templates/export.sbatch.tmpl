@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH -J {job_name}
+#SBATCH --array=0-{n_minus_1}%{throttle}
+#SBATCH --cpus-per-task={nthreads}
+#SBATCH --mem={mem_gb}G
+#SBATCH --time={time}
+#SBATCH -p {partition}
+#SBATCH -o {log_dir}/%x-%A-%a.out
+#SBATCH -e {log_dir}/%x-%A-%a.err
+{mail_line}
+
+set -euo pipefail
+
+{env_exports}
+
+SUBJ="$(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" "{subjects_file}")"
+
+# export DOWNLOADS the curated (tagged) files for one subject to its own parts
+# dir — no Flywheel writes, so this fans out cleanly across the array.
+{run_prefix} fw2bids export {cohort} --subject "$SUBJ" --out {parts}/{cohort}/"$SUBJ"

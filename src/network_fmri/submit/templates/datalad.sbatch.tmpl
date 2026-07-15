@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH -J {job_name}
+#SBATCH --cpus-per-task={nthreads}
+#SBATCH --mem={mem_gb}G
+#SBATCH --time={time}
+#SBATCH -p {partition}
+#SBATCH -o {log_dir}/%x-%j.out
+#SBATCH -e {log_dir}/%x-%j.err
+{mail_line}
+
+set -euo pipefail
+
+{env_exports}
+
+# datalad shells out to git-annex, which is NOT on the login node — load it.
+module load system git-annex
+
+# Version-control the staged BIDS tree (git-annex for NIfTI, plain git for TSV/JSON).
+{run_prefix} fw2bids datalad {cohort_dir}

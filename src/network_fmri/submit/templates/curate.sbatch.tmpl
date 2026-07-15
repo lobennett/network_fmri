@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH -J {job_name}
+#SBATCH --array=0-{n_minus_1}%{throttle}
+#SBATCH --cpus-per-task={nthreads}
+#SBATCH --mem={mem_gb}G
+#SBATCH --time={time}
+#SBATCH -p {partition}
+#SBATCH -o {log_dir}/%x-%A-%a.out
+#SBATCH -e {log_dir}/%x-%A-%a.err
+{mail_line}
+
+set -euo pipefail
+
+{env_exports}
+
+SUBJ="$(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" "{subjects_file}")"
+
+# curate WRITES the BIDS naming into Flywheel (info.BIDS) for this subject.
+{run_prefix} fw2bids {cohort} --subject "$SUBJ" --live

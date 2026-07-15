@@ -1,0 +1,17 @@
+#!/bin/bash
+#SBATCH -J {job_name}
+#SBATCH --cpus-per-task={nthreads}
+#SBATCH --mem={mem_gb}G
+#SBATCH --time={time}
+#SBATCH -p {partition}
+#SBATCH -o {log_dir}/%x-%j.out
+#SBATCH -e {log_dir}/%x-%j.err
+{mail_line}
+
+set -euo pipefail
+
+{env_exports}
+
+# Merge the per-subject export parts into one staged BIDS tree for the cohort.
+mkdir -p {cohort_dir}
+rsync -a {parts}/{cohort}/*/ {cohort_dir}/

@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH -J {job_name}
+#SBATCH --array=0-{n_minus_1}%{throttle}
+#SBATCH --cpus-per-task={nthreads}
+#SBATCH --mem={mem_gb}G
+#SBATCH --time={time}
+#SBATCH -p {partition}
+#SBATCH -o {log_dir}/%x-%A-%a.out
+#SBATCH -e {log_dir}/%x-%A-%a.err
+{mail_line}
+
+set -euo pipefail
+
+{env_exports}
+
+SUBJ="$(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" "{subjects_file}")"
+
+# trim removes the 7 dummy BOLD volumes in the staged tree (idempotent, atomic).
+# Each array task owns a disjoint subject → no write races.
+{run_prefix} fw2bids trim {cohort_dir} --subjects "$SUBJ" --jobs {nthreads}

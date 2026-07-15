@@ -290,6 +290,14 @@ def main(argv=None):
         return _export_main(argv[1:])
     if argv and argv[0] == "trim":
         return _trim_main(argv[1:])
+    if argv and argv[0] == "submit":
+        from network_fmri.submit import main as _submit_main
+
+        return _submit_main(argv[1:])
+    if argv and argv[0] == "pipeline":
+        from network_fmri.submit.pipeline import main as _pipeline_main
+
+        return _pipeline_main(argv[1:])
     return _curate_main(argv)
 
 
