@@ -35,6 +35,7 @@ import time
 from pathlib import Path
 
 from network_fmri import curation, datalad_ds, session_map
+from network_fmri.trim import trim_bold_directory
 
 _HEURISTIC = Path(__file__).resolve().parent / "heuristic.py"
 _PROJECT = curation._flywheel_config()["project"]
@@ -239,6 +240,36 @@ def _datalad_main(argv):
     print(f"[datalad] {args.bids_dir} is now a DataLad dataset")
 
 
+def _trim_main(argv):
+    """Trim 7 dummy volumes from every BOLD NIfTI in a staged BIDS tree (idempotent).
+
+    ``fw2bids export`` produces un-trimmed BIDS, but fMRIPrep is run with
+    ``--dummy-scans 0``, so this must run on the staged tree before fMRIPrep.
+    Safe to re-run: already-trimmed files are skipped via the sidecar
+    ``NumberOfVolumesDiscardedByUser`` flag.
+    """
+    ap = argparse.ArgumentParser(
+        prog="fw2bids trim",
+        description="Trim 7 dummy (non-steady-state) BOLD volumes in a staged BIDS dir.",
+    )
+    ap.add_argument("bids_dir", help="staged BIDS directory to trim in place")
+    ap.add_argument(
+        "--subjects",
+        nargs="+",
+        default=None,
+        help="restrict to these subject IDs (e.g. s10 sub-s19); "
+        "default processes all sub-*. Enables array sharding.",
+    )
+    args = ap.parse_args(argv)
+
+    summary = trim_bold_directory(args.bids_dir, subjects=args.subjects)
+    print(f"Trimmed: {summary['trimmed']}")
+    print(f"Skipped (already trimmed): {summary['skipped_already_trimmed']}")
+    print(f"Skipped (too short): {summary['skipped_too_short']}")
+    print(f"Errors: {summary['errors']}")
+    return summary
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     # Backward-compatible dispatch: a bare cohort is the implicit `curate` path
@@ -248,6 +279,8 @@ def main(argv=None):
         return _datalad_main(argv[1:])
     if argv and argv[0] == "export":
         return _export_main(argv[1:])
+    if argv and argv[0] == "trim":
+        return _trim_main(argv[1:])
     return _curate_main(argv)
 
 

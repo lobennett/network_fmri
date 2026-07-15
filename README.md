@@ -111,7 +111,27 @@ becomes an embarrassingly-parallel Slurm array (one small, independent, retryabl
 job per subject) instead of a single fragile whole-roster download. Merge the
 per-subject parts into one tree afterward (`rsync -a $SCRATCH/parts/*/ $DEST/`).
 
-### 4c. Make the staged tree a DataLad dataset (`datalad`)
+### 4c. Trim dummy volumes (`trim`)
+
+`fw2bids export` writes un-trimmed BIDS, but fMRIPrep is run with
+`--dummy-scans 0`, so the 7 non-steady-state volumes must be removed from the
+staged tree first:
+
+```bash
+uv run fw2bids trim $SCRATCH/bids_staging/discovery
+```
+
+Idempotent (a sidecar `NumberOfVolumesDiscardedByUser` flag skips already-trimmed
+files, so it's safe to re-run) and atomic (writes to a temp file, then renames
+over the original). `--subjects s10 s19 ...` restricts to those subjects, which
+lets a large cohort be sharded across a Slurm array with each task owning a
+disjoint set of files (no write races):
+
+```bash
+uv run fw2bids trim $SCRATCH/bids_staging/validation --subjects s10 s19
+```
+
+### 4d. Make the staged tree a DataLad dataset (`datalad`)
 
 Version-control the staged BIDS tree with DataLad so large NIfTIs are git-annex'd
 while text sidecars (`.tsv`/`.json`) stay in plain git (`text2git`):

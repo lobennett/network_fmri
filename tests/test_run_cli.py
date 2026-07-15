@@ -89,6 +89,30 @@ def test_export_subject_flag_limits_roster(monkeypatch):
     assert calls["export"] == [(["s286"], "/stage/parts/s286")]
 
 
+def test_trim_routes_to_trim_bold_directory(monkeypatch):
+    """`fw2bids trim <dir> [--subjects ...]` reaches trim_bold_directory and
+    never touches Flywheel (no _client call)."""
+    calls = {"trim": []}
+
+    monkeypatch.setattr(
+        run,
+        "trim_bold_directory",
+        lambda bids_dir, subjects=None: (
+            calls["trim"].append((bids_dir, subjects))
+            or {"trimmed": 1, "skipped_already_trimmed": 0, "skipped_too_short": 0, "errors": 0}
+        ),
+    )
+    monkeypatch.setattr(
+        run, "_client", lambda: (_ for _ in ()).throw(AssertionError("wrong path"))
+    )
+
+    run.main(["trim", "/stage/discovery"])
+    assert calls["trim"] == [("/stage/discovery", None)]
+
+    run.main(["trim", "/stage/validation", "--subjects", "s10", "s19"])
+    assert calls["trim"][-1] == ("/stage/validation", ["s10", "s19"])
+
+
 class _Proc:
     def __init__(self, rc, stdout="out", stderr="err"):
         self.returncode = rc

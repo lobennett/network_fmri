@@ -261,7 +261,7 @@ wheels = [
 [[package]]
 name = "fw-heudiconv"
 version = "0.4.3"
-source = { git = "https://github.com/lobennett/fw-heudiconv.git?rev=f4fae26#f4fae26d57004e518f0e2041e09b079159008ee0" }
+source = { git = "https://github.com/lobennett/fw-heudiconv.git?rev=2e7187d#2e7187d356d5e8d6355e8d4d0e843b4e0de7d7ce" }
 dependencies = [
     { name = "bids-validator" },
     { name = "flywheel-sdk" },
@@ -308,6 +308,7 @@ dependencies = [
     { name = "flywheel-sdk" },
     { name = "fw-heudiconv" },
     { name = "network-qa" },
+    { name = "nibabel" },
 ]
 
 [package.dev-dependencies]
@@ -318,8 +319,9 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "flywheel-sdk", specifier = "==21.5.0" },
-    { name = "fw-heudiconv", git = "https://github.com/lobennett/fw-heudiconv.git?rev=f4fae26" },
+    { name = "fw-heudiconv", git = "https://github.com/lobennett/fw-heudiconv.git?rev=2e7187d" },
     { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=c945ecd" },
+    { name = "nibabel", specifier = ">=5.0" },
 ]
 
 [package.metadata.requires-dev]
