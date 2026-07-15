@@ -36,6 +36,23 @@ calls that live in `scans.tsv` and the pipeline `bids-filter-file`s. See
   complete re-run. The abort was **deleted from Flywheel**; the re-run (formerly
   `task-cuedTaskSwitching_bold_1`) was **renamed to `task-cuedTaskSwitching_bold`**
   (sole run). This note is now the abort's only record.
+- **Short false-start BOLDs removed (dim4 15/17/19 raw).** Three acquisitions
+  survived the 7-dummy-volume trim (raw dim4 > 7) but were still far-too-short
+  false-starts — well under 5 % of the task's expected length — so they were
+  **deleted from Flywheel** rather than left to curate as junk `run-1` scans.
+  Each abort's own `gephysio` gear analyses (input scoped to that series) were
+  deleted first to clear the delete. These notes are now the aborts' only record:
+  - **s29 / ses-03 `spatialTS`** — abort acq `5fc7cedf…` (SeriesNumber 5, raw
+    `dim4=15`) deleted. The complete re-run acq `5fc802cb…` (SeriesNumber 8,
+    `dim4=332`) survives and, as the sole remaining `task-spatialTS_bold`,
+    curates as the single run.
+  - **s373 / ses-02 `spatialTS`** — abort acq `63e4ce94…` (label
+    `task-spatialTaskSwitching_bold_1`, SeriesNumber 6, raw `dim4=19`) deleted.
+    The complete re-run acq `63e2a08e…` (plain `task-spatialTaskSwitching_bold`,
+    SeriesNumber 7, `dim4=336`) survives as the sole run.
+  - **s43 / ses-02 `goNogo`** — abort acq `5fb6c912…` (SeriesNumber 7, raw
+    `dim4=17`) deleted. There was **no re-run**, so `goNogo` is not acquired for
+    this session (no usable data existed to keep).
 
 ## Generator skips & injected metadata (src/network_fmri)
 
@@ -65,6 +82,16 @@ The generator applies these deterministically; they are the single source of tru
 
 Newest first. Each entry: date — subject/session — what changed, why, where.
 
+- **2026-07-15** — s29/ses-03 (`spatialTS`), s373/ses-02 (`spatialTS`),
+  s43/ses-02 (`goNogo`) — deleted three short false-start acquisitions from
+  Flywheel (raw `dim4` 15/17/19, i.e. 8/10/12 after the 7-dummy trim — each
+  < 5 % of its task's expected length). s29 and s373 each had a complete re-run
+  that survives as the sole run; s43 `goNogo` had none. Found via the post-trim
+  `.bidsignore` staging audit (scans just over 7 volumes that trimmed without
+  error but are unusable). Each abort's own series-scoped `gephysio` analyses
+  were deleted to clear the acquisition delete. Downstream follow-up: re-export
+  these sessions (the surviving re-runs then curate as single runs) and drop the
+  now-stale `dest_run=2` rows for these scans from the reconciliation manifests.
 - **2026-07-15** — s480/ses-03 (`goNogo`, `nBack`), s394/ses-04 (`cuedTS`) —
   deleted aborted false-start acquisitions from Flywheel (dim4 1/3 for s480, 2 for
   s394) and renamed each session's complete re-run `task-*_bold_1` → `task-*_bold`,
