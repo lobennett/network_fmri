@@ -23,6 +23,19 @@ calls that live in `scans.tsv` and the pipeline `bids-filter-file`s. See
   `20201113`) was **renamed to `task-spatialTS_bold`** so the BIDS `task-` entity
   describes the task performed. It now pairs with the existing spatialTS behavioral
   → recovered run. Supersedes the prior "cuedTS BOLD irreconcilable" call.
+- **s480 / ses-03 — aborted `goNogo` and `nBack` runs removed; re-runs promoted.**
+  Each task was acquired twice this session: a scanner false-start (`goNogo`
+  `dim4=1`, `nBack` `dim4=3`) followed by a complete re-run. The aborted
+  acquisitions (`task-goNogo_bold` `6435a383…`, `task-nBack_bold` `64358a7a…`)
+  were **deleted from Flywheel**; the complete re-runs (formerly
+  `task-goNogo_bold_1` / `task-nBack_bold_1`, i.e. BIDS `run-2`) were **renamed to
+  `task-goNogo_bold` / `task-nBack_bold`** so each curates as the sole run (no
+  `run-` entity). These notes are now the aborts' only record.
+- **s394 / ses-04 — aborted `cuedTS` run removed; re-run promoted.** A 2-volume
+  (`dim4=2`) false-start (`task-cuedTaskSwitching_bold` `6413b83c…`) preceded a
+  complete re-run. The abort was **deleted from Flywheel**; the re-run (formerly
+  `task-cuedTaskSwitching_bold_1`) was **renamed to `task-cuedTaskSwitching_bold`**
+  (sole run). This note is now the abort's only record.
 
 ## Generator skips & injected metadata (src/network_fmri)
 
@@ -52,6 +65,12 @@ The generator applies these deterministically; they are the single source of tru
 
 Newest first. Each entry: date — subject/session — what changed, why, where.
 
+- **2026-07-15** — s480/ses-03 (`goNogo`, `nBack`), s394/ses-04 (`cuedTS`) —
+  deleted aborted false-start acquisitions from Flywheel (dim4 1/3 for s480, 2 for
+  s394) and renamed each session's complete re-run `task-*_bold_1` → `task-*_bold`,
+  collapsing these multi-run (run-1-abort / run-2-good) cases to a single clean run.
+  Downstream follow-up: re-export those two sessions and drop the corresponding
+  `dest_run=2` rows from `config/manifests/reconciliation_validation.tsv`.
 - **2026-07-13** — s29/ses-01 — relabeled Flywheel acquisition `task-cuedTS_bold`
   → `task-spatialTS_bold` (spatialTS was performed under a cuedTS protocol name).
   Recovers a matched run; replaces the earlier "irreconcilable" determination.
