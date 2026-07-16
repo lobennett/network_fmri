@@ -14,7 +14,6 @@ from pathlib import Path
 from network_fmri import curation
 from network_fmri.submit._slurm import (
     build_mail_line,
-    make_log_dir,
     render_template,
     resolve_resources,
     submit_sbatch,
@@ -154,8 +153,12 @@ def base_context(args, defaults: dict, *, job_name: str, log_dir: Path) -> dict:
 
 
 def make_stage_log_dir(args) -> Path:
-    """``<staging>/<cohort>/logs`` (created)."""
-    return make_log_dir(cohort_dir(args))
+    """``<staging>/logs/<cohort>`` (created) — OUTSIDE the cohort's BIDS tree so
+    sbatch ``.out``/``.err`` and ``*_subjects.txt`` don't pollute the dataset
+    (they otherwise trip bids-validator NOT_INCLUDED + EMPTY_FILE on empty logs)."""
+    log_dir = Path(args.staging) / "logs" / args.cohort
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir
 
 
 def array_context(args, defaults: dict, *, stage: str) -> tuple[dict, list[str]]:
