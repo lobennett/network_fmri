@@ -12,8 +12,12 @@ set -euo pipefail
 
 {env_exports}
 
-# datalad shells out to git-annex, which is NOT on the login node — load it.
-module load system git-annex
+# datalad (a pinned network_fmri dependency) shells out to git-annex, a system
+# binary. On the Sherlock host git-annex comes from a module; inside the container
+# it is baked into the image and Lmod is absent — so the module load is guarded
+# (no-op in the container, where git-annex is already on PATH).
+module load system git-annex 2>/dev/null || true
 
 # Version-control the staged BIDS tree (git-annex for NIfTI, plain git for TSV/JSON).
+# datalad resolves from the venv/container (run_prefix), not a host datalad module.
 {run_prefix} fw2bids datalad {cohort_dir}

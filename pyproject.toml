@@ -18,6 +18,11 @@ dependencies = [
     # invoked by submit/events.py; the reviewed reconciliation manifests ship
     # inside that package (src/network_events/config/manifests/).
     "network_events @ git+https://github.com/lobennett/network_events.git@fff2e16",
+    # DataLad stage: pinned in-package (via uv.lock) rather than a host module, so
+    # the datalad binary is reproducible in the venv + the container. git-annex
+    # (a non-pip system binary) is baked into network_fmri.def / module-loaded on
+    # the host — see submit/templates/datalad.sbatch.tmpl.
+    "datalad>=1.1",
 ]
 
 [project.scripts]
