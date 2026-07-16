@@ -1,0 +1,84 @@
+Bootstrap: docker
+From: astral/uv:0.10-python3.11-trixie-slim
+
+# network_fmri container — the BIDS-curation orchestrator.
+#
+# Bundles the full Flywheel -> BIDS -> trim -> events -> datalad stack into one
+# reproducible image so the `submit` layer's `--container` seam can run every
+# stage via `apptainer exec <sif> …`.
+#
+# The critical piece is a MODERN git-annex (>= 10.20230126). The Sherlock host
+# only ships git-annex 8, which datalad 1.6 rejects — that mismatch is the whole
+# reason this image exists. We install datalad (a pinned pip dep) into the venv
+# and bake the git-annex standalone tarball into /opt so datalad finds a matched
+# binary on PATH.
+#
+# No FreeSurfer/FSL here: this is the BIDS-curation pipeline, not the GLM.
+
+%files
+    pyproject.toml /opt/network_fmri/pyproject.toml
+    README.md /opt/network_fmri/README.md
+    .python-version /opt/network_fmri/.python-version
+    src /opt/network_fmri/src
+    config /opt/network_fmri/config
+
+%post
+    set -eux
+    # git for the git+ companion deps (fw-heudiconv / network_qa / network_events);
+    # wget/bzip2 to fetch + extract the git-annex standalone tarball; ca-certificates
+    # for TLS. The slim base ships without them.
+    apt-get update && apt-get install -y --no-install-recommends \
+        git ca-certificates wget bzip2 \
+        && rm -rf /var/lib/apt/lists/*
+
+    # --- modern git-annex via the standalone Linux tarball ---------------------
+    # The standalone build carries its own runtime, so no NeuroDebian apt/GPG
+    # dance. Extracts to /opt/git-annex.linux (put on PATH in %environment).
+    cd /opt
+    wget -q https://downloads.kitenet.net/git-annex/linux/current/git-annex-standalone-amd64.tar.gz
+    tar -xzf git-annex-standalone-amd64.tar.gz -C /opt
+    rm -f git-annex-standalone-amd64.tar.gz
+    # verify >= 10.20230126 (datalad's floor); fail the build otherwise
+    ver=$(/opt/git-annex.linux/git-annex version | awk '/^git-annex version:/ {print $3}')
+    echo "git-annex version: ${ver}"
+    /opt/git-annex.linux/git-annex version
+    python3 - "$ver" <<'PY'
+import sys
+ver = sys.argv[1]
+# compare the leading numeric.YYYYMMDD form against 10.20230126
+def key(v):
+    parts = v.split('.')
+    return (int(parts[0]), int(parts[1][:8]))
+assert key(ver) >= (10, 20230126), f"git-annex {ver} < 10.20230126"
+print(f"git-annex {ver} OK (>= 10.20230126)")
+PY
+
+    # --- network_fmri + all deps into a baked-in venv --------------------------
+    cd /opt/network_fmri
+    uv venv /opt/venv
+    UV_CACHE_DIR=/tmp/uv_cache uv pip install --python /opt/venv/bin/python .
+    rm -rf /tmp/uv_cache
+
+    # network_fmri resolves curation_config.json via parents[2]/config, i.e. the
+    # repo root in a source checkout. Installed as a wheel the config instead
+    # lands inside the package dir (pyproject force-include), so the resolver
+    # misses it. Bake a copy at the location the runtime resolver looks so the
+    # CLI runs from the image; the config (subject rosters) is thus reproducible
+    # in-image. This is a container data-placement step, not a code change.
+    CFG_ROOT=$(/opt/venv/bin/python -c "import network_fmri, pathlib; print(pathlib.Path(network_fmri.__file__).resolve().parents[2])")
+    mkdir -p "${CFG_ROOT}/config"
+    cp /opt/network_fmri/config/curation_config.json "${CFG_ROOT}/config/"
+
+    # smoke: the pipeline stack imports
+    /opt/venv/bin/python -c "import network_fmri, network_events, network_qa, fw_heudiconv, datalad, nibabel, flywheel; print('imports OK')"
+
+%environment
+    export PATH=/opt/venv/bin:/opt/git-annex.linux:$PATH
+    export PYTHONUNBUFFERED=1
+
+%runscript
+    exec fw2bids "$@"
+
+%labels
+    org.r01network.package network_fmri
+    org.r01network.description Flywheel->BIDS->trim->events->datalad orchestrator with modern git-annex
