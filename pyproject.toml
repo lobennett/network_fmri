@@ -17,7 +17,7 @@ dependencies = [
     # Behavioral half (events stage of the pipeline). Its `network-events` CLI is
     # invoked by submit/events.py; the reviewed reconciliation manifests ship
     # inside that package (src/network_events/config/manifests/).
-    "network_events @ git+https://github.com/lobennett/network_events.git@fff2e16",
+    "network_events @ git+https://github.com/lobennett/network_events.git@0140709",
     # DataLad stage: pinned in-package (via uv.lock) rather than a host module, so
     # the datalad binary is reproducible in the venv + the container. git-annex
     # (a non-pip system binary) is baked into network_fmri.def / module-loaded on
