@@ -750,7 +750,7 @@ wheels = [
 [[package]]
 name = "network-events"
 version = "0.1.0"
-source = { git = "https://github.com/lobennett/network_events.git?rev=0140709#014070987087386c4c350c7c39db37474dfbdb05" }
+source = { git = "https://github.com/lobennett/network_events.git?rev=3504f71#3504f711629065b85fbc0d204b23b80335d05989" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -780,8 +780,8 @@ requires-dist = [
     { name = "datalad", specifier = ">=1.1" },
     { name = "flywheel-sdk", specifier = "==21.5.0" },
     { name = "fw-heudiconv", git = "https://github.com/lobennett/fw-heudiconv.git?rev=2e7187d" },
-    { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=0140709" },
-    { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=c945ecd" },
+    { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=3504f71" },
+    { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=3050273" },
     { name = "nibabel", specifier = ">=5.0" },
 ]
 
@@ -791,9 +791,11 @@ dev = [{ name = "pytest", specifier = ">=8" }]
 [[package]]
 name = "network-qa"
 version = "0.1.0"
-source = { git = "https://github.com/lobennett/network_qa.git?rev=c945ecd#c945ecd88fb180f65d54516aba9fb04649da9d5b" }
+source = { git = "https://github.com/lobennett/network_qa.git?rev=3050273#3050273856a3be41d8e3028c42fcf7eb97dc6aff" }
 dependencies = [
+    { name = "network-events" },
     { name = "nibabel" },
+    { name = "pandas" },
 ]
 
 [[package]]

@@ -13,11 +13,11 @@ dependencies = [
     "fw-heudiconv @ git+https://github.com/lobennett/fw-heudiconv.git@2e7187d",
     # QA metrics/decisions (short-run flagging, …) — its own package, imported here
     # and wired into the data-selection layer.
-    "network_qa @ git+https://github.com/lobennett/network_qa.git@c945ecd",
+    "network_qa @ git+https://github.com/lobennett/network_qa.git@3050273",
     # Behavioral half (events stage of the pipeline). Its `network-events` CLI is
     # invoked by submit/events.py; the reviewed reconciliation manifests ship
     # inside that package (src/network_events/config/manifests/).
-    "network_events @ git+https://github.com/lobennett/network_events.git@0140709",
+    "network_events @ git+https://github.com/lobennett/network_events.git@3504f71",
     # DataLad stage: pinned in-package (via uv.lock) rather than a host module, so
     # the datalad binary is reproducible in the venv + the container. git-annex
     # (a non-pip system binary) is baked into network_fmri.def / module-loaded on
