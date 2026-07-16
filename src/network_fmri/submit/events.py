@@ -42,13 +42,14 @@ def default_manifest(cohort: str) -> str:
     try:
         import network_events
 
-        base = Path(network_events.__file__).resolve().parents[2]
-        cand = base / rel
+        # Manifests ship inside the package: src/network_events/config/manifests/.
+        cand = Path(network_events.__file__).resolve().parent / rel
         if cand.is_file():
             return str(cand)
     except Exception:
         pass
-    return str(Path(_NETWORK_EVENTS_CHECKOUT) / rel)
+    # Fallback for dry-run before network_events is installed in this env.
+    return str(Path(_NETWORK_EVENTS_CHECKOUT) / "src" / "network_events" / rel)
 
 
 def get_parser() -> argparse.ArgumentParser:
