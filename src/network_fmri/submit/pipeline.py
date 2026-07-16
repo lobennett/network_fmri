@@ -53,6 +53,14 @@ def get_parser() -> argparse.ArgumentParser:
         const=_common.DEFAULT_CONTAINER_IMAGE,
         default=None,
     )
+    parser.add_argument(
+        "--start-stage",
+        choices=[name for name, _, _ in _STAGES],
+        default=None,
+        help="Resume the DAG from this stage (skip earlier ones whose outputs "
+             "already exist, e.g. resume from 'merge' when parts/ are present). "
+             "The start stage runs with no dependency.",
+    )
     parser.add_argument("--throttle", type=int, default=5)
     parser.add_argument("--subjects", nargs="+", default=None)
     parser.add_argument("--behavioral-dir", default=events.DEFAULT_BEHAVIORAL_DIR)
@@ -84,9 +92,19 @@ def _stage_argv(args: argparse.Namespace, *, is_array: bool, is_events: bool) ->
 def main(argv: list[str] | None = None) -> int:
     args = get_parser().parse_args(argv)
 
+    stages = stages_for(args.cohort)
+    if args.start_stage:
+        names = [n for n, _, _ in stages]
+        if args.start_stage not in names:
+            raise SystemExit(
+                f"--start-stage {args.start_stage!r} not a stage for cohort "
+                f"{args.cohort!r}; choices: {names}"
+            )
+        stages = stages[names.index(args.start_stage):]
+
     job_ids: dict[str, str] = {}
     prev: str | None = None
-    for name, mod, is_array in stages_for(args.cohort):
+    for name, mod, is_array in stages:
         stage_args = mod.get_parser().parse_args(
             _stage_argv(args, is_array=is_array, is_events=(name == "events"))
         )
@@ -104,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
             prev = jid
 
     print("\n=== submitted DAG ===")
-    for name, _, _ in stages_for(args.cohort):
+    for name, _, _ in stages:
         print(f"{name}: {job_ids[name]}")
     return 0
 

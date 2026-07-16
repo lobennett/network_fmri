@@ -12,7 +12,9 @@ import sys
 from network_fmri.submit import _common
 
 STAGE = "merge"
-DEFAULT_RESOURCES = {"nthreads": 2, "mem_gb": 8, "time": "01:00:00"}
+# 08:00:00: the single-threaded rsync of a large cohort's per-subject parts
+# (validation = 41 subjects x multi-echo BOLD) exceeded 1h on Lustre.
+DEFAULT_RESOURCES = {"nthreads": 2, "mem_gb": 8, "time": "08:00:00"}
 
 
 def get_parser() -> argparse.ArgumentParser:
