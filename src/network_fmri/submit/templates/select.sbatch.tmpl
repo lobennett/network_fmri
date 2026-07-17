@@ -28,7 +28,7 @@ mkdir -p {cohort_dir}/code
 # 1. Unlock the DataLad-tracked selection targets so they can be rewritten
 #    (best-effort: they may not exist yet on a first run, and text sidecars are
 #    kept in plain git by text2git so they are already unlocked).
-{run_prefix} datalad unlock \
+{run_prefix} datalad unlock -d {cohort_dir} \
     {cohort_dir}/.bidsignore \
     {cohort_dir}/code \
     2>/dev/null || true
@@ -54,5 +54,9 @@ mkdir -p {cohort_dir}/code
 # 5. Coarse per-pipeline bids-filter files (canonical anat acq + task set).
 {bids_filter_block}
 
-# 6. Version-control the rendered selection channels.
-{run_prefix} datalad save -m "network_fmri: render pass-1 selection channels"
+# 6. Version-control the rendered selection channels. ``-d`` pins the dataset to
+#    the cohort tree: this sbatch runs from its submit CWD (the network_fmri repo),
+#    so a bare ``datalad save`` would target the wrong repo — the dataset MUST be
+#    named explicitly.
+{run_prefix} datalad save -d {cohort_dir} \
+    -m "network_fmri: render pass-1 selection channels"
