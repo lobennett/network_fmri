@@ -15,10 +15,12 @@ from __future__ import annotations
 import argparse
 import sys
 
-from network_fmri.submit import _common, curate, datalad, events, export, merge, trim
+from network_fmri.submit import _common, curate, datalad, events, export, merge, select, trim
 from network_fmri.submit._slurm import parse_job_id, submit_sbatch
 
 # Full ordered DAG. Each entry is (stage-name, submit-module, is-array).
+# ``select`` is the terminal stage: it renders the data-selection channels into
+# the DataLad-tracked tree, so it must run AFTER ``datalad``.
 _STAGES = [
     ("curate", curate, True),
     ("export", export, True),
@@ -26,15 +28,22 @@ _STAGES = [
     ("trim", trim, True),
     ("events", events, False),
     ("datalad", datalad, False),
+    ("select", select, False),
 ]
+
+# Cohort-gated stages: dropped when the cohort isn't in the stage's cohort set.
+_COHORT_GATED = {
+    "events": _common.EVENTS_COHORTS,
+    "select": _common.SELECT_COHORTS,
+}
 
 
 def stages_for(cohort: str):
-    """The DAG stages for a cohort (drops ``events`` for ``excluded``)."""
+    """The DAG stages for a cohort (drops ``events``/``select`` for ``excluded``)."""
     return [
         (name, mod, is_array)
         for name, mod, is_array in _STAGES
-        if not (name == "events" and cohort not in _common.EVENTS_COHORTS)
+        if name not in _COHORT_GATED or cohort in _COHORT_GATED[name]
     ]
 
 

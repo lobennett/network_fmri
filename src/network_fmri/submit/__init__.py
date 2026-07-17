@@ -1,15 +1,15 @@
 """network_fmri submit — dispatch to the per-stage SLURM submit handlers.
 
-``fw2bids submit <curate|export|merge|trim|events|datalad> ...`` renders and
-submits a single stage; ``fw2bids pipeline --cohort <c> ...`` submits the whole
-chained DAG. Wired into the ``fw2bids`` CLI in :mod:`network_fmri.run`.
+``fw2bids submit <curate|export|merge|trim|events|datalad|select> ...`` renders
+and submits a single stage; ``fw2bids pipeline --cohort <c> ...`` submits the
+whole chained DAG. Wired into the ``fw2bids`` CLI in :mod:`network_fmri.run`.
 """
 
 from __future__ import annotations
 
 import sys
 
-_ROUTE_NAMES = ("curate", "export", "merge", "trim", "events", "datalad")
+_ROUTE_NAMES = ("curate", "export", "merge", "trim", "events", "datalad", "select")
 
 
 def main(argv: list[str] | None = None) -> int:

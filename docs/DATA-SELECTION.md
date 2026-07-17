@@ -56,18 +56,46 @@ Example filter (fMRIPrep — take the canonical T1w, process only the task bolds
 }
 ```
 
-## How network_fmri implements it (sketch — not yet built)
+## How network_fmri implements it — the `select` stage
 
-1. **Curation (`fw2bids`)** emits the clean BIDS plus a per-session `scans.tsv`
-   whose `why`/status column is sourced from the selection config below.
-2. A single **`selection` config** — rows of `(subject, session, task, run) →
-   include/exclude + reason` — is the one source of truth. The orchestrator renders
-   from it: (a) per-pipeline `bids-filter-file` JSONs, and (b) the `scans.tsv`
-   `why` column. One edit, both artifacts stay consistent.
-3. **`.bidsignore`** is rendered only for genuinely non-conformant files (currently
-   none, after the source fixes).
-4. The **fMRIPrep / XCP-D steps** receive `--bids-filter-file`; there is no symlink
-   mirror anywhere in the pipeline.
+The three channels are rendered by a terminal DAG stage, **`select`**, that runs
+after `datalad` (see the [README](../README.md) walkthrough). Selection *logic*
+lives in the standalone [`network_qa`](https://github.com/lobennett/network_qa)
+package; network_fmri only *orchestrates* it — it shells the `network-qa` CLI,
+exactly like the `events` stage shells `network-events`. Over the DataLad-tracked
+cohort tree the stage:
+
+1. **`network-qa compile`** runs the selected exclusion *generators* and writes a
+   provenance-stamped lockfile at `code/exclusions_lock.json` (`_meta` records the
+   generators, a UTC timestamp, and the `network_qa` code SHA).
+2. **`network-qa render bidsignore`** writes `.bidsignore` with *only*
+   genuinely-invalid files (`source == "invalid"`) — currently empty after the
+   source-level curation fixes.
+3. **`network-qa render scans-tsv`** writes a per-session `scans.tsv`
+   (`filename` + `why`) for every excluded scan.
+4. **`network-qa render bids-filter`** writes one coarse
+   `code/bids-filter_<pipeline>.json` per pipeline (canonical anat acquisition +
+   the task set) from [`config/selection.json`](../config/selection.json). fMRIPrep
+   / XCP-D / MRIQC receive this via `--bids-filter-file`; there is no symlink
+   mirror anywhere.
+
+Because the lockfile, `scans.tsv`, and `.bidsignore` are all derived from the one
+compiled exclusion set, they stay consistent by construction — one compile, three
+renders.
+
+### Two passes (important)
+
+The exclusion generators split by whether they need fMRIPrep / lev1 outputs:
+
+- **Pass 1 — the `select` stage (pre-fMRIPrep, this repo).** Runs only the
+  fMRIPrep-**independent** generators: `short_run` (dim4 vs the per-task mode;
+  aborted/short scans) and `behavioral` (missing / non-monotonic-onset events).
+  This is what the DAG renders today, so `fw2bids pipeline` yields the complete
+  pass-1 selection database in one command.
+- **Pass 2 — later, in the network_glm / QA phase (post-fMRIPrep).** Re-compiles
+  adding `motion` (needs fMRIPrep confounds via `motion_qa`'s `motion_metrics.tsv`)
+  and `lev1_outlier` (needs cohort lev1 QC), then re-renders the same three
+  channels. **Not** part of the `select` stage.
 
 This keeps the dataset canonical and validatable, keeps quality calls auditable and
 reversible, and stops "invalid" and "deselected" from sharing one channel.

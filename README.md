@@ -149,3 +149,46 @@ module load system git-annex/8.20210622
 srun -p normal -c 4 --mem 16G -t 02:00:00 \
   fw2bids datalad $SCRATCH/bids_staging/discovery
 ```
+
+### 4e. Render the data-selection channels (`select`)
+
+The terminal stage renders the three data-selection channels into the
+DataLad-tracked tree by shelling [`network_qa`](https://github.com/lobennett/network_qa)
+(selection logic lives there; network_fmri only orchestrates it). It runs
+`network-qa compile` → `.bidsignore` + `scans.tsv` + per-pipeline
+`bids-filter_<pipeline>.json`, then `datalad save`s them. Needs git-annex, so
+run it on a compute node:
+
+```bash
+module load system git-annex/8.20210622
+srun -p normal -c 2 --mem 8G -t 01:00:00 \
+  fw2bids submit select --cohort discovery --staging $SCRATCH/bids_staging
+```
+
+**Two passes.** This is **pass 1**: it compiles only the fMRIPrep-**independent**
+generators — `short_run` (aborted/short scans) + `behavioral` (missing /
+non-monotonic events). The motion + lev1_outlier generators need fMRIPrep
+confounds / lev1 QC and fold in later during the network_glm / QA phase (**pass
+2**), re-rendering the same channels. Which tasks + canonical anat acquisition
+each pipeline's `bids-filter` uses is declared in
+[`config/selection.json`](config/selection.json). See
+[`docs/DATA-SELECTION.md`](docs/DATA-SELECTION.md) for the full rationale.
+
+Skipped for the `excluded` cohort (no selection layer), exactly like `events`.
+
+### Whole pipeline in one command (`pipeline`)
+
+Rather than submitting each stage by hand, `fw2bids pipeline` chains the full DAG
+(`curate → export → merge → trim → events → datalad → select`) with
+`--dependency=afterok` wiring, so each stage starts only after the previous one
+succeeds:
+
+```bash
+fw2bids pipeline --cohort discovery --staging $SCRATCH/bids_staging
+fw2bids pipeline --cohort discovery --staging $SCRATCH/bids_staging --dry-run   # inspect first
+```
+
+`events` and `select` are skipped automatically for the `excluded` cohort.
+
+After `select` completes, promote the staged tree to its canonical Oak location
+and set it read-only, so the reviewed selection channels are the frozen record.

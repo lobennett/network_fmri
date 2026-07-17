@@ -28,6 +28,10 @@ COHORTS = ("discovery", "validation", "excluded")
 # has no behavioral reconciliation manifest, so events is skipped for it.
 EVENTS_COHORTS = ("discovery", "validation")
 
+# Cohorts that get the terminal ``select`` stage (render the data-selection
+# channels). Same policy as events: ``excluded`` has no selection layer.
+SELECT_COHORTS = ("discovery", "validation")
+
 DEFAULT_STAGING = "/scratch/users/logben/bids_staging"
 
 # Mirrors network_glm's DEFAULT_CONTAINER_IMAGE. The image need NOT exist yet —

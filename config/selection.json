@@ -1,0 +1,55 @@
+{
+  "_comment": "Per-pipeline coarse bids-filter inputs for the `select` stage. `anat_acquisition` is the canonical T1w acq label (SagMPRAGE; the legacy MPRAGEPromo is skipped at curation, see curation.py::SKIP_ACQUISITIONS). `tasks` mirrors the functional task set of curation.py::ACQUISITION_MAP (9 single + 11 dual). network_fmri shells `network-qa render bids-filter` with these to write code/bids-filter_<pipeline>.json. This is the COARSE pass-1 filter (canonical anat + all valid task bolds); surgical per-scan quality exclusions live in the compiled lockfile and are enforced downstream (lev1), not here.",
+  "pipelines": {
+    "fmriprep": {
+      "anat_acquisition": "SagMPRAGE",
+      "tasks": [
+        "cuedTS",
+        "cuedTSWFlanker",
+        "directedForgetting",
+        "directedForgettingWCuedTS",
+        "directedForgettingWFlanker",
+        "flanker",
+        "flankerWShapeMatching",
+        "goNogo",
+        "nBack",
+        "nBackWShapeMatching",
+        "nBackWSpatialTS",
+        "rest",
+        "shapeMatching",
+        "shapeMatchingWCuedTS",
+        "spatialTS",
+        "spatialTSWCuedTS",
+        "spatialTSWShapeMatching",
+        "stopSignal",
+        "stopSignalWDirectedForgetting",
+        "stopSignalWFlanker"
+      ]
+    },
+    "mriqc": {
+      "anat_acquisition": "SagMPRAGE",
+      "tasks": [
+        "cuedTS",
+        "cuedTSWFlanker",
+        "directedForgetting",
+        "directedForgettingWCuedTS",
+        "directedForgettingWFlanker",
+        "flanker",
+        "flankerWShapeMatching",
+        "goNogo",
+        "nBack",
+        "nBackWShapeMatching",
+        "nBackWSpatialTS",
+        "rest",
+        "shapeMatching",
+        "shapeMatchingWCuedTS",
+        "spatialTS",
+        "spatialTSWCuedTS",
+        "spatialTSWShapeMatching",
+        "stopSignal",
+        "stopSignalWDirectedForgetting",
+        "stopSignalWFlanker"
+      ]
+    }
+  }
+}

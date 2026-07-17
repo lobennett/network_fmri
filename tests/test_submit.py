@@ -19,6 +19,7 @@ from network_fmri.submit import (
     export,
     merge,
     pipeline,
+    select,
     trim,
 )
 from network_fmri.submit import _slurm
@@ -147,6 +148,90 @@ def test_datalad_render_loads_git_annex(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# select stage render (pass-1 data-selection channels via network-qa)
+# --------------------------------------------------------------------------- #
+def test_select_render_compiles_and_renders_channels(tmp_path):
+    script = _render(select, ["--cohort", "discovery", "--staging", str(tmp_path)])
+    cohort = f"{tmp_path}/discovery"
+    # datalad ops need git-annex + a save at the end
+    assert "module load system git-annex" in script
+    assert 'datalad save -m "network_fmri: render pass-1 selection channels"' in script
+    # pass-1 compile: only the fMRIPrep-independent generators, threaded bids-dir
+    assert "network-qa compile" in script
+    assert "--generators short_run behavioral" in script
+    assert f"--bids-dir {cohort}" in script
+    assert f"--out {cohort}/code/exclusions_lock.json" in script
+    # the two invalid/why channels
+    assert f"network-qa render bidsignore \\\n    --lockfile {cohort}/code/exclusions_lock.json" in script
+    assert f"network-qa render scans-tsv \\\n    --lockfile {cohort}/code/exclusions_lock.json" in script
+    assert f"--bids-dir {cohort}" in script
+    # coarse per-pipeline bids-filter (both pipelines in selection.json)
+    assert "--anat-acquisition SagMPRAGE" in script
+    assert "--task goNogo" in script and "--task rest" in script
+    assert f"--out {cohort}/code/bids-filter_fmriprep.json" in script
+    assert f"--out {cohort}/code/bids-filter_mriqc.json" in script
+
+
+def test_select_default_resources(tmp_path):
+    script = _render(select, ["--cohort", "validation", "--staging", str(tmp_path)])
+    assert "--cpus-per-task=2" in script
+    assert "--mem=8G" in script
+    assert "--time=01:00:00" in script
+
+
+def test_select_single_pipeline_and_task_override(tmp_path):
+    script = _render(
+        select,
+        ["--cohort", "discovery", "--staging", str(tmp_path),
+         "--pipeline", "fmriprep", "--tasks", "rest", "goNogo"],
+    )
+    assert f"--out {tmp_path}/discovery/code/bids-filter_fmriprep.json" in script
+    assert "bids-filter_mriqc.json" not in script  # only the selected pipeline
+    assert "--task rest --task goNogo" in script
+    assert "--task cuedTS" not in script  # override replaced the full task set
+
+
+def test_select_generators_override(tmp_path):
+    script = _render(
+        select,
+        ["--cohort", "discovery", "--staging", str(tmp_path),
+         "--generators", "short_run"],
+    )
+    assert "--generators short_run\n" in script or "--generators short_run \\" in script
+
+
+def test_select_rejected_for_excluded(tmp_path):
+    with pytest.raises(SystemExit):
+        _render(select, ["--cohort", "excluded", "--staging", str(tmp_path)])
+
+
+def test_select_container_swaps_run_prefix(tmp_path):
+    sif = _common.DEFAULT_CONTAINER_IMAGE
+    script = _render(
+        select,
+        ["--cohort", "discovery", "--staging", str(tmp_path), "--container", sif],
+    )
+    assert f"apptainer exec {sif} network-qa compile" in script
+    assert "uv run --no-sync" not in script
+    assert "UV_PROJECT_ENVIRONMENT" not in script
+
+
+# --------------------------------------------------------------------------- #
+# meta: every DAG stage template renders with no unfilled placeholders
+# --------------------------------------------------------------------------- #
+def test_all_stage_templates_render_without_leftover_placeholders(tmp_path):
+    """Render every stage module (discovery cohort) and assert the produced
+    sbatch script has no unresolved `{placeholder}` left — a guard that catches
+    a new template (like select) missing a context key."""
+    import re
+
+    for name, mod, _is_array in pipeline._STAGES:
+        script = _render(mod, ["--cohort", "discovery", "--staging", str(tmp_path)])
+        leftover = re.findall(r"(?<!\{)\{[a-zA-Z_][a-zA-Z0-9_]*\}(?!\})", script)
+        assert not leftover, f"{name}.sbatch.tmpl left placeholders: {leftover}"
+
+
+# --------------------------------------------------------------------------- #
 # container seam
 # --------------------------------------------------------------------------- #
 def test_container_swaps_run_prefix(tmp_path):
@@ -216,6 +301,7 @@ def test_pipeline_chains_afterok_in_order(tmp_path, monkeypatch):
         "nf-trim-discovery",
         "nf-events-discovery",
         "nf-datalad-discovery",
+        "nf-select-discovery",
     ]
     # first stage has no dependency; each subsequent depends on the prior job id
     assert rec.calls[0]["dependency"] is None
@@ -230,6 +316,7 @@ def test_pipeline_skips_events_for_excluded(tmp_path, monkeypatch):
     pipeline.main(["--cohort", "excluded", "--staging", str(tmp_path)])
     stages = [c["stage"] for c in rec.calls]
     assert "nf-events-excluded" not in stages
+    assert "nf-select-excluded" not in stages  # no selection layer for excluded
     assert stages == [
         "nf-curate-excluded",
         "nf-export-excluded",

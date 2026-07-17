@@ -1,0 +1,58 @@
+#!/bin/bash
+#SBATCH -J {job_name}
+#SBATCH --cpus-per-task={nthreads}
+#SBATCH --mem={mem_gb}G
+#SBATCH --time={time}
+#SBATCH -p {partition}
+#SBATCH -o {log_dir}/%x-%j.out
+#SBATCH -e {log_dir}/%x-%j.err
+{mail_line}
+
+set -euo pipefail
+
+{env_exports}
+
+# The `select` stage renders the pass-1 (fMRIPrep-INDEPENDENT) data-selection
+# channels into the DataLad-tracked cohort tree. Selection logic lives in
+# network_qa; network_fmri only orchestrates it (same pattern as `events`
+# shelling `network-events`). Pass 2 (motion + lev1_outlier) folds in later, in
+# the network_glm/QA phase, once fMRIPrep confounds + lev1 QC exist.
+#
+# datalad shells out to git-annex (a system binary). On the host it comes from a
+# module; inside the container it is baked into the image and Lmod is absent, so
+# the load is guarded (no-op in the container).
+module load system git-annex 2>/dev/null || true
+
+mkdir -p {cohort_dir}/code
+
+# 1. Unlock the DataLad-tracked selection targets so they can be rewritten
+#    (best-effort: they may not exist yet on a first run, and text sidecars are
+#    kept in plain git by text2git so they are already unlocked).
+{run_prefix} datalad unlock \
+    {cohort_dir}/.bidsignore \
+    {cohort_dir}/code \
+    2>/dev/null || true
+
+# 2. Compile the pass-1 exclusion lockfile (short_run + behavioral only).
+{run_prefix} network-qa compile \
+    --dataset {cohort} \
+    --generators {generators} \
+    --bids-dir {cohort_dir} \
+    --out {cohort_dir}/code/exclusions_lock.json
+
+# 3. .bidsignore — genuinely-invalid files only (source == "invalid"; currently
+#    empty after the source-level curation fixes).
+{run_prefix} network-qa render bidsignore \
+    --lockfile {cohort_dir}/code/exclusions_lock.json \
+    --out {cohort_dir}/.bidsignore
+
+# 4. scans.tsv — per-session human-readable "why" for every excluded scan.
+{run_prefix} network-qa render scans-tsv \
+    --lockfile {cohort_dir}/code/exclusions_lock.json \
+    --bids-dir {cohort_dir}
+
+# 5. Coarse per-pipeline bids-filter files (canonical anat acq + task set).
+{bids_filter_block}
+
+# 6. Version-control the rendered selection channels.
+{run_prefix} datalad save -m "network_fmri: render pass-1 selection channels"
