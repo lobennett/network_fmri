@@ -137,6 +137,17 @@ becomes an embarrassingly-parallel Slurm array (one small, independent, retryabl
 job per subject) instead of a single fragile whole-roster download. Merge the
 per-subject parts into one tree afterward (`rsync -a $SCRATCH/parts/*/ $DEST/`).
 
+### 4b-2. Merge per-subject exports (`merge`)
+
+`export` writes one dir per subject under `<staging>/parts/`; the `merge` stage
+rsyncs them into the single cohort tree the downstream stages read
+(`rsync -a <parts>/<cohort>/*/ <staging>/<cohort>/`) — the stage form of the
+manual rsync noted above:
+
+```bash
+fw2bids submit merge --cohort discovery --container --staging $SCRATCH/bids_staging
+```
+
 ### 4c. Trim dummy volumes (`trim`)
 
 `fw2bids export` writes un-trimmed BIDS, but fMRIPrep is run with
@@ -156,6 +167,24 @@ disjoint set of files (no write races):
 ```bash
 uv run fw2bids trim $SCRATCH/bids_staging/validation --subjects s10 s19
 ```
+
+### 4c-2. Generate event files (`events`)
+
+Turns the in-scanner behavioral logs into BIDS `events.tsv` sidecars, orchestrated
+by [`network_events`](https://github.com/lobennett/network_events). It migrates the
+reviewed behavioral CSVs from the read-only OAK raw dir into
+`sourcedata/in_scanner_behavior/` (per the vendored `reconciliation_<cohort>.tsv`
+manifest), creates the per-run `events.tsv` (with dummy-volume onset adjustment
+baked in), runs behavioral QC, and writes truncation sidecars under
+`sourcedata/events_qc/` (which the `select` stage's `behavioral` generator reads):
+
+```bash
+fw2bids submit events --cohort discovery --container --staging $SCRATCH/bids_staging
+```
+
+Skipped for the `excluded` cohort (no reconciliation manifest). The behavioral
+source dir + manifest default to the OAK raw path + the vendored manifest;
+override with `--behavioral-dir` / `--manifest`.
 
 ### 4d. Make the staged tree a DataLad dataset (`datalad`)
 
