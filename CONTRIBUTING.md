@@ -1,5 +1,28 @@
 # Contributing to network_fmri
 
+## Building the runtime container (`network_fmri.def` → `.sif`)
+
+The pipeline runs through a container that bakes the pinned stack **plus a modern
+`git-annex` (≥ 10)** — DataLad 1.6 (used by the `datalad`/`select` stages) rejects
+Sherlock's host `git-annex` 8, so the image is how those stages get a compatible
+one. `network_fmri.def` is the recipe (astral/uv py3.11 base → git-annex-standalone
+10 tarball → `uv pip install .` of the pinned deps); its `%post` self-verifies
+git-annex ≥ 10 and that the stack imports.
+
+```bash
+# compute node, ~35 min; keeps build tmp/cache on $SCRATCH (HOME is quota-tight)
+sbatch -p normal -c 4 --mem 16G -t 01:00:00 --wrap="
+  export APPTAINER_TMPDIR=\$SCRATCH/apptainer_tmp APPTAINER_CACHEDIR=\$SCRATCH/apptainer_cache
+  cd \$HOME/network_fmri
+  apptainer build --fakeroot --force \
+    /home/groups/russpold/singularity_images/network_fmri.sif network_fmri.def"
+```
+
+Rebuild after bumping any pin in `pyproject.toml` (fw-heudiconv / network_qa /
+network_events), since the image freezes those commits. That built image is the
+`<base_container.sif>` referenced below and the default `--container` target in the
+README quickstart.
+
 ## Development setup: container + uv venv overlay
 
 **Recommended setup** for extending a feature, adding a dependency, or otherwise

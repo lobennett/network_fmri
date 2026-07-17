@@ -36,6 +36,32 @@ This repo supplies only the study-specific pieces the engine needs:
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — developer setup (container + uv venv
   overlay) for extending the package.
 
+## Quickstart — reproducible run (the container path)
+
+The pipeline is designed to run **through a container** (`network_fmri.sif`): it
+bakes the pinned stack **and a modern `git-annex` (≥ 10)**. This matters — the
+`datalad` and `select` stages use DataLad 1.6, which **rejects Sherlock's host
+`git-annex` 8**; the container is how those stages get a compatible git-annex.
+Build it once, then run the whole DAG with one command:
+
+```bash
+# 1. Build the image (compute node; ~35 min). Reads network_fmri.def in this repo.
+sbatch -p normal -c 4 --mem 16G -t 01:00:00 --wrap="
+  export APPTAINER_TMPDIR=\$SCRATCH/apptainer_tmp APPTAINER_CACHEDIR=\$SCRATCH/apptainer_cache
+  cd \$HOME/network_fmri
+  apptainer build --fakeroot --force \
+    /home/groups/russpold/singularity_images/network_fmri.sif network_fmri.def"
+
+# 2. Authenticate to Flywheel once (see step 3 below), then run the full DAG:
+fw2bids pipeline --cohort discovery --container --staging $SCRATCH/bids_staging
+```
+
+`--container` (bare) uses the default image path above; `--container <path>` picks
+another. Everything below is the same DAG broken into per-stage detail; add
+`--container` to any `fw2bids submit <stage>` / `fw2bids pipeline` call to run that
+stage through the image. The `uv`-venv path in step 1 is for **dry-runs, offline
+tests, and host-side rendering** — but `datalad`/`select` must use `--container`.
+
 ## End-to-end walkthrough (Sherlock, from scratch)
 
 ### 1. Build the runtime environment (on a compute node)
@@ -141,14 +167,17 @@ fw2bids datalad $SCRATCH/bids_staging/discovery
 ```
 
 Idempotent — on an already-created dataset it just `datalad save`s (picking up
-new/changed files). It shells out to `datalad`, so it needs git-annex; run it on
-a **compute node** (`git-annex` is not on the login node):
+new/changed files). It shells out to **DataLad 1.6, which requires git-annex ≥ 10**
+— Sherlock's host `git-annex` is 8, so this stage **must run through the container**
+(it bakes git-annex 10). Submit it via the `--container` submit layer, which
+renders + queues the Slurm job for you:
 
 ```bash
-module load system git-annex/8.20210622
-srun -p normal -c 4 --mem 16G -t 02:00:00 \
-  fw2bids datalad $SCRATCH/bids_staging/discovery
+fw2bids submit datalad --cohort discovery --container --staging $SCRATCH/bids_staging
 ```
+
+(The bare `fw2bids datalad <path>` form runs the stage in-process and only works
+in an environment that already has git-annex ≥ 10 — i.e. inside the container.)
 
 ### 4e. Render the data-selection channels (`select`)
 
@@ -156,13 +185,11 @@ The terminal stage renders the three data-selection channels into the
 DataLad-tracked tree by shelling [`network_qa`](https://github.com/lobennett/network_qa)
 (selection logic lives there; network_fmri only orchestrates it). It runs
 `network-qa compile` → `.bidsignore` + `scans.tsv` + per-pipeline
-`bids-filter_<pipeline>.json`, then `datalad save`s them. Needs git-annex, so
-run it on a compute node:
+`bids-filter_<pipeline>.json`, then `datalad save`s them. Like `datalad` it needs
+git-annex ≥ 10, so it **must run through the container**:
 
 ```bash
-module load system git-annex/8.20210622
-srun -p normal -c 2 --mem 8G -t 01:00:00 \
-  fw2bids submit select --cohort discovery --staging $SCRATCH/bids_staging
+fw2bids submit select --cohort discovery --container --staging $SCRATCH/bids_staging
 ```
 
 **Two passes.** This is **pass 1**: it compiles only the fMRIPrep-**independent**
