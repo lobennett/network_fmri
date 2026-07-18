@@ -54,7 +54,7 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cohort", required=True, choices=list(_common.COHORTS))
     parser.add_argument("--staging", default=_common.DEFAULT_STAGING)
     parser.add_argument("--parts", default=None)
-    parser.add_argument("--partition", default="normal")
+    parser.add_argument("--partition", default="russpold,normal")
     parser.add_argument("--mail-user", default=None)
     parser.add_argument(
         "--container",

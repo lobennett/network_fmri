@@ -94,7 +94,10 @@ def add_common_args(parser: argparse.ArgumentParser, *, array: bool = False) -> 
         help="per-subject export parts dir (default: <staging>/parts)",
     )
     parser.add_argument(
-        "--partition", default="normal", help="SLURM partition (default: normal)"
+        "--partition", default="russpold,normal",
+        help="SLURM partition(s), comma-separated; Slurm schedules on whichever "
+        "frees first (default: 'russpold,normal' — the lab owner partition plus "
+        "the shared pool as fallback)"
     )
     parser.add_argument("--nthreads", type=int, default=None, help="CPUs per task override")
     parser.add_argument("--mem-gb", type=int, default=None, help="Memory in GB override")
