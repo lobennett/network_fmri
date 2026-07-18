@@ -1,7 +1,10 @@
-"""Submit the ``merge`` stage: rsync the per-subject export parts into one tree.
+"""Submit the ``merge`` stage: move the per-subject export parts into one tree.
 
-Single job: ``rsync -a <parts>/<cohort>/*/ <staging>/<cohort>/`` collects the
+Single job: ``mv <parts>/<cohort>/*/sub-*/ <staging>/<cohort>/`` collects the
 independently-exported per-subject parts into the cohort's staged BIDS tree.
+Both sides live on the same ($SCRATCH/Lustre) filesystem, so each subject dir
+is a near-instant rename rather than a ~825 GB byte-copy; top-level BIDS files
+(identical across parts) are rsync'd once. See merge.sbatch.tmpl for detail.
 """
 
 from __future__ import annotations
@@ -12,8 +15,9 @@ import sys
 from network_fmri.submit import _common
 
 STAGE = "merge"
-# 08:00:00: the single-threaded rsync of a large cohort's per-subject parts
-# (validation = 41 subjects x multi-echo BOLD) exceeded 1h on Lustre.
+# 08:00:00 kept as a safety ceiling: the same-filesystem mv is near-instant, but
+# an idempotent re-run (--start-stage merge) may fall back to rsync-reconcile a
+# large cohort's per-subject parts (validation = 41 subjects x multi-echo BOLD).
 DEFAULT_RESOURCES = {"nthreads": 2, "mem_gb": 8, "time": "08:00:00"}
 
 

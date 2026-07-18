@@ -20,4 +20,4 @@ module load system git-annex 2>/dev/null || true
 
 # Version-control the staged BIDS tree (git-annex for NIfTI, plain git for TSV/JSON).
 # datalad resolves from the venv/container (run_prefix), not a host datalad module.
-{run_prefix} fw2bids datalad {cohort_dir}
+{run_prefix} fw2bids datalad {cohort_dir} --jobs {nthreads}

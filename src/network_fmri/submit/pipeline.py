@@ -70,7 +70,7 @@ def get_parser() -> argparse.ArgumentParser:
              "already exist, e.g. resume from 'merge' when parts/ are present). "
              "The start stage runs with no dependency.",
     )
-    parser.add_argument("--throttle", type=int, default=5)
+    parser.add_argument("--throttle", type=int, default=10)
     parser.add_argument("--subjects", nargs="+", default=None)
     parser.add_argument("--behavioral-dir", default=events.DEFAULT_BEHAVIORAL_DIR)
     parser.add_argument("--manifest", default=None)

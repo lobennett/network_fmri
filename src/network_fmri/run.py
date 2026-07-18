@@ -235,8 +235,10 @@ def _datalad_main(argv):
     ap.add_argument("bids_dir", help="staged BIDS directory to DataLad-ify")
     ap.add_argument("--message", "-m", default="network_fmri: import BIDS",
                     help="commit message for datalad save")
+    ap.add_argument("--jobs", "-J", type=int, default=None,
+                    help="parallel git-annex workers for datalad save (identical keys)")
     args = ap.parse_args(argv)
-    datalad_ds.dataladify(args.bids_dir, message=args.message)
+    datalad_ds.dataladify(args.bids_dir, message=args.message, jobs=args.jobs)
     print(f"[datalad] {args.bids_dir} is now a DataLad dataset")
 
 

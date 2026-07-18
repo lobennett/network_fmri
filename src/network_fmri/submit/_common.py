@@ -127,8 +127,9 @@ def add_common_args(parser: argparse.ArgumentParser, *, array: bool = False) -> 
         parser.add_argument(
             "--throttle",
             type=int,
-            default=5,
-            help="max concurrent array tasks (the %%K in --array=0-N%%K)",
+            default=10,
+            help="max concurrent array tasks (the %%K in --array=0-N%%K); raised "
+            "now that the default partition is 'russpold,normal'",
         )
 
 

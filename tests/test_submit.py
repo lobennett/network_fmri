@@ -84,7 +84,7 @@ def test_curate_render_array_and_command(tmp_path):
     assert "--mem=8G" in script
     assert "--time=02:00:00" in script
     # array over the 5-subject discovery roster (0..4)
-    assert "--array=0-4%5" in script
+    assert "--array=0-4%10" in script
     # payload command + uv run prefix (default, no container)
     assert "uv run --no-sync fw2bids discovery --subject" in script
     assert "--live" in script
@@ -96,7 +96,7 @@ def test_export_render(tmp_path):
     script = _render(export, ["--cohort", "discovery", "--staging", str(tmp_path)])
     assert "--cpus-per-task=4" in script
     assert "--mem=16G" in script
-    assert "--array=0-4%5" in script
+    assert "--array=0-4%10" in script
     assert "fw2bids export discovery --subject" in script
     assert f"--out {tmp_path}/parts/discovery/" in script
 
@@ -106,7 +106,7 @@ def test_trim_render(tmp_path):
     assert "--cpus-per-task=8" in script
     assert "--mem=24G" in script
     # validation roster is 41 subjects → array 0-40
-    assert "--array=0-40%5" in script
+    assert "--array=0-40%10" in script
     assert f"fw2bids trim {tmp_path}/validation --subjects" in script
     assert "--jobs 8" in script
 
@@ -114,7 +114,13 @@ def test_trim_render(tmp_path):
 def test_merge_render(tmp_path):
     script = _render(merge, ["--cohort", "discovery", "--staging", str(tmp_path)])
     assert "--array=" not in script  # single job
-    assert f"rsync -a {tmp_path}/parts/discovery/*/ {tmp_path}/discovery/" in script
+    # same-filesystem mv of each subject dir (not a full rsync byte-copy)
+    assert f"for part in {tmp_path}/parts/discovery/*/; do" in script
+    assert 'mv "$subj" ' + f'"{tmp_path}/discovery/"' in script
+    # top-level BIDS files still copied once (identical across parts)
+    assert f'''rsync -a --exclude 'sub-*/' "$part" "{tmp_path}/discovery/"''' in script
+    # the big byte-copy of subject content is gone
+    assert f"rsync -a {tmp_path}/parts/discovery/*/ {tmp_path}/discovery/" not in script
 
 
 def test_events_render_uses_manifest_and_behavioral(tmp_path):
@@ -144,7 +150,10 @@ def test_events_rejected_for_excluded(tmp_path):
 def test_datalad_render_loads_git_annex(tmp_path):
     script = _render(datalad, ["--cohort", "discovery", "--staging", str(tmp_path)])
     assert "module load system git-annex" in script
-    assert f"fw2bids datalad {tmp_path}/discovery" in script
+    assert f"fw2bids datalad {tmp_path}/discovery --jobs 8" in script
+    # bumped resources for concurrent git-annex hashing
+    assert "--cpus-per-task=8" in script
+    assert "--mem=24G" in script
 
 
 # --------------------------------------------------------------------------- #
@@ -155,7 +164,7 @@ def test_select_render_compiles_and_renders_channels(tmp_path):
     cohort = f"{tmp_path}/discovery"
     # datalad ops need git-annex + a save at the end
     assert "module load system git-annex" in script
-    assert 'datalad save -m "network_fmri: render pass-1 selection channels"' in script
+    assert f'datalad save -d {cohort} \\\n    -m "network_fmri: render pass-1 selection channels"' in script
     # pass-1 compile: only the fMRIPrep-independent generators, threaded bids-dir
     assert "network-qa compile" in script
     assert "--generators short_run behavioral" in script
@@ -263,7 +272,7 @@ def test_stage_main_dry_run_no_submit(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(_common, "submit_sbatch", _boom)
     rc = curate.main(["--cohort", "discovery", "--staging", str(tmp_path), "--dry-run"])
     assert rc == 0
-    assert "--array=0-4%5" in capsys.readouterr().out
+    assert "--array=0-4%10" in capsys.readouterr().out
 
 
 # --------------------------------------------------------------------------- #
@@ -356,7 +365,7 @@ def test_run_dispatch_submit(tmp_path, monkeypatch, capsys):
 
     rc = run.main(["submit", "curate", "--cohort", "discovery", "--staging", str(tmp_path), "--dry-run"])
     assert rc == 0
-    assert "--array=0-4%5" in capsys.readouterr().out
+    assert "--array=0-4%10" in capsys.readouterr().out
 
 
 def test_run_dispatch_pipeline(tmp_path, monkeypatch, capsys):

@@ -33,7 +33,7 @@ def test_cohort_routes_to_curate(monkeypatch):
 def test_datalad_routes_to_dataladify(monkeypatch):
     seen = {}
 
-    def fake_dataladify(path, message="network_fmri: import BIDS", text2git=True):
+    def fake_dataladify(path, message="network_fmri: import BIDS", text2git=True, jobs=None):
         seen["path"] = path
         seen["message"] = message
 

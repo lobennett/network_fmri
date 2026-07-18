@@ -25,7 +25,7 @@ def _run(cmd, cwd=None):
     return (proc.stdout or "") + (proc.stderr or "")
 
 
-def dataladify(path, message="network_fmri: import BIDS", text2git=True) -> None:
+def dataladify(path, message="network_fmri: import BIDS", text2git=True, jobs=None) -> None:
     """DataLad-ify the BIDS tree at ``path`` (idempotent).
 
     If ``path/.datalad`` already exists it is an existing dataset -> just
@@ -33,6 +33,11 @@ def dataladify(path, message="network_fmri: import BIDS", text2git=True) -> None
     --force`` (``--force`` because the dir already holds the staged BIDS tree),
     optionally with the ``text2git`` run-procedure so text files stay in git,
     then ``datalad save``.
+
+    ``jobs`` (a positive int) is passed to ``datalad save --jobs N``, which fans
+    the underlying git-annex hashing across N workers. This only parallelizes
+    the annex-add — the resulting annex keys (content hashes) are identical, so
+    the dataset is byte-identical whether or not ``jobs`` is set.
     """
     path = Path(path)
     if not (path / ".datalad").exists():
@@ -41,4 +46,8 @@ def dataladify(path, message="network_fmri: import BIDS", text2git=True) -> None
             create += ["-c", "text2git"]
         create.append(str(path))
         _run(create)
-    _run(["datalad", "save", "-m", message, "."], cwd=str(path))
+    save = ["datalad", "save"]
+    if isinstance(jobs, int) and jobs > 0:
+        save += ["--jobs", str(jobs)]
+    save += ["-m", message, "."]
+    _run(save, cwd=str(path))

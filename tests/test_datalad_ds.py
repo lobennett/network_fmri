@@ -44,6 +44,29 @@ def test_fresh_dir_creates_then_saves(tmp_path, monkeypatch):
     assert fake.calls[1][1].get("cwd") == str(tmp_path)
 
 
+def test_jobs_adds_jobs_flag_to_save(tmp_path, monkeypatch):
+    (tmp_path / ".datalad").mkdir()  # existing dataset -> save only
+    fake = _recorder()
+    monkeypatch.setattr(dd.subprocess, "run", fake)
+
+    dd.dataladify(str(tmp_path), message="msg", jobs=8)
+
+    save = fake.calls[0][0]
+    assert save[:2] == ["datalad", "save"]
+    assert "--jobs" in save and save[save.index("--jobs") + 1] == "8"
+    assert save[-3:] == ["-m", "msg", "."]
+
+
+def test_default_omits_jobs_flag(tmp_path, monkeypatch):
+    (tmp_path / ".datalad").mkdir()
+    fake = _recorder()
+    monkeypatch.setattr(dd.subprocess, "run", fake)
+
+    dd.dataladify(str(tmp_path), message="msg")
+
+    assert "--jobs" not in fake.calls[0][0]
+
+
 def test_text2git_false_omits_config(tmp_path, monkeypatch):
     fake = _recorder()
     monkeypatch.setattr(dd.subprocess, "run", fake)

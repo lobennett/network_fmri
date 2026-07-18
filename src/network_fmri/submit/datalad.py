@@ -12,7 +12,7 @@ import sys
 from network_fmri.submit import _common
 
 STAGE = "datalad"
-DEFAULT_RESOURCES = {"nthreads": 4, "mem_gb": 16, "time": "04:00:00"}
+DEFAULT_RESOURCES = {"nthreads": 8, "mem_gb": 24, "time": "04:00:00"}
 
 
 def get_parser() -> argparse.ArgumentParser:

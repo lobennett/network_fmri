@@ -13,5 +13,31 @@ set -euo pipefail
 {env_exports}
 
 # Merge the per-subject export parts into one staged BIDS tree for the cohort.
+# {parts} and {cohort_dir} are both under $SCRATCH (one Lustre filesystem), so
+# moving each per-subject sub-*/ dir is a near-instant rename — not a ~825 GB
+# byte-copy like the old `rsync -a`. Subjects are disjoint across parts, so the
+# moves never clobber. Top-level BIDS files (identical across parts) are copied
+# once. At merge time a part holds only sub-*/ + top-level files (sourcedata/
+# derivatives are added by later stages), so nothing else needs handling. The
+# result tree is byte-identical to the old rsync copy.
 mkdir -p {cohort_dir}
-rsync -a {parts}/{cohort}/*/ {cohort_dir}/
+shopt -s nullglob
+
+for part in {parts}/{cohort}/*/; do
+    # Move each subject dir into the cohort tree (fast same-filesystem rename).
+    for subj in "$part"sub-*/; do
+        dest="{cohort_dir}/$(basename "$subj")"
+        if [ -e "$dest" ]; then
+            # Idempotent re-run (e.g. --start-stage merge): dest already present.
+            # Reconcile the part copy into it, then drop the part copy.
+            rsync -a "$subj" "$dest/"
+            rm -rf "$subj"
+        else
+            mv "$subj" "{cohort_dir}/"
+        fi
+    done
+    # Copy the small top-level BIDS files (dataset_description.json,
+    # participants.tsv, .bidsignore, README, ...). Identical across parts;
+    # last-writer-wins is fine.
+    rsync -a --exclude 'sub-*/' "$part" "{cohort_dir}/"
+done
