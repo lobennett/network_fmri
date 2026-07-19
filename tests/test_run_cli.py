@@ -158,3 +158,25 @@ def test_export_raises_after_exhausting_retries(monkeypatch):
         run._export({"s286"}, "/x", {}, retries=1)
 
     assert attempts["n"] == 2          # initial try + 1 retry
+
+
+def test_fmap_link_routes_to_link_b0_fields(monkeypatch, capsys):
+    from network_fmri import b0link, run
+
+    seen = {}
+
+    def fake_link(cohort_dir):
+        seen["dir"] = cohort_dir
+        return b0link.LinkSummary(sessions_linked=3, bolds_stamped=27, no_fmap=1, orphan_fmap=0)
+
+    monkeypatch.setattr(run, "link_b0_fields", fake_link)
+    # curate/client path must NOT be reached
+    monkeypatch.setattr(run, "_client",
+                        lambda: (_ for _ in ()).throw(AssertionError("wrong path")))
+
+    rc = run.main(["fmap-link", "/some/discovery"])
+    assert rc == 0
+    assert seen["dir"] == "/some/discovery"
+    out = capsys.readouterr().out
+    assert "sessions_linked=3" in out
+    assert "no_fmap=1" in out

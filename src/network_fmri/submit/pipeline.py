@@ -3,7 +3,7 @@
 Chains the per-stage submit modules with ``sbatch --dependency=afterok:<prev>``
 so each stage only starts after the previous finishes successfully:
 
-    curate -> export(array) -> merge -> trim(array) -> events -> datalad
+    curate -> export(array) -> merge -> trim(array) -> events -> fmap_link -> datalad
 
 ``events`` is skipped for the ``excluded`` cohort (no reconciliation manifest).
 Each stage is rendered by its own submit module (same resources/template as
@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from network_fmri.submit import _common, curate, datalad, events, export, merge, select, trim
+from network_fmri.submit import _common, curate, datalad, events, export, fmap_link, merge, select, trim
 from network_fmri.submit._slurm import parse_job_id, submit_sbatch
 
 # Full ordered DAG. Each entry is (stage-name, submit-module, is-array).
@@ -27,6 +27,7 @@ _STAGES = [
     ("merge", merge, False),
     ("trim", trim, True),
     ("events", events, False),
+    ("fmap_link", fmap_link, False),
     ("datalad", datalad, False),
     ("select", select, False),
 ]
