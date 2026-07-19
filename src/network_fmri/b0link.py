@@ -88,7 +88,7 @@ def link_b0_fields(cohort_dir: Path) -> LinkSummary:
             if not ses_dir.is_dir():
                 continue
             fmaps = sorted((ses_dir / "fmap").glob("*_fieldmap.nii.gz"))
-            bolds = sorted((ses_dir / "func").glob("*_bold.json"))
+            bold_niftis = sorted((ses_dir / "func").glob("*_bold.nii.gz"))
 
             if len(fmaps) > 1:
                 raise ValueError(
@@ -96,11 +96,11 @@ def link_b0_fields(cohort_dir: Path) -> LinkSummary:
                     "— expected exactly one per session"
                 )
             if not fmaps:
-                if bolds:
+                if bold_niftis:
                     summary.no_fmap += 1
                     log.warning("%s: BOLD present but no field map — no SDC", ses_dir)
                 continue
-            if not bolds:
+            if not bold_niftis:
                 summary.orphan_fmap += 1
                 log.info("%s: field map present but no BOLD — skipped", ses_dir)
                 continue
@@ -116,8 +116,12 @@ def link_b0_fields(cohort_dir: Path) -> LinkSummary:
                     _set_sidecar_key(sidecar, "B0FieldIdentifier", ident)
                 else:
                     log.warning("%s: expected sidecar %s is missing — not stamped", ses_dir, sidecar.name)
-            for bold in bolds:
-                if _set_sidecar_key(bold, "B0FieldSource", ident):
+            for nii in bold_niftis:
+                sidecar = nii.with_name(nii.name.replace(".nii.gz", ".json"))
+                if not sidecar.exists():
+                    log.warning("%s: expected sidecar %s is missing — not stamped", ses_dir, sidecar.name)
+                    continue
+                if _set_sidecar_key(sidecar, "B0FieldSource", ident):
                     summary.bolds_stamped += 1
             summary.sessions_linked += 1
 

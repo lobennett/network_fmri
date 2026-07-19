@@ -165,3 +165,17 @@ def test_missing_magnitude_sidecar_warns_but_still_links_bolds(tmp_path, caplog)
     assert summary.bolds_stamped == 3
     # a warning about the missing sidecar was emitted
     assert any("is missing" in r.message for r in caplog.records)
+
+
+def test_missing_bold_sidecar_warns_and_skips_that_bold(tmp_path, caplog):
+    import logging
+    base = _make_session(tmp_path, "s8", "01", tasks=("flanker",), echoes=(1, 2, 3))
+    # drop ONE bold sidecar (echo-2); its .nii.gz remains
+    (base / "func" / "sub-s8_ses-01_task-flanker_run-1_echo-2_bold.json").unlink()
+    with caplog.at_level(logging.WARNING, logger="network_fmri.b0link"):
+        summary = link_b0_fields(tmp_path)
+    # the two bolds with sidecars are stamped; the missing one is skipped + warned
+    assert summary.sessions_linked == 1
+    assert summary.bolds_stamped == 2
+    assert json.loads((base / "func" / "sub-s8_ses-01_task-flanker_run-1_echo-1_bold.json").read_text())["B0FieldSource"] == "s8_ses-01"
+    assert any("is missing" in r.message for r in caplog.records)
