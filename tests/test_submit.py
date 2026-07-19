@@ -17,6 +17,7 @@ from network_fmri.submit import (
     datalad,
     events,
     export,
+    fmap_link,
     merge,
     pipeline,
     select,
@@ -381,3 +382,20 @@ def test_submit_dispatch_rejects_unknown_stage():
 
     with pytest.raises(SystemExit):
         submit.main(["bogus"])
+
+
+def test_fmap_link_render(tmp_path):
+    script = _render(fmap_link, ["--cohort", "validation", "--staging", str(tmp_path)])
+    assert "--array=" not in script  # single job
+    assert "--cpus-per-task=2" in script
+    assert "--mem=8G" in script
+    assert "--time=00:20:00" in script
+    assert f"fw2bids fmap-link {tmp_path}/validation" in script
+
+
+def test_fmap_link_container_swaps_run_prefix(tmp_path):
+    sif = _common.DEFAULT_CONTAINER_IMAGE
+    script = _render(fmap_link, ["--cohort", "discovery", "--staging", str(tmp_path),
+                                 "--container", sif])
+    assert f"apptainer exec {sif} fw2bids fmap-link" in script
+    assert "uv run --no-sync" not in script
