@@ -151,3 +151,17 @@ def test_multi_fmap_raises(tmp_path):
     _sidecar(base / "fmap" / "sub-s1_ses-01_run-2_fieldmap.json", {"Units": "Hz"})
     with pytest.raises(ValueError, match="multiple field maps"):
         link_b0_fields(tmp_path)
+
+
+def test_missing_magnitude_sidecar_warns_but_still_links_bolds(tmp_path, caplog):
+    import logging
+    base = _make_session(tmp_path, "s9", "01", tasks=("flanker",))
+    (base / "fmap" / "sub-s9_ses-01_run-1_magnitude.json").unlink()  # drop magnitude sidecar
+    with caplog.at_level(logging.WARNING, logger="network_fmri.b0link"):
+        summary = link_b0_fields(tmp_path)
+    # fieldmap + all bolds still stamped; session still counted linked
+    assert json.loads((base / "fmap" / "sub-s9_ses-01_run-1_fieldmap.json").read_text())["B0FieldIdentifier"] == "s9_ses-01"
+    assert summary.sessions_linked == 1
+    assert summary.bolds_stamped == 3
+    # a warning about the missing sidecar was emitted
+    assert any("is missing" in r.message for r in caplog.records)

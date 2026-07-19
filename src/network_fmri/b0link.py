@@ -114,6 +114,8 @@ def link_b0_fields(cohort_dir: Path) -> LinkSummary:
                 sidecar = nii.with_name(nii.name.replace(".nii.gz", ".json"))
                 if sidecar.exists():
                     _set_sidecar_key(sidecar, "B0FieldIdentifier", ident)
+                else:
+                    log.warning("%s: expected sidecar %s is missing — not stamped", ses_dir, sidecar.name)
             for bold in bolds:
                 if _set_sidecar_key(bold, "B0FieldSource", ident):
                     summary.bolds_stamped += 1
