@@ -57,3 +57,66 @@ def _set_sidecar_key(sidecar: Path, key: str, value: str) -> bool:
     tmp.write_text(json.dumps(data, indent=indent, ensure_ascii=False) + "\n")
     tmp.rename(sidecar)
     return True
+
+
+def _identifier(sub_dir: Path, ses_dir: Path) -> str:
+    """``<sub-label>_<ses>`` — subject dir sans ``sub-`` prefix + session dir.
+
+    e.g. ``sub-s1035`` / ``ses-01`` -> ``s1035_ses-01``.
+    """
+    sub_label = sub_dir.name[len("sub-"):] if sub_dir.name.startswith("sub-") else sub_dir.name
+    return f"{sub_label}_{ses_dir.name}"
+
+
+def link_b0_fields(cohort_dir: Path) -> LinkSummary:
+    """Stamp session-scoped B0Field* metadata across a staged BIDS cohort tree.
+
+    For each ``sub-*/ses-*`` with both a field map and ≥1 BOLD: stamp
+    ``B0FieldIdentifier`` on the ``_fieldmap`` + ``_magnitude`` sidecars and
+    ``B0FieldSource`` (same value) on every ``_bold`` sidecar. Sessions with BOLD
+    but no field map are counted (``no_fmap``) and skipped; a field map with no
+    BOLD is counted (``orphan_fmap``) and skipped. Raises ``ValueError`` if a
+    session has more than one field map (asserted-never).
+    """
+    cohort_dir = Path(cohort_dir)
+    summary = LinkSummary()
+
+    for sub_dir in sorted(cohort_dir.glob("sub-*")):
+        if not sub_dir.is_dir():
+            continue
+        for ses_dir in sorted(sub_dir.glob("ses-*")):
+            if not ses_dir.is_dir():
+                continue
+            fmaps = sorted((ses_dir / "fmap").glob("*_fieldmap.nii.gz"))
+            bolds = sorted((ses_dir / "func").glob("*_bold.json"))
+
+            if len(fmaps) > 1:
+                raise ValueError(
+                    f"{ses_dir}: multiple field maps {[f.name for f in fmaps]} "
+                    "— expected exactly one per session"
+                )
+            if not fmaps:
+                if bolds:
+                    summary.no_fmap += 1
+                    log.warning("%s: BOLD present but no field map — no SDC", ses_dir)
+                continue
+            if not bolds:
+                summary.orphan_fmap += 1
+                log.info("%s: field map present but no BOLD — skipped", ses_dir)
+                continue
+
+            ident = _identifier(sub_dir, ses_dir)
+            fieldmap = fmaps[0]
+            magnitude = fieldmap.with_name(
+                fieldmap.name.replace("_fieldmap.nii.gz", "_magnitude.nii.gz")
+            )
+            for nii in (fieldmap, magnitude):
+                sidecar = nii.with_name(nii.name.replace(".nii.gz", ".json"))
+                if sidecar.exists():
+                    _set_sidecar_key(sidecar, "B0FieldIdentifier", ident)
+            for bold in bolds:
+                if _set_sidecar_key(bold, "B0FieldSource", ident):
+                    summary.bolds_stamped += 1
+            summary.sessions_linked += 1
+
+    return summary
