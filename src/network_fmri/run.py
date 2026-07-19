@@ -35,6 +35,7 @@ import time
 from pathlib import Path
 
 from network_fmri import curation, datalad_ds, session_map
+from network_fmri.b0link import link_b0_fields
 from network_fmri.trim import trim_bold_directory
 
 _HEURISTIC = Path(__file__).resolve().parent / "heuristic.py"
@@ -281,6 +282,29 @@ def _trim_main(argv):
     return 0
 
 
+def _fmap_link_main(argv):
+    """Stamp B0FieldIdentifier/B0FieldSource across a staged BIDS cohort tree.
+
+    Session-scoped: one Hz field map per session links to every BOLD run it
+    corrects, so fMRIPrep/SDCFlows applies SDC. Idempotent and deterministic;
+    safe to re-run. Must run before ``datalad`` so the linkage is committed.
+    """
+    ap = argparse.ArgumentParser(
+        prog="fw2bids fmap-link",
+        description="Link session field maps to BOLD via BIDS B0Field* metadata.",
+    )
+    ap.add_argument("bids_dir", help="staged BIDS cohort directory to link in place")
+    args = ap.parse_args(argv)
+
+    summary = link_b0_fields(args.bids_dir)
+    print(
+        f"[fmap-link] sessions_linked={summary.sessions_linked} "
+        f"bolds_stamped={summary.bolds_stamped} "
+        f"no_fmap={summary.no_fmap} orphan_fmap={summary.orphan_fmap}"
+    )
+    return 0
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     # Backward-compatible dispatch: a bare cohort is the implicit `curate` path
@@ -292,6 +316,8 @@ def main(argv=None):
         return _export_main(argv[1:])
     if argv and argv[0] == "trim":
         return _trim_main(argv[1:])
+    if argv and argv[0] == "fmap-link":
+        return _fmap_link_main(argv[1:])
     if argv and argv[0] == "submit":
         from network_fmri.submit import main as _submit_main
 
