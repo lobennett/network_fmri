@@ -310,6 +310,7 @@ def test_pipeline_chains_afterok_in_order(tmp_path, monkeypatch):
         "nf-merge-discovery",
         "nf-trim-discovery",
         "nf-events-discovery",
+        "nf-fmap_link-discovery",
         "nf-datalad-discovery",
         "nf-select-discovery",
     ]
@@ -332,6 +333,7 @@ def test_pipeline_skips_events_for_excluded(tmp_path, monkeypatch):
         "nf-export-excluded",
         "nf-merge-excluded",
         "nf-trim-excluded",
+        "nf-fmap_link-excluded",
         "nf-datalad-excluded",
     ]
 
