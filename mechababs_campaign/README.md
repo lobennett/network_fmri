@@ -92,33 +92,43 @@ provision babs's compiled deps on Sherlock — wheels-forcing, a base conda/modu
 `babs init` arg surface confirmed to match this config: `--container-ds`,
 `--container-name`, `--container-config`, `--processing-level`, `--list-sub-file`, `--queue`.
 
-### 2. mechababs ref — rebase, don't use `sherlock-run` as-is
-Our fork branch `sherlock-run@52b1844` is **~15 commits behind** upstream `main`.
-Upstream since then: automated `iterate` (reads `babs status --json`, no interactive
-prompt), `babs merge` auto-pulls results into the campaign, BIDS-study mode. The
-config-composition model, `bootstrap.sh`, `merge_config.py`, and these YAML schemas
-are unchanged. **The right base is upstream `main` + our local-BIDS-selection patch
-(`7d61f9c`) rebased on top** — this gets the automation for free. Local-BIDS support
-is still fork-only (upstream `select.py` has no `file://` awareness), so the campaign
-must pin OUR mechababs, not `asmacdo/mechababs@main`.
+### 2. mechababs ref = UPSTREAM `main` (the fork is being retired)
+Decision (2026-07-19): the `lobennett/mechababs` fork will be deleted; the campaign
+pins **`asmacdo/mechababs@main`** — nothing here depends on the fork anymore. Upstream
+main already has the automation we want (`iterate` reads `babs status --json`; `babs
+merge` auto-pulls results).
+
+**PIVOTAL OPEN ITEM — local-BIDS selection.** Upstream `select.py` has **no
+`file://`/local-dataset awareness**; that was a fork-only feature. Our inputs are local
+DataLad datasets on OAK, so on pure upstream, `mechababs add-dataset`/`iterate` cannot
+scan/select them out of the box. This is now **the** thing to resolve with Austin:
+either (a) he upstreams local-BIDS support, or (b) we bypass mechababs's selector and
+drive **BABS directly** — `babs init --datasets <name>=<our OAK datalad path>` with a
+hand-supplied `--list-sub-file` inclusion, using these YAMLs only for the container +
+resource config. Option (b) is a viable fallback that needs no fork. Do NOT plan around
+the retired fork.
 
 ---
 
 ## Runbook (execute AFTER the meeting / green-light)
 
 ```bash
-# 0. PREREQUISITES
-#    - git-annex 10 provisioned at the prefix above (see §1).
-#    - build the container shim as a SIBLING of the campaign (uses our local sif):
+# 0. PREREQUISITES  (both DONE 2026-07-19)
+#    - git-annex 10 provisioned at /home/groups/russpold/sw/git-annex-standalone (§1).
+#    - container shim BUILT at /scratch/users/logben/mechababs_campaigns/mriqc-24.0.2-shim
+#      (bids-mriqc → our local 24.0.2 sif, content-local; verified `mriqc --version`).
+#      Rebuild if needed: bash /home/users/logben/network_fmri/mechababs_campaign/mriqc-24.0.2-local-shim.sh
+export PATH=/home/groups/russpold/sw/git-annex-standalone:$PATH
 cd /scratch/users/logben/mechababs_campaigns
-export PATH=/home/groups/russpold/sw/git-annex-standalone/bin:$PATH
-bash /home/users/logben/network_fmri/mechababs_campaign/mriqc-24.0.2-local-shim.sh
-#      → creates ./mriqc-24.0.2-shim (a container DataLad dataset)
+# clone UPSTREAM mechababs fresh (fork retired) to get bootstrap.sh:
+git clone https://github.com/asmacdo/mechababs.git   # or `git -C mechababs pull`
 
-# 1. BOOTSTRAP the campaign (pin rebased fork ref + vanilla babs main)
+# 1. BOOTSTRAP the campaign (upstream mechababs + babs main).
+#    ⚠️ babs deps must be WHEELS on Sherlock (§1b) — if bootstrap's plain install
+#    fails on h5py/pillow, resolve with Austin (wheels-forcing / base env).
 ./mechababs/bootstrap.sh mriqc-network \
   --babs https://github.com/PennLINC/babs.git@main \
-  --mechababs https://github.com/lobennett/mechababs.git@<rebased-local-bids-ref>
+  --mechababs https://github.com/asmacdo/mechababs.git@main
 cd mriqc-network && source .venv/bin/activate
 
 # 2. copy these config files into the vendored mechababs (or point --pipelines/
@@ -154,8 +164,9 @@ TemplateFlow produce func/anat/dwi IQMs end-to-end.
    mechababs/BABS expect? (datalad-installer prefix? conda? container?) — see §1.
 2. **Container source** — pin our local 24.0.2 sif via this shim vs a ReproNim fetch
    (babs#383 open → shim needed either way).
-3. **mechababs pin** — rebase local-BIDS-selection onto current `main` and pin that
-   (§2); is it worth upstreaming the local-BIDS + Sherlock configs now?
+3. **Local-BIDS selection (TOP priority — see §2).** Fork is retired; upstream has no
+   `file://`/local-dataset support. Will Austin upstream it, or should we drive `babs
+   init` directly against our OAK datalad datasets with a hand-supplied inclusion list?
 4. **babs pin** — `PennLINC/babs@main` (has `--json` status + BIDS-study mode, both
    landed days ago) vs a more field-tested commit.
 5. **Granularity** — per-(subject,session), `--no-sub` (confirmed in the pipeline yaml).
