@@ -19,7 +19,7 @@ script_preamble: |
   # with "Invalid argument"). So we do NOT `module load system git-annex`; instead
   # put a standalone git-annex >=10 first on PATH. Provision it once (see the
   # README §git-annex-10) into the prefix below.
-  export PATH="/home/groups/russpold/sw/git-annex-standalone/bin:$PATH"
+  export PATH="/home/groups/russpold/sw/git-annex-standalone:$PATH"
   ga_ver=$(git annex version | head -1); echo "using $ga_ver"
   case "$ga_ver" in *": 1"[0-9]*) : ;; *) echo "FATAL: need git-annex >=10, got $ga_ver" >&2; exit 1;; esac
 

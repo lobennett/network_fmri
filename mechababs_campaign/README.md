@@ -66,19 +66,31 @@ git-annex`; it puts a standalone git-annex ≥10 first on `PATH`
 /home/groups/russpold/sw/git-annex-standalone/bin
 ```
 
-**Provision it once** (prerequisite, not yet done). Options, in order of preference:
+**DONE — provisioned 2026-07-19.** Copied the network_fmri container's standalone
+git-annex 10 out to the prefix:
 ```bash
-# a) datalad-installer (pip) fetches a standalone build to a prefix:
-pip install datalad-installer
-datalad-installer --sudo=no git-annex \
-  -m datalad/git-annex:release \
-  --install-dir /home/groups/russpold/sw/git-annex-standalone
-# b) or copy the standalone git-annex 10 already baked in the network_fmri
-#    container (git-annex 10.20260624) out to that prefix.
+apptainer exec -B /home/groups/russpold/sw:/hostsw <network_fmri.sif> \
+  cp -a /opt/git-annex.linux /hostsw/git-annex-standalone
 ```
-Then `git annex version` from that prefix must report `>= 10`. (The preamble hard-fails
-if it doesn't.) **This is the #1 question for Austin** — how does mechababs/BABS expect
-git-annex to be provisioned on a cluster whose module is too old?
+Verified on the host (no module): `git-annex version → 10.20260624-...` (exact match
+to what created our datasets). The preamble puts this dir first on PATH and hard-fails
+if it isn't ≥10. Still worth confirming with Austin whether mechababs/BABS expects a
+different provisioning route on a module-only cluster.
+
+### 1b. babs install must be wheels-only on Sherlock
+babs pulls the full nipreps stack (`niworkflows → h5py, pillow, scikit-image, …`). A
+naive `pip/uv pip install` **source-builds** those and fails on Sherlock (no HDF5/build
+env). Verified fix: install with wheels forced —
+```bash
+uv pip install --only-binary=:all: babs            # PyPI 0.5.4 resolves cleanly this way
+```
+`bootstrap.sh:111` does a plain `uv pip install -e code/babs` (no `--only-binary`), so
+on Sherlock it will fail unless run with `--system-site-packages` (a base env that
+already has the heavy deps — we don't have one). **Austin question:** how does bootstrap
+provision babs's compiled deps on Sherlock — wheels-forcing, a base conda/module env, or
+`--system-site-packages`? (Our throwaway proof env: `/scratch/users/logben/babs_depcheck_venv`.)
+`babs init` arg surface confirmed to match this config: `--container-ds`,
+`--container-name`, `--container-config`, `--processing-level`, `--list-sub-file`, `--queue`.
 
 ### 2. mechababs ref — rebase, don't use `sherlock-run` as-is
 Our fork branch `sherlock-run@52b1844` is **~15 commits behind** upstream `main`.
