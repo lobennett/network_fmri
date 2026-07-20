@@ -1,0 +1,53 @@
+# Stanford Sherlock cluster profile for a mechababs/BABS campaign.
+# Same schema as upstream asmacdo/mechababs clusters/{dartmouth,unity}.yaml:
+#   script_preamble  — shell run at the top of every BABS job (module loads, venv)
+#   job_compute_space — scratch dir BABS uses for the job working space
+#   cluster_resources — Slurm directives (Sherlock has NO auto-routing → must set
+#                       --partition explicitly; this block OVERRIDES the pipeline's
+#                       cluster_resources because merge_config applies cluster keys last)
+#
+# LOCAL operational config — kept in network_fmri (our source of truth), NOT pushed
+# to the mechababs fork. Reference: docs/RUNBOOK in this dir.
+
+script_preamble: |
+  # Sherlock uses Lmod; make `module` available in the non-interactive job shell.
+  source /etc/profile.d/modules.sh
+
+  # git-annex — CRITICAL: Sherlock's modules only reach v8 (`ml spider git-annex`
+  # → 6.x, 8.20210622). Our BIDS DataLad datasets were created with git-annex 10
+  # and v8 CANNOT operate on the v10 repo format (fails `git-annex filter-process`
+  # with "Invalid argument"). So we do NOT `module load system git-annex`; instead
+  # put a standalone git-annex >=10 first on PATH. Provision it once (see the
+  # README §git-annex-10) into the prefix below.
+  export PATH="/home/groups/russpold/sw/git-annex-standalone/bin:$PATH"
+  ga_ver=$(git annex version | head -1); echo "using $ga_ver"
+  case "$ga_ver" in *": 1"[0-9]*) : ;; *) echo "FATAL: need git-annex >=10, got $ga_ver" >&2; exit 1;; esac
+
+  # apptainer/singularity are already on PATH (/bin) on Sherlock — no module.
+
+  # Campaign venv (abspath substituted at compose time by merge_config's
+  # {{MECHABABS_VENV}} placeholder).
+  source "{{MECHABABS_VENV}}/bin/activate"
+
+  # High-IOPS per-job temp on Lustre scratch (created + trap-cleaned per job).
+  # Referenced by the MRIQC pipeline's `-B $JOB_TMP:/tmp` singularity arg.
+  export JOB_TMP="/scratch/${USER}/sjob-tmp/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+  mkdir -p "${JOB_TMP}"
+  trap 'rm -rf "${JOB_TMP}"' EXIT
+
+job_compute_space: "/scratch/${USER}"
+
+# Sherlock has NO Slurm auto-routing — every job MUST name a --partition.
+# russpold (lab owner, 16 nodes, up to 7-day) first, normal (shared pool) as
+# fallback; Slurm schedules on whichever frees first.
+# Keep cpu/mem in sync with the pipeline yaml until upstream babs#3 lets resources
+# come from the cluster axis.
+cluster_resources:
+  interpreting_shell: "/bin/bash"
+  hard_runtime_limit: "24:00:00"
+  customized_text: |
+    #SBATCH --partition=russpold,normal
+    #SBATCH --cpus-per-task=4
+    #SBATCH --mem=16G
+    #SBATCH --nodes=1
+    #SBATCH --ntasks=1

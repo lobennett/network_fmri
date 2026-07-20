@@ -1,0 +1,72 @@
+# MRIQC 24.0.2 pipeline for a mechababs/BABS campaign on Sherlock.
+# Schema matches upstream asmacdo/mechababs pipelines/mriqc-24.0.2.yaml:
+#   short_name        — the per-pipeline column prefix in DATASETS_STATE.tsv.
+#                       MUST be a key of select.py's FILTERS dict (today: mriqc,
+#                       fmriprep) — the eligibility rule is keyed on it.
+#   container         — {source, name}; source is the container DataLad dataset
+#                       (the "shim"); name is what `datalad containers-add` used.
+#   bids_app_args     — flags passed to the BIDS-App. $SUBJECT_SELECTION_FLAG is a
+#                       merge_config/babs placeholder BABS resolves per job.
+#   singularity_args  — apptainer flags (order matters).
+#   cluster_resources — see note below (Sherlock's cluster yaml overrides this).
+#   zip_foldernames   — MUST match the actual app version (couples to the sif).
+#
+# LOCAL operational config — kept in network_fmri, NOT pushed to the fork.
+
+short_name: mriqc
+
+container:
+  # Local shim pinning OUR exact /home/groups/russpold/singularity_images/
+  # mriqc_24.0.2.sif (v24.0.2 = latest stable). NOT `../repronim-containers-shim`
+  # (that fetches whatever version ReproNim registers, which may != 24.0.2 while
+  # zip_foldernames below hardcodes 24-0-2). Build with mriqc-24.0.2-local-shim.sh
+  # as a SIBLING of the campaign; iterate.py resolves this relative source against
+  # the campaign root. Drop the shim + point source at ReproNim once babs#383 lands.
+  source: ../mriqc-24.0.2-shim
+  name: bids-mriqc
+
+bids_app_args:
+  # BABS clones the input dataset but must NOT `datalad get` inside the app (BABS
+  # gets the needed files itself); MRIQC's --no-datalad-get avoids a redundant get.
+  --no-datalad-get: ""
+  $SUBJECT_SELECTION_FLAG: "--participant-label"
+  -w: ".git/tmp/wkdir"
+  --n_cpus: "4"
+  --mem_gb: "16"
+  -vv: ""
+  # Do not upload IQMs to the public MRIQC web API.
+  --no-sub: ""
+
+singularity_args:
+  - --containall
+  # --pwd is load-bearing: under --containall, apptainer drops the working dir to
+  # a tmpfs $HOME instead of the bound dataset clone. nipype's -w (relative) then
+  # resolves onto that tiny tmpfs and overflows → ENOSPC while /scratch sits idle.
+  # Pin CWD to the on-scratch clone. (upstream issue #55.)
+  - --pwd "${PWD}"
+  # Route container /tmp to real scratch disk too ($JOB_TMP set by the cluster
+  # preamble in clusters/sherlock.yaml).
+  - -B $JOB_TMP:/tmp
+  # MRIQC pulls MNI152NLin2009cAsym for its anatomical IQM workflow; bind the
+  # pre-populated group cache (verified present:
+  # /home/groups/russpold/templateflow/tpl-MNI152NLin2009cAsym) so it needs no
+  # writable download target.
+  - -B /home/groups/russpold/templateflow:/templateflow
+  - --env TEMPLATEFLOW_HOME=/templateflow
+
+# NOTE: partition/nodes/ntasks belong on the cluster axis; Sherlock's
+# clusters/sherlock.yaml cluster_resources OVERRIDES this block (merge_config
+# applies cluster keys last). Kept here for schema completeness + non-Sherlock
+# reuse. Keep cpu/mem consistent with the cluster yaml.
+cluster_resources:
+  interpreting_shell: "/bin/bash"
+  hard_runtime_limit: "24:00:00"
+  customized_text: |
+    #SBATCH --cpus-per-task=4
+    #SBATCH --mem=16G
+    #SBATCH --nodes=1
+    #SBATCH --ntasks=1
+
+all_results_in_one_zip: true
+zip_foldernames:
+  mriqc: "24-0-2"
