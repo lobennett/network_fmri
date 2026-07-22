@@ -1,5 +1,15 @@
 # MRIQC-via-BABS/mechababs campaign (Sherlock)
 
+> ⚠️ **2026-07-22 — the mechababs repo MOVED to `con/mechababs` and was REWRITTEN.**
+> Current source of truth for state, the con/main schema, and the Austin agenda is
+> **`/scratch/users/logben/mechababs_campaigns/MEETING_BRIEF_2026-07-22.md`**. Key deltas
+> this README predates: (a) **our local-BIDS fork is OBSOLETE** — con/main runs a local
+> dataset by wrapping it in an OpenNeuroStudies-shaped **study** (`build_study_wrapper.sh`),
+> not `add-dataset file://…`; (b) pipeline schema changed → see `pipelines/MRIQC-24.0.2.yaml`
+> (old `mriqc-24.0.2-sherlock.yaml` removed); (c) `iterate` is non-interactive; (d) all 3 OAK
+> cohorts (incl. validation) are now DataLad datasets. Sections below citing `asmacdo` describe
+> the OLD model.
+
 Operational config + runbook for running **MRIQC** on our BIDS DataLad datasets
 through **BABS**, driven by the **mechababs** harness, on Sherlock. These are the
 version-controlled *inputs* to a campaign — the campaign itself (its `.venv`,
