@@ -10,7 +10,7 @@ never in this repo.
 the Austin agenda:** `/scratch/users/logben/mechababs_campaigns/MEETING_BRIEF_2026-07-22.md`.
 
 Upstream: `con/mechababs`@main (read-only reference clone at
-`/scratch/users/logben/mechababs_con`) and `PennLINC/babs`.
+`/scratch/users/logben/mechababs`) and `PennLINC/babs`.
 
 ## Files here
 - **`pipelines/MRIQC-24.0.2.yaml`** — the pipeline axis, con/main schema. `mechababs:` namespace
