@@ -11,11 +11,12 @@
 # Usage:  build_study_wrapper.sh <cohort>            # cohort = discovery | validation
 # Env:    STUDIES_ROOT (default /scratch/users/logben/mechababs_campaigns/studies)
 #
-# PREREQ — a WORKING datalad + git-annex>=10 on PATH. NOTE (2026-07-22): the
-# `datalad-uv` Lmod module fails on the login/dev node (missing libpython3.12.so.1.0);
-# run this INSIDE the same job/container context network_fmri uses to build datalad
-# datasets, or after that module is fixed. git-annex 10 standalone is at
-# /home/groups/russpold/sw/git-annex-standalone (v8 modules CANNOT touch our v10 repos).
+# DATALAD ENV (verified 2026-07-22): use network_fmri's scratch uv venv datalad
+# (datalad 1.6.0 — the exact env that built the v10 OAK datasets) + the git-annex 10
+# standalone. Do NOT use the `datalad-uv` Lmod module (broken on the login/dev node:
+# missing libpython3.12.so.1.0) or `~/.local/bin/datalad` (broken). Sherlock's own
+# git-annex module tops out at v8 and CANNOT touch our v10 repos. Override either
+# path below via DATALAD_VENV / GIT_ANNEX_DIR if they move.
 set -euo pipefail
 
 COHORT="${1:?usage: build_study_wrapper.sh <discovery|validation>}"
@@ -24,8 +25,10 @@ RAW="/oak/stanford/groups/russpold/data/network_grant/bids/${COHORT}"
 ID="${COHORT}"                       # dataset_id = Path(identity-url).name
 DEST="${STUDIES_ROOT}/study-${ID}"
 
-export PATH="/home/groups/russpold/sw/git-annex-standalone:${PATH}"
-command -v datalad >/dev/null || { echo "FATAL: datalad not on PATH (see PREREQ)"; exit 1; }
+DATALAD_VENV="${DATALAD_VENV:-/scratch/users/logben/network_fmri_venv}"
+GIT_ANNEX_DIR="${GIT_ANNEX_DIR:-/home/groups/russpold/sw/git-annex-standalone}"
+export PATH="${DATALAD_VENV}/bin:${GIT_ANNEX_DIR}:${PATH}"
+command -v datalad >/dev/null || { echo "FATAL: datalad not on PATH (DATALAD_VENV=${DATALAD_VENV})"; exit 1; }
 ga=$(git annex version | head -1); case "$ga" in *": 1"[0-9]*) : ;; *) echo "FATAL: need git-annex>=10, got $ga"; exit 1;; esac
 [ -d "$RAW/.datalad" ] || { echo "FATAL: $RAW is not a DataLad dataset"; exit 1; }
 

@@ -40,14 +40,17 @@ job_compute_space: "/scratch/${USER}"
 # Sherlock has NO Slurm auto-routing — every job MUST name a --partition.
 # russpold (lab owner, 16 nodes, up to 7-day) first, normal (shared pool) as
 # fallback; Slurm schedules on whichever frees first.
-# Keep cpu/mem in sync with the pipeline yaml until upstream babs#3 lets resources
-# come from the cluster axis.
+# This whole block REPLACES the pipeline's cluster_resources (merge_config applies
+# cluster keys last), so these are the EFFECTIVE Slurm directives. Slurm --mem=24G
+# gives ~8G headroom above MRIQC's own --mem_gb 16 (bids_app_args) for container/OS
+# overhead — matches con/main's MRIQC reference (24G Slurm / 16G app). Keep in sync
+# with the pipeline yaml until upstream babs#3 lets resources come from the cluster axis.
 cluster_resources:
   interpreting_shell: "/bin/bash"
   hard_runtime_limit: "24:00:00"
   customized_text: |
     #SBATCH --partition=russpold,normal
     #SBATCH --cpus-per-task=4
-    #SBATCH --mem=16G
+    #SBATCH --mem=24G
     #SBATCH --nodes=1
     #SBATCH --ntasks=1
