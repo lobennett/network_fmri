@@ -1,13 +1,13 @@
-# Stanford Sherlock cluster profile for a mechababs/BABS campaign.
-# Same schema as upstream asmacdo/mechababs clusters/{dartmouth,unity}.yaml:
+# Stanford Sherlock cluster profile for a con/mechababs/BABS campaign.
+# Same schema as con/mechababs clusters/{dartmouth,unity}.yaml:
 #   script_preamble  — shell run at the top of every BABS job (module loads, venv)
 #   job_compute_space — scratch dir BABS uses for the job working space
 #   cluster_resources — Slurm directives (Sherlock has NO auto-routing → must set
 #                       --partition explicitly; this block OVERRIDES the pipeline's
 #                       cluster_resources because merge_config applies cluster keys last)
 #
-# LOCAL operational config — kept in network_fmri (our source of truth), NOT pushed
-# to the mechababs fork. Reference: docs/RUNBOOK in this dir.
+# LOCAL operational config — network_fmri is our source of truth. See the campaign
+# README + MEETING_BRIEF for the run sequence.
 
 script_preamble: |
   # Sherlock uses Lmod; make `module` available in the non-interactive job shell.

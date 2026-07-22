@@ -1,8 +1,8 @@
 #!/bin/bash
 # Build a local OpenNeuroStudies-shaped "study" wrapper around one of our OAK
-# BIDS DataLad datasets, so con/mechababs@main can select+run it WITHOUT our old
-# local-BIDS fork (con/main dropped `add-dataset file://`; it now clones a study
-# superdataset whose git-tracked metadata TSV drives `select`).
+# BIDS DataLad datasets, so con/mechababs@main can select+run it. con/main runs a
+# local dataset by cloning a study superdataset whose git-tracked metadata TSV
+# drives `select` (no `add-dataset file://`, no network, no `datalad get`).
 #
 # Faithful to the blessed recipe in con/mechababs tests/e2e/conftest.py::_build_study.
 # Then: `mechababs add-dataset <identity-url> --study file://<this study>` and, if the

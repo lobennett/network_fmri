@@ -17,8 +17,8 @@
 #       upstream. Cluster specifics live on the cluster axis (clusters/sherlock.yaml),
 #       so the filename stays platform-neutral.
 #
-# LOCAL operational config — network_fmri is our source of truth. con/main covers
-# local-BIDS selection now (via the study wrapper), so there is NO fork to vendor.
+# LOCAL operational config — network_fmri is our source of truth. con/main selects
+# local datasets via the study wrapper (build_study_wrapper.sh); consume con/main directly.
 
 mechababs:
   # Subject/session eligibility. anat-with-a-T1w gate: MRIQC's anatomical IQM
