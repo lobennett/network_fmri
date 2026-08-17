@@ -1,0 +1,109 @@
+mechababs:
+  # mechababs-only config: consumed by mechababs, stripped by merge_config so none
+  # of it reaches the babs config. selection = deploy-time subject-eligibility rule;
+  # container = which image to vendor + pass to `babs init --container-ds/--container-name`.
+  selection:
+    require_datatypes: [anat]
+    require_positive: [t1w_num]
+  container:
+    # OUR local, version-pinned fmriprep_25.2.5.sif (matches this file's stem and
+    # zip_foldernames: 25-2-5) rather than a ReproNim fetch, which would pull
+    # whatever version ReproNim currently registers. Build once with
+    # fmriprep-25.2.5-local-shim.sh, as a SIBLING of the campaign dir.
+    # babs#383 (hardcoded image path) still open, so a shim is needed either way.
+    source: ../fmriprep-25.2.5-shim
+    name: bids-fmriprep
+
+# BIDS-study layout (babs#369): the babs project root IS the analysis dataset,
+# and the RIA stores go under .babs/ — babs's default top-level input_ria/output_ria
+# would break datalad's nesting of the (untracked) babs project inside the study.
+# Campaign-wide layout choice, living per-pipeline for now (see config-composition-axes);
+# MUST match across every pipeline in a campaign. merge_config passes these straight
+# into the babs config.
+analysis_path: "."
+input_ria_path: ".babs/input_ria"
+output_ria_path: ".babs/output_ria"
+
+# PHASE 1 of two — see mechababs_campaign/README.md "Staged fMRIPrep".
+#
+# Run this cell with the dataset registered at --processing-level SUBJECT: our
+# cohorts acquire anat sparsely (7 of 61 discovery sessions have a SagMPRAGE T1w),
+# so a session-level anat cell would either starve or, with an unscoped-anat
+# filter, recompute recon-all 61x instead of 5x. `processing_level` is a DATASET
+# property in the mechababs ledger (state.py IDENTITY_COLUMNS), not per-pipeline,
+# which is why the bold phase is a separate registration that ingresses this
+# phase's output rather than chaining inside one campaign.
+#
+# fmriprep --anat-only run.
+# Produces the anatomical scaffold + FreeSurfer recon-all under
+# sourcedata/freesurfer/ inside the zipped output. Feeds the
+# --level full step that follows.
+#
+# Flag set matches OpenNeuroDerivatives/fmriprepDerivatives#1
+# (the opinions doc), with --skull-strip-t1w force matching Joe's
+# practice until we have a per-dataset gating mechanism.
+bids_app_args:
+  $SUBJECT_SELECTION_FLAG: "--participant-label"
+  -w: ".git/tmp/wkdir"
+  --anat-only: ""
+  --output-spaces: "MNI152NLin2009cAsym:res-2 MNI152NLin6Asym:res-2"
+  --cifti-output: "91k"
+  --random-seed: "12345"
+  --skull-strip-fixed-seed: ""
+  --skull-strip-t1w: "force"
+  --notrack: ""
+  --md-only-boilerplate: ""
+  --skip-bids-validation: ""
+  --stop-on-first-crash: ""
+  # Pass the HOST path. BABS rewrites this flag's value to
+  # /SGLR/FREESURFER_HOME/license.txt in the generated singularity
+  # invocation AND auto-binds that destination itself, so we must NOT
+  # bind it again in singularity_args: a duplicate destination is
+  # dropped by apptainer ("destination is already in the mount point
+  # list"), the license never lands in the container, and fMRIPrep
+  # dies at startup (con/mechababs#80).
+  # TODO babs should not mess with these args.
+  --fs-license-file: "/home/groups/russpold/license.txt"
+  --nprocs: "2"
+  --omp-nthreads: "2"
+  --mem-mb: "16000"
+
+# FS license: BABS rewrites --fs-license-file to
+# /SGLR/FREESURFER_HOME/license.txt and auto-binds it, so we do NOT
+# bind it here (a duplicate destination is fatal on apptainer;
+# con/mechababs#80).
+singularity_args:
+  - --containall
+  # --pwd pins CWD to the bound ds clone; without it --containall drops CWD to a
+  # tmpfs $HOME and the relative -w (.git/tmp/wkdir) overflows it -> ENOSPC. babs
+  # main doesn't emit --pwd (the old containers-run branch did). See #55.
+  - --pwd "${PWD}"
+  - -B $JOB_TMP:/tmp
+  - -B /home/groups/russpold/templateflow:/templateflow
+  - --env TEMPLATEFLOW_HOME=/templateflow
+
+# Resource sizing: anat-only is dominated by FreeSurfer recon-all,
+# which is largely single-threaded. 4 cores allocated with 2 nprocs ×
+# 2 omp-nthreads matches the request (no oversubscription). 36h
+# walltime is generous; we'll tighten based on duct logs later.
+cluster_resources:
+  interpreting_shell: "/bin/bash"
+  hard_runtime_limit: "36:00:00"
+  # Discovery doesn't track per-node TmpDisk in slurm (all nodes
+  # report TmpDisk=0), so --tmp=anything is rejected as unsatisfiable.
+  # We bind ${JOB_TMP} to /tmp inside the container instead.
+  # temporary_disk_space: 200G
+  customized_text: |
+    #SBATCH --partition=russpold,normal
+    #SBATCH --cpus-per-task=4
+    #SBATCH --mem=24G
+    #SBATCH --nodes=1
+    #SBATCH --ntasks=1
+
+all_results_in_one_zip: true
+zip_foldernames:
+  # Key == this pipeline's short_name (filename stem). It names the output
+  # folder babs zips AND is the handle a downstream stage matches to chain onto
+  # this output (its input_datasets key == this key). One name, so the chain
+  # self-assembles by name (see fMRIPrep-25.2.5+minimal.yaml).
+  fMRIPrep-25.2.5+anat: "25-2-5"
