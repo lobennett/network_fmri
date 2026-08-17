@@ -21,24 +21,14 @@ analysis_path: "."
 input_ria_path: ".babs/input_ria"
 output_ria_path: ".babs/output_ria"
 
+# No --bids-filter-file anywhere: the `prune` stage physically removes excluded
+# scans from the BIDS tree and renumbers the survivors, so the tree already IS the
+# input set and maps 1:1 onto these derivatives. At subject level babs generates no
+# filter of its own either (flag_filterfile requires session level).
 bids_app_args:
   $SUBJECT_SELECTION_FLAG: "--participant-label"
   -w: ".git/tmp/wkdir"
   --level: "full"
-  # OUR per-session input selection, rendered into the BIDS tree by the
-  # network_fmri `select` stage (code/bids-filter_fmriprep_<subid>_<sesid>.json).
-  # Resolution: merge_config registers the raw BIDS input as `BIDS` at
-  # path_in_babs `sourcedata/raw`, unzipped -- so that is where the tree (and its
-  # git-tracked code/ dir) lands in the job. ${subid}/${sesid} are shell vars in
-  # babs's generated run script, and bids_app_args values are emitted verbatim and
-  # unquoted, so they expand at job runtime.
-  #
-  # This SUPERSEDES the filter babs generates itself: babs emits its own
-  # --bids-filter-file first, so the later flag wins by argparse. Deliberate --
-  # babs session-scopes t1w/t2w/flair/roi, which would starve 54/61 sessions of an
-  # anat. Ours scopes only func + fmap and drops the truncated runs (5 task-drops
-  # across 4 discovery sessions).
-  --bids-filter-file: '"${PWD}"/sourcedata/raw/code/bids-filter_fmriprep_${subid}_${sesid}.json'
   --output-spaces: "MNI152NLin2009cAsym:res-2 MNI152NLin6Asym:res-2"
   --cifti-output: "91k"
   --random-seed: "12345"

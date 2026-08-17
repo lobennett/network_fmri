@@ -1,5 +1,5 @@
 {
-  "_comment": "Per-pipeline bids-filter inputs for the `select` stage. `anat_acquisition` is the canonical T1w acq label (SagMPRAGE; the legacy MPRAGEPromo is skipped at curation, see curation.py::SKIP_ACQUISITIONS). `tasks` mirrors the functional task set of curation.py::ACQUISITION_MAP (9 single + 11 dual). network_fmri shells `network-qa render bids-filter` with these to write code/bids-filter_<pipeline>.json \u2014 the COARSE filter (canonical anat + all valid task bolds). `per_session: true` ALSO renders one code/bids-filter_<pipeline>_<subid>_<sesid>.json per subject-session, which drops scans excluded by `exclude_sources` (a task is only droppable when every run of it in that session is excluded; anything unexpressible stays enforced at lev1). fMRIPrep opts in because BABS fans out per subject-session and a truncated run that crashes the app fails the whole job; MRIQC does not, because it should measure every acquired run.",
+  "_comment": "Per-pipeline bids-filter inputs for the `select` stage. `anat_acquisition` is the canonical T1w acq label (SagMPRAGE; the legacy MPRAGEPromo is skipped at curation, see curation.py::SKIP_ACQUISITIONS). `tasks` mirrors the functional task set of curation.py::ACQUISITION_MAP (9 single + 11 dual). network_fmri shells `network-qa render bids-filter` with these to write code/bids-filter_<pipeline>.json. This filter is COARSE by design and is NOT how bad runs are kept out of preprocessing: a filter dict has no per-task run selectivity, so it cannot express a per-scan quality call. That job belongs to the `prune` stage, which deletes excluded scans and renumbers the survivors, leaving a tree that maps 1:1 onto the derivatives. The filters remain a declarative record of the intended task set.",
   "pipelines": {
     "fmriprep": {
       "anat_acquisition": "SagMPRAGE",
@@ -24,10 +24,6 @@
         "stopSignal",
         "stopSignalWDirectedForgetting",
         "stopSignalWFlanker"
-      ],
-      "per_session": true,
-      "exclude_sources": [
-        "short-run"
       ]
     },
     "mriqc": {

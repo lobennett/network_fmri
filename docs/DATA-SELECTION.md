@@ -83,36 +83,30 @@ Because the lockfile, `scans.tsv`, and `.bidsignore` are all derived from the on
 compiled exclusion set, they stay consistent by construction — one compile, three
 renders.
 
-### Coarse vs per-session filters
+### Why the filter is coarse — and what actually excludes a run
 
-The coarse filter can't express a *per-scan* quality call: an excluded scan's task
-stays in the task list, so the app still sees it. That's tolerable when the app
-runs once per cohort, but not under BABS — it fans out **one job per
-subject-session**, and a truncated run that crashes fMRIPrep fails that whole job.
+A `bids-filter-file` is one rule set per data type. It can say "these 19 tasks", but
+never "goNogo run-2 but not run-1, and only in ses-01" — there is no per-task run
+selectivity in a filter dict, so it **cannot express a per-scan quality call** at all.
 
-So a pipeline can set `"per_session": true` in `config/selection.json`, and `select`
-additionally renders `code/bids-filter_<pipeline>_<subid>_<sesid>.json` per
-subject-session (`network-qa render bids-filter-per-session`). The name is
-reconstructible inside a babs participant job from its `${subid}`/`${sesid}` shell
-variables, so each job points `--bids-filter-file` at its own file. Three rules:
+That job belongs to the terminal **`prune`** stage, which physically deletes excluded
+scans and renumbers the survivors from `run-1`. The result is a dataset that maps 1:1
+onto its derivatives: what is in the tree is what gets preprocessed, with no filter
+file in the loop anywhere (and at subject level babs generates none of its own).
 
-- **A task is dropped from a session only when every run of it in that session is
-  excluded.** A filter dict has no per-task run selectivity, so dropping a task
-  with a surviving sibling run would discard good data. Those stay selected and are
-  printed as unexpressed exclusions — still enforced at lev1 from the lockfile. On
-  discovery: 5 task-drops across 4 sessions, 2 unexpressible (s10/ses-01 goNogo,
-  s29/ses-12 directedForgettingWFlanker — each has a good `run-2`).
-- **`exclude_sources` decides what withholds a scan from *preprocessing*.** Default
-  `short-run` only: a truncated 4-D file can crash the app, whereas `behavioral-qc`
-  means the events logfile is defective and the BOLD is fine — that's a lev1 call.
-- **Anat is not session-scoped.** These filters supersede the one babs generates
-  itself (babs emits its `--bids-filter-file` before the args from
-  `bids_app_args`, so the later one wins), and babs session-scopes `t1w`/`t2w`/
-  `flair`/`roi`. Only **7 of 61** discovery sessions contain a SagMPRAGE T1w — anat
-  is acquired sparsely — so session-scoping it would starve 54/61 jobs of an anat.
+That does *not* discard the audit trail — it relocates it:
 
-fMRIPrep opts in; **MRIQC does not** — a QC tool should measure every acquired run,
-including the truncated ones.
+| where | what it records |
+|---|---|
+| `code/exclusions_lock.json` | every exclusion + reason (the stage enacts these, never invents one) |
+| `code/pruned.tsv` | the old→new mapping: what was deleted, what was renamed |
+| `OriginalRun` sidecar key | the run label a renumbered scan was acquired under |
+| DataLad history | the as-acquired tree, committed before pruning — so removals stay recoverable (never `git annex dropunused` these trees) |
+
+`prune` defaults to `short-run` exclusions only. A `behavioral-qc` exclusion means the
+events logfile is defective while the BOLD is fine, so those scans stay in for
+preprocessing and are enforced downstream at lev1. The coarse per-pipeline filters
+remain as a declarative record of the intended task set.
 
 ### Two passes (important)
 
