@@ -21,9 +21,13 @@ DEFAULT_RESOURCES = {"nthreads": 4, "mem_gb": 16, "time": "04:00:00"}
 
 # Read-only raw behavioral data on OAK (the reconcile/migrate source). Matches
 # the absolute ``raw_path`` base in the reviewed reconciliation manifests.
+# NOTE: this tree was promoted out of ``_archive_someone_plz_clean`` in the 2026-08
+# Oak cleanup, which then removed that directory. Both this default and the
+# manifests' raw_path must name the promoted location or a run finds no behavioural
+# data at all (network_events now fails loudly rather than skipping).
 DEFAULT_BEHAVIORAL_DIR = (
     "/oak/stanford/groups/russpold/data/network_grant/"
-    "_archive_someone_plz_clean/behavioral_data/raw_cleaned"
+    "behavioral_data/raw_cleaned"
 )
 
 # Fallback network_events checkout (used until network_events is installed in the

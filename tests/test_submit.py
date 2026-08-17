@@ -428,3 +428,25 @@ def test_fmap_link_container_swaps_run_prefix(tmp_path):
                                  "--container", sif])
     assert f"apptainer exec {sif} fw2bids fmap-link" in script
     assert "uv run --no-sync" not in script
+
+
+def test_events_behavioral_dir_points_at_the_live_raw_tree(tmp_path):
+    """The default --behavioral-dir must be the promoted raw tree, and must exist.
+
+    Regression: it pointed into _archive_someone_plz_clean, which the 2026-08 Oak
+    cleanup removed after the raw behavioural data was promoted to
+    behavioral_data/raw_cleaned. Paired with the manifests' stale raw_path, a run
+    would have found no behavioural files at all.
+    """
+    from pathlib import Path
+
+    from network_fmri.submit import events
+
+    assert "_archive_someone_plz_clean" not in events.DEFAULT_BEHAVIORAL_DIR
+    assert events.DEFAULT_BEHAVIORAL_DIR.endswith("behavioral_data/raw_cleaned")
+    # Sherlock-only: skip elsewhere rather than fail the offline suite.
+    oak = Path("/oak/stanford/groups/russpold/data/network_grant")
+    if oak.is_dir():
+        assert Path(events.DEFAULT_BEHAVIORAL_DIR).is_dir(), (
+            f"default behavioural dir does not exist: {events.DEFAULT_BEHAVIORAL_DIR}"
+        )
