@@ -186,6 +186,24 @@ Skipped for the `excluded` cohort (no reconciliation manifest). The behavioral
 source dir + manifest default to the OAK raw path + the vendored manifest;
 override with `--behavioral-dir` / `--manifest`.
 
+### 4c-3. Link field maps to BOLD (`fmap_link`)
+
+fMRIPrep pairs a field map with the BOLD runs it corrects via the modern
+`B0FieldIdentifier` / `B0FieldSource` sidecar keys (rather than the legacy
+`IntendedFor` list). This stage walks the staged tree and, for each session that
+has both a field map and BOLD, stamps a session-scoped identifier
+(`<subject>_<session>`) as `B0FieldIdentifier` on the `_fieldmap` + `_magnitude`
+sidecars and `B0FieldSource` (same value) on every `_bold` echo sidecar:
+
+```bash
+fw2bids submit fmap_link --cohort discovery --container --staging $SCRATCH/bids_staging
+```
+
+Writes are atomic and preserve each sidecar's existing indentation, so the diff is
+one added key per file. Runs for **all** cohorts, and must precede `datalad` so the
+linkage is committed into the tracked tree. Sessions missing a field map are
+reported as warnings rather than failing the stage.
+
 ### 4d. Make the staged tree a DataLad dataset (`datalad`)
 
 Version-control the staged BIDS tree with DataLad so large NIfTIs are git-annex'd
@@ -235,7 +253,7 @@ Skipped for the `excluded` cohort (no selection layer), exactly like `events`.
 ### Whole pipeline in one command (`pipeline`)
 
 Rather than submitting each stage by hand, `fw2bids pipeline` chains the full DAG
-(`curate → export → merge → trim → events → datalad → select`) with
+(`curate → export → merge → trim → events → fmap_link → datalad → select`) with
 `--dependency=afterok` wiring, so each stage starts only after the previous one
 succeeds:
 
