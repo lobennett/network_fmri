@@ -76,6 +76,26 @@ def _scan_files(func: Path, sub: str, ses: str, task: str, run: str) -> list[Pat
     return sorted(func.glob(f"{sub}_{ses}_{task}_run-{run}_*"))
 
 
+def _func_dirs(bids_dir: Path, sub: str, ses: str) -> list[Path]:
+    """The raw func dir plus each derivatives pipeline's mirror of it.
+
+    Derivatives repeat the raw layout (``derivatives/<pipeline>/sub-*/ses-*/func``),
+    so a pruned scan has to be removed from both — and a renumbered one renamed in
+    both, or the trees disagree about which run is which. There is no second chance
+    to clean them: pruning is idempotent per (subject, session, task), so a later
+    pass skips the group entirely.
+    """
+    dirs = [bids_dir / sub / ses / "func"]
+    deriv = bids_dir / "derivatives"
+    if deriv.is_dir():
+        dirs += sorted(
+            d / sub / ses / "func"
+            for d in deriv.iterdir()
+            if (d / sub / ses / "func").is_dir()
+        )
+    return [d for d in dirs if d.is_dir()]
+
+
 def _runs_present(func: Path, sub: str, ses: str, task: str) -> list[str]:
     if not func.is_dir():
         return []
@@ -121,7 +141,11 @@ def plan_prune(
         present = _runs_present(func, sub, ses, task)
         surviving = [r for r in present if r not in runs]
         for run in sorted(runs, key=int):
-            doomed = _scan_files(func, sub, ses, task, run)
+            doomed = [
+                p
+                for d in _func_dirs(bids_dir, sub, ses)
+                for p in _scan_files(d, sub, ses, task, run)
+            ]
             if not doomed:
                 continue  # already pruned — idempotent
             if surviving and any(p.name.endswith("_events.tsv") for p in doomed):
@@ -152,7 +176,12 @@ def plan_prune(
         for new_index, old_run in enumerate(surviving, start=1):
             if str(new_index) == old_run:
                 continue
-            for path in _scan_files(func, sub, ses, task, old_run):
+            movable = [
+                p
+                for d in _func_dirs(bids_dir, sub, ses)
+                for p in _scan_files(d, sub, ses, task, old_run)
+            ]
+            for path in movable:
                 new_name = path.name.replace(f"_run-{old_run}_", f"_run-{new_index}_", 1)
                 plan.renames.append((path, path.with_name(new_name)))
                 plan.reasons[path] = (

@@ -222,3 +222,48 @@ def test_fixes_up_scans_tsv_to_match_the_tree(tmp_path):
     # every listed file exists
     for row in rows[1:]:
         assert (ses_dir / row.split("\t")[0]).exists(), row
+
+
+def _deriv_scan(bids, pipeline, sub, ses, task, run, echoes=(1, 2, 3)):
+    """Mirror a scan under derivatives/<pipeline>/ with a desc- entity."""
+    func = bids / "derivatives" / pipeline / f"sub-{sub}" / f"ses-{ses}" / "func"
+    func.mkdir(parents=True, exist_ok=True)
+    stem = f"sub-{sub}_ses-{ses}_task-{task}_run-{run}"
+    for e in echoes:
+        (func / f"{stem}_echo-{e}_desc-trimmed_bold.nii.gz").write_text("nii")
+        (func / f"{stem}_echo-{e}_desc-trimmed_bold.json").write_text("{}")
+    return func
+
+
+def test_prunes_matching_files_under_derivatives(tmp_path):
+    """Derivatives mirror the raw tree, so a pruned scan must not survive there.
+
+    They can't be cleaned up in a later pass either: pruning is idempotent per
+    (subject, session, task), so a second run skips the group entirely.
+    """
+    _scan(tmp_path, "s19", "07", "stopSignal", 1, events=True)
+    deriv = _deriv_scan(tmp_path, "trimmed", "s19", "07", "stopSignal", 1)
+
+    apply_prune(plan_prune(tmp_path, [_excl("s19", "07", "stopSignal", 1)]))
+
+    assert not list(deriv.glob("*stopSignal*")), "derivative copies must go too"
+
+
+def test_renumbers_derivatives_in_step_with_the_raw_tree(tmp_path):
+    """A renumbered survivor keeps raw and derivative filenames in agreement."""
+    _scan(tmp_path, "s10", "01", "goNogo", 1)
+    _scan(tmp_path, "s10", "01", "goNogo", 2, events=True)
+    _deriv_scan(tmp_path, "trimmed", "s10", "01", "goNogo", 1)
+    deriv = _deriv_scan(tmp_path, "trimmed", "s10", "01", "goNogo", 2)
+
+    apply_prune(plan_prune(tmp_path, [_excl("s10", "01", "goNogo", 1)]))
+
+    names = sorted(p.name for p in deriv.glob("*goNogo*"))
+    assert names == [
+        "sub-s10_ses-01_task-goNogo_run-1_echo-1_desc-trimmed_bold.json",
+        "sub-s10_ses-01_task-goNogo_run-1_echo-1_desc-trimmed_bold.nii.gz",
+        "sub-s10_ses-01_task-goNogo_run-1_echo-2_desc-trimmed_bold.json",
+        "sub-s10_ses-01_task-goNogo_run-1_echo-2_desc-trimmed_bold.nii.gz",
+        "sub-s10_ses-01_task-goNogo_run-1_echo-3_desc-trimmed_bold.json",
+        "sub-s10_ses-01_task-goNogo_run-1_echo-3_desc-trimmed_bold.nii.gz",
+    ]
