@@ -21,7 +21,13 @@ set -euo pipefail
 
 COHORT="${1:?usage: build_study_wrapper.sh <discovery|validation>}"
 STUDIES_ROOT="${STUDIES_ROOT:-/scratch/users/logben/mechababs_campaigns/studies}"
-RAW="/oak/stanford/groups/russpold/data/network_grant/bids/${COHORT}"
+# Canonical cohort trees. These were promoted to
+# /oak/.../network_grant/bids/<cohort> on 2026-07-19, then moved BACK to scratch by
+# the 2026-08-02 Oak reorg (safemove verified, residual_diffs=0) — so the Oak path
+# is empty and the promote-ready DataLad clones live here. Override with RAW_ROOT
+# once they're re-promoted to Oak.
+RAW_ROOT="${RAW_ROOT:-/scratch/users/logben/network_grant_staging/bids}"
+RAW="${RAW_ROOT}/${COHORT}"
 ID="${COHORT}"                       # dataset_id = Path(identity-url).name
 DEST="${STUDIES_ROOT}/study-${ID}"
 
