@@ -56,6 +56,23 @@ def default_manifest(cohort: str) -> str:
     return str(Path(_NETWORK_EVENTS_CHECKOUT) / "src" / "network_events" / rel)
 
 
+def container_manifest(cohort: str) -> str:
+    """A shell expression that locates the manifest INSIDE the container.
+
+    The manifest is resolved by whichever interpreter renders the sbatch, but it is
+    read by the one inside the image. Rendering on the host therefore baked in the
+    host env's copy — possibly an older network_events pin than the image runs, which
+    is how a stale manifest reached a job whose preview looked correct. Emitting a
+    command substitution defers resolution to the container, so the path is found
+    where it is used.
+    """
+    return (
+        '"$(python -c "import network_events, os; '
+        'print(os.path.join(os.path.dirname(network_events.__file__), \'config\', '
+        f'\'manifests\', \'reconciliation_{cohort}.tsv\'))")"'
+    )
+
+
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Submit the network_fmri events SLURM job")
     _common.add_common_args(parser)
@@ -80,7 +97,12 @@ def render(args: argparse.Namespace) -> str:
         )
     ctx = _common.single_context(args, DEFAULT_RESOURCES, stage=STAGE)
     ctx["behavioral_dir"] = args.behavioral_dir
-    ctx["manifest"] = args.manifest or default_manifest(args.cohort)
+    if args.manifest:
+        ctx["manifest"] = args.manifest
+    elif getattr(args, "container", None):
+        ctx["manifest"] = container_manifest(args.cohort)
+    else:
+        ctx["manifest"] = default_manifest(args.cohort)
     return _common.render(STAGE, ctx)
 
 

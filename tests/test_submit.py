@@ -450,3 +450,32 @@ def test_events_behavioral_dir_points_at_the_live_raw_tree(tmp_path):
         assert Path(events.DEFAULT_BEHAVIORAL_DIR).is_dir(), (
             f"default behavioural dir does not exist: {events.DEFAULT_BEHAVIORAL_DIR}"
         )
+
+
+def test_events_container_run_resolves_manifest_inside_the_image(tmp_path):
+    """Under --container the manifest must be located by the CONTAINER's Python.
+
+    Regression: `default_manifest()` resolved against whichever interpreter rendered
+    the sbatch. Rendering on the host baked in the host venv's copy — a different,
+    older pin than the image actually runs — so the job read a stale manifest while
+    the preview showed the image's. Render a self-locating command substitution
+    instead, so the path is resolved where it is consumed.
+    """
+    from network_fmri.submit import events
+
+    script = _render(
+        events,
+        ["--cohort", "discovery", "--staging", str(tmp_path), "--container"],
+    )
+    assert "import network_events" in script
+    assert "reconciliation_discovery.tsv" in script
+    assert "site-packages" not in script, "must not bake a host interpreter's path"
+
+
+def test_events_without_container_uses_a_resolved_path(tmp_path):
+    """Outside the container the rendered path stays a plain literal."""
+    from network_fmri.submit import events
+
+    script = _render(events, ["--cohort", "discovery", "--staging", str(tmp_path)])
+    assert "reconciliation_discovery.tsv" in script
+    assert "import network_events" not in script
