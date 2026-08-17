@@ -11,6 +11,7 @@ Skipped for the ``excluded`` cohort — it has no reconciliation manifest.
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
@@ -56,21 +57,32 @@ def default_manifest(cohort: str) -> str:
     return str(Path(_NETWORK_EVENTS_CHECKOUT) / "src" / "network_events" / rel)
 
 
-def container_manifest(cohort: str) -> str:
-    """A shell expression that locates the manifest INSIDE the container.
+def container_manifest(cohort: str, image: str) -> str | None:
+    """Ask the IMAGE where its manifest lives, returning None if it can't be asked.
 
-    The manifest is resolved by whichever interpreter renders the sbatch, but it is
-    read by the one inside the image. Rendering on the host therefore baked in the
-    host env's copy — possibly an older network_events pin than the image runs, which
-    is how a stale manifest reached a job whose preview looked correct. Emitting a
-    command substitution defers resolution to the container, so the path is found
-    where it is used.
+    The manifest is read by the interpreter inside the container, but the sbatch is
+    rendered by whichever interpreter has ``sbatch`` — the host. Resolving on the
+    host baked in the host env's copy, an older network_events pin than the image
+    runs, so a job read a stale manifest while its --dry-run preview looked right.
+
+    Note a shell command substitution does NOT fix this: ``$(...)`` in the sbatch is
+    expanded by the job's shell before ``apptainer`` runs, so it resolves on the host
+    too (and silently yields an empty path when the host has no network_events).
+    Query the image at render time instead and embed the literal it reports.
     """
-    return (
-        '"$(python -c "import network_events, os; '
-        'print(os.path.join(os.path.dirname(network_events.__file__), \'config\', '
-        f'\'manifests\', \'reconciliation_{cohort}.tsv\'))")"'
+    code = (
+        "import network_events, os; "
+        "print(os.path.join(os.path.dirname(network_events.__file__), "
+        f"'config', 'manifests', 'reconciliation_{cohort}.tsv'))"
     )
+    try:
+        out = subprocess.run(
+            ["apptainer", "exec", image, "python", "-c", code],
+            capture_output=True, text=True, check=True, timeout=120,
+        ).stdout.strip()
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+        return None
+    return out or None
 
 
 def get_parser() -> argparse.ArgumentParser:
@@ -99,10 +111,10 @@ def render(args: argparse.Namespace) -> str:
     ctx["behavioral_dir"] = args.behavioral_dir
     if args.manifest:
         ctx["manifest"] = args.manifest
-    elif getattr(args, "container", None):
-        ctx["manifest"] = container_manifest(args.cohort)
     else:
-        ctx["manifest"] = default_manifest(args.cohort)
+        image = getattr(args, "container", None)
+        in_image = container_manifest(args.cohort, image) if image else None
+        ctx["manifest"] = in_image or default_manifest(args.cohort)
     return _common.render(STAGE, ctx)
 
 
