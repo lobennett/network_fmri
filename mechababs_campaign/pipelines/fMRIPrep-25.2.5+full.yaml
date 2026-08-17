@@ -66,20 +66,12 @@ singularity_args:
 # omitted — the upstream RIA doesn't exist until anat has run + merged, so
 # iterate resolves it per run and injects it at scaffold (a per-run absolute RIA
 # path, not a config constant).
-# PHASE 2 of two. The anat phase runs under a SUBJECT-level registration and this
-# one under SESSION-level (see the +anat header and README "Staged fMRIPrep"), so
-# the two cells cannot chain inside one campaign — `processing_level` is a dataset
-# property in the mechababs ledger. Instead the anat zips come in as an EXTERNAL
-# input: iterate only injects origin_url for keys that match a SELECTED pipeline,
-# so with +anat unselected here, this url must be set explicitly. merge_config
-# preserves yaml input_datasets entries verbatim.
-#
-# Fill origin_url after the anat phase merges — it is that babs project's output
-# RIA, which doesn't exist until then:
-#   ria+file://<campaign>/studies/study-<id>/derivatives/fMRIPrep-25.2.5+anat/.babs/output_ria#~data
 input_datasets:
+  # Chained, not external: `iterate` gates this cell on the +anat cell having
+  # merged and injects its output-RIA url at run time, because the key matches a
+  # selected pipeline. Both cells run at SUBJECT level under one registration, so
+  # no manual RIA hand-off is needed.
   fMRIPrep-25.2.5+anat:
-    origin_url: "TODO-anat-output-ria"
     required_files:
       - "*fMRIPrep-25.2.5+anat*.zip"
     is_zipped: true

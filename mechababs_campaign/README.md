@@ -80,30 +80,28 @@ clean tree, `n_missing=0`, `annex fsck --fast` rc=0.
    babs **pipeline mode** (anat step first, session steps reusing it) rather than a
    single-step session-level fMRIPrep.
 
-## Staged fMRIPrep — why it's two registrations, not one chain
+## Staged fMRIPrep — one campaign, subject level throughout
 
 `processing_level` is a **dataset** property in the mechababs ledger
-(`mechababs/state.py` `IDENTITY_COLUMNS`), not a per-pipeline one: every pipeline run
-against a registered dataset inherits that dataset's level. Staged fMRIPrep wants two
-different levels, so it can't be one chained campaign cell:
+(`mechababs/state.py` `IDENTITY_COLUMNS`), not a per-pipeline one, so every pipeline
+run against a registration shares it. We run the whole chain at **subject** level:
 
-| phase | pipeline | level | why |
-|---|---|---|---|
-| 1 | `fMRIPrep-25.2.5+anat` | **subject** | anat is acquired sparsely — 7 of 61 discovery sessions have a SagMPRAGE T1w. Session-level would either starve, or (with an unscoped-anat filter) recompute recon-all 61× instead of 5×. |
-| 2 | `fMRIPrep-25.2.5+full` | **session** | per-session `--bids-filter-file` is what drops the truncated runs, and a per-session job keeps one bad run from failing a whole subject. |
+| phase | pipeline | why subject level |
+|---|---|---|
+| 1 | `fMRIPrep-25.2.5+anat` | anat is sparse — 7 of 61 discovery sessions carry a SagMPRAGE T1w — so this runs recon-all once per subject instead of once per session |
+| 2 | `fMRIPrep-25.2.5+full` | chains natively off phase 1 inside the same campaign, and needs no per-session input filtering |
 
-Phase 2 therefore consumes phase 1's zips as an **external** input dataset rather than
-a chained one: `iterate._resolve_chained_inputs` only injects `origin_url` for
-`input_datasets` keys that match a *selected* pipeline, so with `+anat` unselected in
-phase 2's campaign the url must be written into the yaml — set it to phase 1's output
-RIA (`ria+file://…/derivatives/fMRIPrep-25.2.5+anat/.babs/output_ria#~data`) once phase
-1 has merged. `merge_config` passes yaml `input_datasets` entries through verbatim, and
-the `--fs-subjects-dir` double nesting
-(`sourcedata/fMRIPrep-25.2.5+anat/fMRIPrep-25.2.5+anat/sourcedata/freesurfer`) is real:
-`path_in_babs` plus the zip's own top folder.
+`+full` declares `+anat` in `input_datasets`; because that key matches a selected
+pipeline, `iterate._resolve_chained_inputs` gates the cell on `+anat` having merged
+and injects its output-RIA url at run time. No url belongs in the yaml.
 
-Worth raising upstream: a per-pipeline `processing_level` override would make this one
-campaign instead of two registrations plus a manual RIA hand-off.
+Subject level also means babs generates **no** `--bids-filter-file` of its own
+(`flag_filterfile` requires session level), and none is needed: the `prune` stage
+removes excluded scans from the tree, so the dataset already *is* the input set.
+
+The `--fs-subjects-dir` double nesting
+(`sourcedata/fMRIPrep-25.2.5+anat/fMRIPrep-25.2.5+anat/sourcedata/freesurfer`) is
+real: `path_in_babs` plus the zip's own top folder.
 
 ## Patched babs is required
 

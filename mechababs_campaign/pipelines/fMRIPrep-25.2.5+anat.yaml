@@ -24,15 +24,12 @@ analysis_path: "."
 input_ria_path: ".babs/input_ria"
 output_ria_path: ".babs/output_ria"
 
-# PHASE 1 of two — see mechababs_campaign/README.md "Staged fMRIPrep".
-#
-# Run this cell with the dataset registered at --processing-level SUBJECT: our
-# cohorts acquire anat sparsely (7 of 61 discovery sessions have a SagMPRAGE T1w),
-# so a session-level anat cell would either starve or, with an unscoped-anat
-# filter, recompute recon-all 61x instead of 5x. `processing_level` is a DATASET
-# property in the mechababs ledger (state.py IDENTITY_COLUMNS), not per-pipeline,
-# which is why the bold phase is a separate registration that ingresses this
-# phase's output rather than chaining inside one campaign.
+# Stage 1 of the staged chain, run at SUBJECT level (as is the whole chain).
+# Anat is acquired sparsely here — 7 of 61 discovery sessions carry a SagMPRAGE
+# T1w — so subject-level processing runs recon-all once per subject instead of
+# once per session, and lets +full chain off this cell's output within one
+# campaign. `processing_level` is a dataset property in the mechababs ledger, so
+# every pipeline in a registration shares it.
 #
 # fmriprep --anat-only run.
 # Produces the anatomical scaffold + FreeSurfer recon-all under
