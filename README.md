@@ -250,10 +250,52 @@ each pipeline's `bids-filter` uses is declared in
 
 Skipped for the `excluded` cohort (no selection layer), exactly like `events`.
 
+### 4f. Prune excluded scans (`prune`)
+
+The terminal stage makes the tree match what actually gets preprocessed: excluded
+scans are **deleted** and the surviving runs of each task are **renumbered from
+`run-1`**, so the BIDS tree maps 1:1 onto the fMRIPrep derivatives and no
+`--bids-filter-file` is needed anywhere.
+
+```bash
+fw2bids submit prune --cohort discovery --container --staging $SCRATCH/bids_staging \
+    --anat-keep sub-s03=ses-13 --anat-keep sub-s19=ses-05 --anat-acquisition SagMPRAGE
+```
+
+Why deletion rather than a filter: a filter dict is one rule set per data type, so it
+can say "these 19 tasks" but never "goNogo run-2 but not run-1, and only in ses-01".
+It cannot express a per-scan quality call. Deleting the file can.
+
+Provenance is kept by construction, not convention:
+
+- reasons come from `code/exclusions_lock.json` — this stage never invents an
+  exclusion, it only enacts one;
+- the old→new mapping is written to `code/pruned.tsv`;
+- each renumbered scan's sidecar records `OriginalRun`, the label it was acquired
+  under (this is also how a re-run stays idempotent — a survivor now sitting at
+  `run-1` must not be mistaken for the excluded `run-1`);
+- it runs **after** `datalad`, so the as-acquired tree is already committed and every
+  removal stays recoverable from history. **Do not run `git annex dropunused`** on
+  these trees.
+
+It runs **after `select`** (it reads the lockfile that `select` compiles) and must not
+be followed by a re-compile: the generators scan the tree, so recompiling after
+deletion would report zero exclusions and erase the record. It also rewrites each
+`scans.tsv` to match the tree — rows for renumbered scans follow the rename, rows for
+deleted scans are dropped — since a row pointing at a missing file is invalid BIDS.
+
+Defaults to pruning `short-run` exclusions only (`--source`, repeatable). A
+`behavioral-qc` exclusion means the events logfile is defective while the BOLD is
+fine, so those scans stay in for preprocessing and are enforced at lev1. `--anat-keep
+sub-XX=ses-YY` with `--anat-acquisition` deletes a subject's non-selected T1w, which
+is how the anat-QC choice becomes reproducible instead of a hand edit in a clone.
+
+Preview any run with `fw2bids prune <cohort_dir> --dry-run`.
+
 ### Whole pipeline in one command (`pipeline`)
 
 Rather than submitting each stage by hand, `fw2bids pipeline` chains the full DAG
-(`curate → export → merge → trim → events → fmap_link → datalad → select`) with
+(`curate → export → merge → trim → events → fmap_link → datalad → select → prune`) with
 `--dependency=afterok` wiring, so each stage starts only after the previous one
 succeeds:
 

@@ -207,6 +207,32 @@ def test_select_per_session_runs_after_the_lockfile_is_compiled(tmp_path):
     )
 
 
+def test_prune_render_deletes_and_saves(tmp_path):
+    """The prune stage removes excluded scans then commits, with the anat-QC keep-map
+    passed through."""
+    from network_fmri.submit import prune
+
+    script = _render(
+        prune,
+        ["--cohort", "discovery", "--staging", str(tmp_path),
+         "--anat-keep", "sub-s03=ses-13", "--anat-acquisition", "SagMPRAGE"],
+    )
+    cohort = f"{tmp_path}/discovery"
+    assert f"fw2bids prune {cohort} --source short-run" in script
+    assert "--anat-keep sub-s03=ses-13 --anat-acquisition SagMPRAGE" in script
+    assert f'datalad save -d {cohort} \\\n    -m "network_fmri: prune excluded scans' in script
+
+
+def test_prune_skipped_for_excluded_cohort(tmp_path, monkeypatch):
+    """No select stage for `excluded` means no lockfile, so nothing to prune from."""
+    rec = _SubmitRecorder()
+    monkeypatch.setattr(pipeline, "submit_sbatch", rec)
+
+    pipeline.main(["--cohort", "excluded", "--staging", str(tmp_path)])
+
+    assert "nf-prune-excluded" not in [c["stage"] for c in rec.calls]
+
+
 def test_select_default_resources(tmp_path):
     script = _render(select, ["--cohort", "validation", "--staging", str(tmp_path)])
     assert "--cpus-per-task=2" in script
@@ -338,6 +364,7 @@ def test_pipeline_chains_afterok_in_order(tmp_path, monkeypatch):
         "nf-fmap_link-discovery",
         "nf-datalad-discovery",
         "nf-select-discovery",
+        "nf-prune-discovery",
     ]
     # first stage has no dependency; each subsequent depends on the prior job id
     assert rec.calls[0]["dependency"] is None

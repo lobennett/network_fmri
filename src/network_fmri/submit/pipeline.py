@@ -3,7 +3,8 @@
 Chains the per-stage submit modules with ``sbatch --dependency=afterok:<prev>``
 so each stage only starts after the previous finishes successfully:
 
-    curate -> export(array) -> merge -> trim(array) -> events -> fmap_link -> datalad
+    curate -> export(array) -> merge -> trim(array) -> events -> fmap_link
+      -> datalad -> select -> prune
 
 ``events`` is skipped for the ``excluded`` cohort (no reconciliation manifest).
 Each stage is rendered by its own submit module (same resources/template as
@@ -15,7 +16,9 @@ from __future__ import annotations
 import argparse
 import sys
 
-from network_fmri.submit import _common, curate, datalad, events, export, fmap_link, merge, select, trim
+from network_fmri.submit import (
+    _common, curate, datalad, events, export, fmap_link, merge, prune, select, trim,
+)
 from network_fmri.submit._slurm import parse_job_id, submit_sbatch
 
 # Full ordered DAG. Each entry is (stage-name, submit-module, is-array).
@@ -30,12 +33,20 @@ _STAGES = [
     ("fmap_link", fmap_link, False),
     ("datalad", datalad, False),
     ("select", select, False),
+    # prune runs LAST: it reads the lockfile `select` compiles, and it must not be
+    # followed by a re-compile (the generators scan the tree, so a recompile after
+    # deletion would report zero exclusions and erase the record). Running after
+    # `datalad` also means the as-acquired tree is already committed, so every
+    # removal stays recoverable from history.
+    ("prune", prune, False),
 ]
 
 # Cohort-gated stages: dropped when the cohort isn't in the stage's cohort set.
 _COHORT_GATED = {
     "events": _common.EVENTS_COHORTS,
     "select": _common.SELECT_COHORTS,
+    # prune consumes select's lockfile, so it only runs where select does.
+    "prune": _common.SELECT_COHORTS,
 }
 
 

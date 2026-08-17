@@ -36,6 +36,7 @@ from pathlib import Path
 
 from network_fmri import curation, datalad_ds, session_map
 from network_fmri.b0link import link_b0_fields
+from network_fmri.prune import apply_prune, plan_prune
 from network_fmri.trim import trim_bold_directory
 
 _HEURISTIC = Path(__file__).resolve().parent / "heuristic.py"
@@ -305,6 +306,58 @@ def _fmap_link_main(argv):
     return 0
 
 
+def _prune_main(argv):
+    """Delete excluded scans from a staged tree, then renumber survivors from run-1.
+
+    Reads the compiled lockfile for the reasons (never invents an exclusion), writes
+    the old->new mapping to code/pruned.tsv, and stamps each renumbered scan's
+    sidecar with the run label it was acquired under. Idempotent. Runs AFTER
+    `datalad` so the as-acquired tree is committed first and the removals stay
+    recoverable from history.
+    """
+    import json
+
+    ap = argparse.ArgumentParser(
+        prog="fw2bids prune",
+        description="Physically remove excluded scans and renumber the survivors.",
+    )
+    ap.add_argument("bids_dir", help="staged BIDS cohort directory to prune in place")
+    ap.add_argument("--lockfile", default=None,
+                    help="compiled lockfile (default: <bids_dir>/code/exclusions_lock.json)")
+    ap.add_argument("--source", action="append", default=None,
+                    help="exclusion source to prune (repeatable; default: short-run)")
+    ap.add_argument("--anat-keep", action="append", default=None, metavar="SUB=SES",
+                    help="anat-QC-selected session for a subject, e.g. sub-s03=ses-13 "
+                         "(repeatable); every other T1w of that subject is removed")
+    ap.add_argument("--anat-acquisition", default=None,
+                    help="anat acquisition label --anat-keep applies to, e.g. SagMPRAGE")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="print the plan without touching the tree")
+    args = ap.parse_args(argv)
+
+    lockfile = args.lockfile or f"{args.bids_dir}/code/exclusions_lock.json"
+    data = json.loads(open(lockfile).read())
+    exclusions = data["exclusions"] if isinstance(data, dict) else data
+    anat_keep = dict(kv.split("=", 1) for kv in (args.anat_keep or [])) or None
+
+    plan = plan_prune(
+        args.bids_dir, exclusions,
+        prune_sources=tuple(args.source or ("short-run",)),
+        anat_keep=anat_keep, anat_acquisition=args.anat_acquisition,
+    )
+    for path in plan.deletions:
+        print(f"delete {path.relative_to(plan.bids_dir)}")
+    for old, new in plan.renames:
+        print(f"rename {old.relative_to(plan.bids_dir)} -> {new.name}")
+    if args.dry_run:
+        print(f"[prune] DRY RUN: would delete {len(plan.deletions)}, "
+              f"rename {len(plan.renames)}")
+        return 0
+    summary = apply_prune(plan)
+    print(f"[prune] deleted={summary['deleted']} renamed={summary['renamed']}")
+    return 0
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     # Backward-compatible dispatch: a bare cohort is the implicit `curate` path
@@ -318,6 +371,8 @@ def main(argv=None):
         return _trim_main(argv[1:])
     if argv and argv[0] == "fmap-link":
         return _fmap_link_main(argv[1:])
+    if argv and argv[0] == "prune":
+        return _prune_main(argv[1:])
     if argv and argv[0] == "submit":
         from network_fmri.submit import main as _submit_main
 

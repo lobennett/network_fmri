@@ -1,0 +1,36 @@
+#!/bin/bash
+#SBATCH -J {job_name}
+#SBATCH --cpus-per-task={nthreads}
+#SBATCH --mem={mem_gb}G
+#SBATCH --time={time}
+#SBATCH -p {partition}
+#SBATCH -o {log_dir}/%x-%j.out
+#SBATCH -e {log_dir}/%x-%j.err
+{mail_line}
+
+set -euo pipefail
+
+{env_exports}
+
+# The `prune` stage makes the tree match what actually gets preprocessed: excluded
+# scans are DELETED and the surviving runs of each task renumbered from run-1, so the
+# BIDS tree maps 1:1 onto the fMRIPrep derivatives with no bids-filter-file anywhere.
+# A filter dict can't express a per-scan quality call (no per-task run selectivity);
+# deleting the file can.
+#
+# Provenance: reasons come from code/exclusions_lock.json (this never invents an
+# exclusion), the old->new mapping lands in code/pruned.tsv, each renumbered scan's
+# sidecar records the run label it was acquired under, and because this runs AFTER
+# `datalad` the as-acquired tree is already committed — the removed content stays
+# recoverable from history. Do NOT run `git annex dropunused` on these trees.
+#
+# Idempotent: a second run detects prior work from the OriginalRun sidecar stamp, so a
+# renumbered survivor can't be mistaken for the excluded scan that held its run label.
+module load system git-annex 2>/dev/null || true
+
+{run_prefix} fw2bids prune {cohort_dir} {prune_flags}
+
+# Commit the deletions + renames. ``-d`` pins the dataset to the cohort tree: this
+# sbatch runs from its submit CWD, so a bare `datalad save` would target the wrong repo.
+{run_prefix} datalad save -d {cohort_dir} \
+    -m "network_fmri: prune excluded scans + renumber survivors"
