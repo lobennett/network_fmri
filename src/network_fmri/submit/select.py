@@ -82,6 +82,27 @@ def _bids_filter_block(args: argparse.Namespace, cohort_dir: str) -> str:
             f"    {task_args} \\\n"
             f"    --out {cohort_dir}/code/bids-filter_{name}.json"
         )
+        if not pcfg.get("per_session"):
+            continue
+        # Per-(sub,ses) filters for a pipeline that fans out that way (BABS runs
+        # one job per subject-session). The coarse filter above can't express a
+        # per-scan quality call, and a truncated run that crashes the app fails
+        # the whole subject-session job — so drop it from that session's filter.
+        # Reads the lockfile, hence it must follow `network-qa compile`.
+        src_args = " ".join(
+            f"--exclude-source {s}"
+            for s in pcfg.get("exclude_sources", ["short-run"])
+        )
+        lines.append(
+            f"{{run_prefix}} network-qa render bids-filter-per-session \\\n"
+            f"    --anat-acquisition {anat} \\\n"
+            f"    {task_args} \\\n"
+            f"    --lockfile {cohort_dir}/code/exclusions_lock.json \\\n"
+            f"    --bids-dir {cohort_dir} \\\n"
+            f"    --pipeline {name} \\\n"
+            f"    {src_args} \\\n"
+            f"    --out-dir {cohort_dir}/code"
+        )
     return "\n\n".join(lines)
 
 

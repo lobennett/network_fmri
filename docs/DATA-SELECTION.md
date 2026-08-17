@@ -83,6 +83,37 @@ Because the lockfile, `scans.tsv`, and `.bidsignore` are all derived from the on
 compiled exclusion set, they stay consistent by construction — one compile, three
 renders.
 
+### Coarse vs per-session filters
+
+The coarse filter can't express a *per-scan* quality call: an excluded scan's task
+stays in the task list, so the app still sees it. That's tolerable when the app
+runs once per cohort, but not under BABS — it fans out **one job per
+subject-session**, and a truncated run that crashes fMRIPrep fails that whole job.
+
+So a pipeline can set `"per_session": true` in `config/selection.json`, and `select`
+additionally renders `code/bids-filter_<pipeline>_<subid>_<sesid>.json` per
+subject-session (`network-qa render bids-filter-per-session`). The name is
+reconstructible inside a babs participant job from its `${subid}`/`${sesid}` shell
+variables, so each job points `--bids-filter-file` at its own file. Three rules:
+
+- **A task is dropped from a session only when every run of it in that session is
+  excluded.** A filter dict has no per-task run selectivity, so dropping a task
+  with a surviving sibling run would discard good data. Those stay selected and are
+  printed as unexpressed exclusions — still enforced at lev1 from the lockfile. On
+  discovery: 5 task-drops across 4 sessions, 2 unexpressible (s10/ses-01 goNogo,
+  s29/ses-12 directedForgettingWFlanker — each has a good `run-2`).
+- **`exclude_sources` decides what withholds a scan from *preprocessing*.** Default
+  `short-run` only: a truncated 4-D file can crash the app, whereas `behavioral-qc`
+  means the events logfile is defective and the BOLD is fine — that's a lev1 call.
+- **Anat is not session-scoped.** These filters supersede the one babs generates
+  itself (babs emits its `--bids-filter-file` before the args from
+  `bids_app_args`, so the later one wins), and babs session-scopes `t1w`/`t2w`/
+  `flair`/`roi`. Only **7 of 61** discovery sessions contain a SagMPRAGE T1w — anat
+  is acquired sparsely — so session-scoping it would starve 54/61 jobs of an anat.
+
+fMRIPrep opts in; **MRIQC does not** — a QC tool should measure every acquired run,
+including the truncated ones.
+
 ### Two passes (important)
 
 The exclusion generators split by whether they need fMRIPrep / lev1 outputs:

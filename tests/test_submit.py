@@ -182,6 +182,31 @@ def test_select_render_compiles_and_renders_channels(tmp_path):
     assert f"--out {cohort}/code/bids-filter_mriqc.json" in script
 
 
+def test_select_renders_per_session_filters_when_pipeline_opts_in(tmp_path):
+    """A pipeline with `per_session: true` in selection.json also gets one filter
+    file per subject-session. fMRIPrep needs them: the coarse filter can't drop a
+    single bad run, and under BABS a truncated run failing takes its whole
+    subject-session job down."""
+    script = _render(select, ["--cohort", "discovery", "--staging", str(tmp_path)])
+    cohort = f"{tmp_path}/discovery"
+    assert "network-qa render bids-filter-per-session" in script
+    assert f"--lockfile {cohort}/code/exclusions_lock.json" in script
+    assert "--pipeline fmriprep" in script
+    assert f"--out-dir {cohort}/code" in script
+    # short-run only: behavioral-qc means bad events, not bad BOLD (a lev1 call)
+    assert "--exclude-source short-run" in script
+    # mriqc does NOT opt in -- it should measure every acquired run
+    assert "--pipeline mriqc" not in script
+
+
+def test_select_per_session_runs_after_the_lockfile_is_compiled(tmp_path):
+    """Ordering matters: the per-session render reads the lockfile."""
+    script = _render(select, ["--cohort", "discovery", "--staging", str(tmp_path)])
+    assert script.index("network-qa compile") < script.index(
+        "network-qa render bids-filter-per-session"
+    )
+
+
 def test_select_default_resources(tmp_path):
     script = _render(select, ["--cohort", "validation", "--staging", str(tmp_path)])
     assert "--cpus-per-task=2" in script
