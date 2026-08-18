@@ -7,7 +7,6 @@ Sherlock's module (8.x) is below the >= 10.20230126 datalad requires.
 
 from __future__ import annotations
 
-import argparse
 import os
 import shutil
 import subprocess

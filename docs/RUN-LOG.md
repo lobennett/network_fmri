@@ -40,7 +40,7 @@ Sidecars were spot-checked: `Units: Hz` present on fieldmaps, confirming
 |---|---|
 | discovery | `rc=0`, BIDS compatible — 2065 files / 98.5 GB |
 | excluded | `rc=16` — 3 invalid sidecars ([SCAN-NOTES.md](SCAN-NOTES.md)) |
-| validation | pending merge |
+| validation | pending (merge + re-import in flight) |
 
 This run predated the `datalad run` wrapping, so its exports carry no provenance
 records. It was moved to `$SCRATCH/network_fmri_pre-provenance` and kept as a
