@@ -251,7 +251,7 @@ def behavior_clean(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="network_fmri behavior-clean")
     p.add_argument("--cohort", required=True, choices=list(COHORTS))
     p.add_argument("--staging", default=DEFAULT_STAGING)
-    p.add_argument("--out", default="sourcedata/behavioral")
+    p.add_argument("--out", default="sourcedata")
     args = p.parse_args(argv)
 
     tree = _cohort_dataset(args.staging, args.cohort)

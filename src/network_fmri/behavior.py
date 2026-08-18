@@ -254,7 +254,7 @@ def resolve(bids_root: Path, subjects: list[str]) -> tuple[list[dict], collectio
                 stats["multiple_behavior_files"] += 1
             rows.append(dict(subject=sub, beh_session=ses, task=task, bids_session=dest_ses,
                              run=run, status=status, src=files[0],
-                             dest=f"sub-{sub}/ses-{dest_ses}/"
+                             dest=f"sub-{sub}/ses-{dest_ses}/beh/"
                                   f"sub-{sub}_ses-{dest_ses}_task-{task}_run-{run}_beh.csv"))
     return rows, stats
 
@@ -273,7 +273,7 @@ def clean(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="network_fmri behavior-clean-run")
     p.add_argument("--cohort", required=True)
     p.add_argument("--bids-dir", required=True)
-    p.add_argument("--out", default="sourcedata/behavioral")
+    p.add_argument("--out", default="sourcedata")
     args = p.parse_args(argv)
 
     bids_root = Path(args.bids_dir)

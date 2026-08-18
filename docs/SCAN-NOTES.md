@@ -176,7 +176,7 @@ T1w session).
 
 ## Behavioral run assignment (discovery)
 
-`sourcedata/behavioral/` is canonical: one CSV per BOLD run. No mapping table back to
+`sourcedata/<sub>/<ses>/beh/` is canonical: one CSV per BOLD run. No mapping table back to
 the raw tree is kept, since that tree may be archived. The decisions that are not
 recoverable from the result:
 
