@@ -56,6 +56,29 @@ If a Flywheel admin ever moves those five, `SUBJECT_ALIASES`, `ReplaceSubject`,
 `FWBIDS_FORCE_SUBJECT`, `relevant_labels()` and `jobs()` can all be deleted — about
 70 lines that exist only to compensate.
 
+## Trimming shifts the BOLD clock by 10.43 s
+
+`trim` removes the first 7 volumes of every BOLD. TR is 1.49 s, so **every trimmed
+run starts 10.43 s later than the scanner did**.
+
+Nothing in this repository adjusts event timing. The raw behavioral files carry no
+such adjustment either, so **`events.tsv` onsets must be shifted by −10.43 s**
+(equivalently, expressed relative to the trimmed first volume). That is
+`network_events`' responsibility, not this repo's.
+
+This fails silently: a 10.43 s offset produces no BIDS validation error and no
+obvious artifact, only wrong first-level models. Confirm the convention before
+writing any `events.tsv`, and re-check it if `N_DUMMY` or TR ever changes.
+
+```
+N_DUMMY = 7        (network_fmri.trim)
+TR      = 1.49 s   (sidecar RepetitionTime)
+shift   = 10.43 s
+```
+
+Trimmed files are marked with `NumberOfVolumesDiscardedByUser: 7`, which is how a
+consumer can tell a trimmed run from an untrimmed one.
+
 ## Known data defect
 
 `sub-s1165/ses-02` `task-directedForgetting` echoes 1–3 carry `SoftwareVersions` as

@@ -39,6 +39,15 @@ network_fmri merge --cohort discovery
 
 # 4. official BIDS validator, pulled as a container on first use
 network_fmri validate --cohort discovery -- --ignoreWarnings
+
+# 5. global-signal QA before trimming; the marker shows where the trim will cut
+network_fmri global-signal --cohort discovery --label pre-trim --tr-marker 7
+
+# 6. remove 7 dummy volumes from every BOLD, in place
+network_fmri trim --cohort discovery --jobs 16
+
+# 7. the same QA on the trimmed data, for comparison
+network_fmri global-signal --cohort discovery --label post-trim
 ```
 
 Step 1 is a plain command — a dry run writes nothing, so there is nothing to
@@ -62,6 +71,25 @@ git -C $SCRATCH/network_fmri/discovery/bids log -1 --format=%B   # cmd, exit, ou
 
 Cohorts are `discovery` (5 subjects), `validation` (41), `excluded` (11). Output
 lands under `$SCRATCH/network_fmri/<cohort>/`.
+
+Steps 5-7 write into `derivatives/global_signal/<label>/` and are each recorded the
+same way. Chain them so a failure cannot trim data you have no baseline for:
+
+```bash
+NF=$SCRATCH/venvs/network_fmri/bin/network_fmri; L=$SCRATCH/network_fmri/logs/discovery
+GS1=$(sbatch -J nf-gs-pre -p russpold,normal -c 2 --mem=8G -t 06:00:00 \
+  -o $L/gs-pre-%j.out -e $L/gs-pre-%j.err \
+  --wrap "$NF global-signal --cohort discovery --label pre-trim --tr-marker 7" | grep -oP '\d+$')
+TRIM=$(sbatch -J nf-trim -p russpold,normal -c 16 --mem=32G -t 06:00:00 \
+  --dependency=afterok:$GS1 -o $L/trim-%j.out -e $L/trim-%j.err \
+  --wrap "$NF trim --cohort discovery --jobs 16" | grep -oP '\d+$')
+sbatch -J nf-gs-post -p russpold,normal -c 2 --mem=8G -t 06:00:00 \
+  --dependency=afterok:$TRIM -o $L/gs-post-%j.out -e $L/gs-post-%j.err \
+  --wrap "$NF global-signal --cohort discovery --label post-trim"
+```
+
+Trim is per-file parallel, so give it cores. Going wider than one node is not
+possible: parallel array tasks would contend on the dataset's git index.
 
 Steps 2 and 3 take hours at full scale. Step 2 submits itself; step 3 does not, so
 submit it directly:
@@ -106,6 +134,7 @@ src/network_fmri/
 ├── acquisitions.py   task rule, allowlist, skip lists
 ├── cohorts.py        cohort rosters
 ├── validate.py       BIDS validator, via container
+├── trim.py           drop dummy volumes in place, stamp the sidecar
 ├── dataset.py        DataLad plumbing: git-annex, create, recorded runs
 ├── container.py      pull-and-run Apptainer images, cached
 └── template.sbatch   per-subject Slurm array

@@ -18,6 +18,7 @@ from pathlib import Path
 
 from network_fmri.cohorts import COHORTS, roster
 from network_fmri.curate import HEURISTIC
+from network_fmri.trim import N_DUMMY
 
 TEMPLATE = Path(__file__).parent / "template.sbatch"
 # Not bids_staging: that holds the previous pipeline's output, our baseline.
@@ -30,6 +31,8 @@ _USAGE = """usage:
   network_fmri import-subject [options]        curate+export one subject via datalad run
   network_fmri merge --cohort C [options]      rsync per-subject parts into one tree
   network_fmri validate --cohort C [options]   run the BIDS validator on the merged tree
+  network_fmri global-signal --cohort C --label L   global-signal QA -> derivatives/
+  network_fmri trim --cohort C [options]       trim dummy volumes in place (recorded)
 """
 
 
@@ -140,6 +143,74 @@ def import_subject(argv: list[str]) -> int:
     return 0
 
 
+def _cohort_dataset(staging: str, cohort: str) -> Path:
+    tree = Path(staging) / cohort / "bids"
+    if not (tree / ".datalad").is_dir():
+        raise SystemExit(f"{tree} is not a DataLad dataset (run `network_fmri merge` first)")
+    return tree
+
+
+def global_signal(argv: list[str]) -> int:
+    """Record a global-signal QA pass into derivatives/global_signal/<label>."""
+    from network_fmri import dataset
+
+    p = argparse.ArgumentParser(prog="network_fmri global-signal")
+    p.add_argument("--cohort", required=True, choices=list(COHORTS))
+    p.add_argument("--staging", default=DEFAULT_STAGING)
+    p.add_argument("--label", required=True, help="e.g. pre-trim, post-trim")
+    p.add_argument("--tr-marker", type=int, default=None,
+                   help="draw a marker at this volume (e.g. 7 to show where trim cuts)")
+    args = p.parse_args(argv)
+
+    tree = _cohort_dataset(args.staging, args.cohort)
+    out = f"derivatives/global_signal/{args.label}"
+    cmd = [
+        str(Path(sys.executable).parent / "nf-global-signal"),
+        "--bids-dir", ".",
+        "--out-tsv", f"{out}/gs_metrics.tsv",
+        "--out-pdf", f"{out}/gs_traces.pdf",
+    ]
+    if args.tr_marker is not None:
+        cmd += ["--tr-marker", str(args.tr_marker)]
+
+    env = dataset.datalad_env()
+    (tree / out).mkdir(parents=True, exist_ok=True)
+    dataset.run_recorded(
+        tree, cmd,
+        f"network_fmri@{dataset.code_version()}: global signal ({args.label}) {args.cohort}",
+        outputs=[out], env=env,
+    )
+    return 0
+
+
+def trim(argv: list[str]) -> int:
+    """Record an in-place trim of the cohort's BOLD volumes.
+
+    Outputs are not declared: `datalad run` unlocks declared outputs, which for
+    annexed NIfTIs means copying ~100 GB out of the annex. Trimming replaces each
+    file by rename instead, so the default save-everything behaviour is enough.
+    """
+    from network_fmri import dataset
+
+    p = argparse.ArgumentParser(prog="network_fmri trim")
+    p.add_argument("--cohort", required=True, choices=list(COHORTS))
+    p.add_argument("--staging", default=DEFAULT_STAGING)
+    p.add_argument("--jobs", type=int, default=4)
+    args = p.parse_args(argv)
+
+    tree = _cohort_dataset(args.staging, args.cohort)
+    env = dataset.datalad_env()
+    dataset.run_recorded(
+        tree,
+        [str(Path(sys.executable).parent / "network_fmri"), "trim-bold",
+         "--bids-dir", ".", "--jobs", str(args.jobs)],
+        f"network_fmri@{dataset.code_version()}: trim {N_DUMMY} dummy volumes "
+        f"from {args.cohort}",
+        outputs=[], env=env,
+    )
+    return 0
+
+
 def merge(argv: list[str]) -> int:
     """rsync per-subject exports into one BIDS tree, recorded with ``datalad run``.
 
@@ -190,6 +261,14 @@ def main(argv: list[str] | None = None) -> int:
         return import_subject(argv[1:])
     if argv[:1] == ["merge"]:
         return merge(argv[1:])
+    if argv[:1] == ["global-signal"]:
+        return global_signal(argv[1:])
+    if argv[:1] == ["trim"]:
+        return trim(argv[1:])
+    if argv[:1] == ["trim-bold"]:
+        from network_fmri.trim import main as trim_main
+
+        return trim_main(argv[1:])
     if argv[:1] == ["validate"]:
         from network_fmri.validate import main as validate_main
 

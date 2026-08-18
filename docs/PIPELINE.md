@@ -54,6 +54,42 @@ exported tree everything is replayable.
 BABS records its input dataset's id and commit, so pointing mechababs at
 `<cohort>/bids` continues the chain.
 
+## Trimming
+
+`trim` removes the first 7 volumes from every BOLD — **all three echoes**, 873 files
+for discovery — because fMRIPrep runs with `--dummy-scans 0`. The sidecar's
+`NumberOfVolumesDiscardedByUser` records the count and doubles as the idempotency
+check, so re-running is safe.
+
+Files are replaced in place by writing a temp file and renaming, which is why each
+one is independent and `--jobs` is safe. It also means `datalad run` needs no
+`--output`: declaring outputs would unlock them, copying ~100 GB out of the annex
+for no reason.
+
+**The untrimmed data stays recoverable without a copy in `derivatives/`.** The
+pre-trim commit holds the original annex keys, so any original comes back with:
+
+```bash
+git -C <cohort>/bids checkout <pre-trim-sha> -- path/to/_bold.nii.gz
+datalad get path/to/_bold.nii.gz
+```
+
+That holds only while the old annex objects are retained. A `datalad drop` of
+unreferenced content would make the originals unrecoverable unless a sibling has
+them — decide that before any cleanup pass.
+
+## Global-signal QA
+
+`global-signal --label <pre-trim|post-trim>` runs `nf-global-signal` from the pinned
+`global_signal_plots` and writes `gs_metrics.tsv` plus `gs_traces.pdf` under
+`derivatives/global_signal/<label>/`. It reads **echo-2 only** (291 files, 30 GB for
+discovery) — that is the tool's default and one echo suffices for a global-signal
+trace, so it does not mirror trim's coverage.
+
+`--tr-marker 7` on the pre-trim pass draws a line where the trim will cut, making
+the two PDFs directly comparable. The tool is a pure producer: no thresholds, no
+exclusion decisions. Those belong to `network_qa`, which consumes `gs_metrics.tsv`.
+
 ## Layout
 
 ```
@@ -62,6 +98,7 @@ $SCRATCH/network_fmri/
 └── <cohort>/
     ├── parts/<subject>/     one dataset per array task; export lands in bids/
     └── bids/                cohort dataset, merged from the parts
+        └── derivatives/global_signal/{pre,post}-trim/
 ```
 
 Logs sit outside the BIDS tree because sbatch `.out`/`.err` inside a dataset trip

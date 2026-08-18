@@ -9,13 +9,20 @@ dependencies = [
     # provisions git-annex; pip cannot ship the binary
     "datalad-installer>=1.1",
     "fw-heudiconv",
+    "global-signal-plots[plot]",
 ]
 
 [project.scripts]
 network_fmri = "network_fmri.cli:main"
 
+[tool.uv]
+# Pillow 12 ships no wheel for this host (glibc 2.17) and its sdist needs libjpeg
+# headers we do not have. matplotlib pulls it in for the PDF traces.
+constraint-dependencies = ["pillow<12"]
+
 [tool.uv.sources]
 fw-heudiconv = { git = "https://github.com/lobennett/fw-heudiconv.git", rev = "e7509a4" }
+global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "5d92c33" }
 
 [build-system]
 requires = ["hatchling"]
