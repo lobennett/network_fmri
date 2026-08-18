@@ -34,7 +34,7 @@ network_fmri curate --project r01network --subject s10
 network_fmri submit fw-heudiconv --cohort discovery --live \
   --partition russpold,normal --throttle 3
 
-# 3. per-subject parts -> one cohort dataset
+# 3. per-subject parts -> one cohort dataset (submit it; ~1 TB of rsync)
 network_fmri merge --cohort discovery
 
 # 4. official BIDS validator, pulled as a container on first use
@@ -63,7 +63,20 @@ git -C $SCRATCH/network_fmri/discovery/bids log -1 --format=%B   # cmd, exit, ou
 Cohorts are `discovery` (5 subjects), `validation` (41), `excluded` (11). Output
 lands under `$SCRATCH/network_fmri/<cohort>/`.
 
-Steps 2 and 3 take hours at full scale — submit them, do not run them inline.
+Steps 2 and 3 take hours at full scale. Step 2 submits itself; step 3 does not, so
+submit it directly:
+
+```bash
+NF=$SCRATCH/venvs/network_fmri/bin/network_fmri
+for c in discovery excluded validation; do
+  sbatch -J nf-merge-$c -p russpold,normal -c 2 --mem=8G -t 12:00:00 \
+    -o $SCRATCH/network_fmri/logs/$c/merge-%j.out \
+    -e $SCRATCH/network_fmri/logs/$c/merge-%j.err \
+    --wrap "$NF merge --cohort $c"
+done
+```
+
+`validate` is quick enough to run on an interactive node.
 
 `--live` writes to the **shared** Flywheel project; snapshot it first if you have
 changed the heuristic.
