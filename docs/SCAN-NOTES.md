@@ -149,6 +149,31 @@ clean-underscore    6   sub-s29_ses_11_task-directed_forgetting_with_flanker_des
 `(N)` suffixes are browser-download counters, not run numbers. Out-of-scanner practice
 data lives in a `practice/` subdirectory and is excluded.
 
+## Split scanner visits (fieldmap stranded)
+
+Flywheel split three single visits into two sessions each, leaving the fieldmap alone
+in a container with no functional runs. The fieldmap was acquired ~1.5 min before the
+first BOLD run of its twin, so it belongs to those runs and those sessions currently
+have no fieldmap for SDC.
+
+| Subject | Stray session | Twin | fmap time | First BOLD |
+|---|---|---|---|---|
+| s1258 | `unknown_2` | `28338` | 02:34:09 | 02:35:47 |
+| s1391 | `unknown` | `28270` | 23:08:00 | 23:09:38 |
+| s1445 | `unknown_5` | `28037` | 00:09:41 | 00:11:27 |
+
+Moving the acquisition at source is refused — `403 Can't create ad hoc when lab
+edition is off` — so `sessions.SESSION_MERGES` gives the stray session its twin's
+number instead. The fieldmap then curates into the same BIDS session as the runs, and
+the empty container stops consuming a session number: each subject goes 13 -> 12
+sessions, which also makes their behavioral session numbering line up 1:1 with no
+shift.
+
+Same-day sessions that are **not** merged, because both members already have their own
+fieldmap and full batteries: s247 (ses-09/10), s1270 (ses-11/12), s321 (ses-01/02),
+s1326 (ses-03/04). `s03/ses-13` is anat+fmap only by design (the documented rescue
+T1w session).
+
 ## Behavioral run assignment (discovery)
 
 `sourcedata/behavioral/` is canonical: one CSV per BOLD run. No mapping table back to

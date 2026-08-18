@@ -24,6 +24,19 @@ SESSION_OVERRIDES: dict[str, dict[str, dict]] = {
 }
 
 
+# Flywheel split a single scanner visit into two sessions, leaving the fieldmap
+# stranded in a container of its own ~1.5 min before the first BOLD run. Moving the
+# acquisition at source is refused ("403 Can't create ad hoc when lab edition is
+# off"), so the stray session is curated under its twin's number instead: the
+# fieldmap lands with the runs it belongs to and the empty container stops consuming
+# a session number. {canonical: {stray_accession: twin_accession}}
+SESSION_MERGES = {
+    "s1258": {"unknown_2": "28338"},
+    "s1391": {"unknown": "28270"},
+    "s1445": {"unknown_5": "28037"},
+}
+
+
 def relevant_labels(canonical: str) -> set[str]:
     """Subject labels worth querying — avoids ``.sessions()`` on all ~60 subjects."""
     return (
@@ -69,21 +82,32 @@ def normalize(label: str) -> str:
     return re.sub("sub-", "", re.sub("ses-", "", label))
 
 
-def timeline(records: list[dict[str, Any]]) -> dict[str, str]:
+def timeline(records: list[dict[str, Any]], merges: dict[str, str] | None = None) -> dict[str, str]:
     """``{normalized label: "NN"}`` in timestamp order, 1-indexed and zero-padded.
 
     Bare, not ``ses-NN``: the engine adds the prefix. Duplicate labels raise rather
     than silently collapsing two sessions into one.
+
+    ``merges`` maps a stray accession to its twin; the stray inherits the twin's
+    number instead of consuming one of its own.
     """
+    merges = {normalize(k): normalize(v) for k, v in (merges or {}).items()}
     numbered: dict[str, str] = {}
-    for idx, rec in enumerate(sorted(records, key=lambda r: r["timestamp"]), start=1):
+    idx = 0
+    for rec in sorted(records, key=lambda r: r["timestamp"]):
         key = normalize(rec["label"])
+        if key in merges:
+            continue                       # inherits its twin's number below
         if key in numbered:
             raise ValueError(
                 f"duplicate session label {rec['label']!r} (normalizes to {key!r}); "
                 "relabel one of them on Flywheel"
             )
+        idx += 1
         numbered[key] = f"{idx:02d}"
+    for stray, twin in merges.items():
+        if twin in numbered:
+            numbered[stray] = numbered[twin]
     return numbered
 
 

@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     records = sessions.collect(project.subjects(), args.subject)
     if not records:
         raise SystemExit(f"no Flywheel sessions found for subject {args.subject!r}")
-    session_map = sessions.timeline(records)
+    session_map = sessions.timeline(records, sessions.SESSION_MERGES.get(args.subject))
     plan = sessions.jobs(records)
 
     # flush: engine logs to stderr unbuffered; buffered stdout would land last.
