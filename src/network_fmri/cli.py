@@ -31,6 +31,7 @@ _USAGE = """usage:
   network_fmri import-subject [options]        curate+export one subject via datalad run
   network_fmri merge --cohort C [options]      rsync per-subject parts into one tree
   network_fmri refresh-subject --cohort C --subject S   replace one subject after re-import
+  network_fmri behavior-inventory --cohort C   audit raw behavioral vs BIDS (read-only)
   network_fmri validate --cohort C [options]   run the BIDS validator on the merged tree
   network_fmri global-signal --cohort C --label L   global-signal QA -> derivatives/
   network_fmri trim --cohort C [options]       trim dummy volumes in place (recorded)
@@ -302,6 +303,10 @@ def main(argv: list[str] | None = None) -> int:
         from network_fmri.trim import main as trim_main
 
         return trim_main(argv[1:])
+    if argv[:1] == ["behavior-inventory"]:
+        from network_fmri.behavior import main as beh_main
+
+        return beh_main(argv[1:])
     if argv[:1] == ["validate"]:
         from network_fmri.validate import main as validate_main
 
