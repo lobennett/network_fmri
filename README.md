@@ -41,9 +41,24 @@ network_fmri merge --cohort discovery
 network_fmri validate --cohort discovery -- --ignoreWarnings
 ```
 
-Every writing step is recorded with `datalad run`; `merge` creates the cohort
-DataLad dataset as it goes, so there is no separate versioning step. git-annex is
-installed automatically on first use.
+Step 1 is a plain command — a dry run writes nothing, so there is nothing to
+record. Steps 2-3 are wrapped in `datalad run`: each array task calls
+`import-subject`, which creates `parts/<subject>` as a dataset and records the
+curate+export command in it; `merge` then creates the cohort dataset the same way,
+so there is no separate versioning step. git-annex is installed on first use.
+
+To redo one subject with its record intact:
+
+```bash
+network_fmri import-subject --cohort discovery --subject s10 --live
+```
+
+To read what was recorded:
+
+```bash
+git -C $SCRATCH/network_fmri/discovery/parts/s10 log --oneline
+git -C $SCRATCH/network_fmri/discovery/bids log -1 --format=%B   # cmd, exit, outputs
+```
 
 Cohorts are `discovery` (5 subjects), `validation` (41), `excluded` (11). Output
 lands under `$SCRATCH/network_fmri/<cohort>/`.

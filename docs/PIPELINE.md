@@ -36,6 +36,10 @@ outputs and the exit code. Run messages pin the pipeline commit
 (`network_fmri@<sha>`) because `datalad run` records a command string, not the
 `heuristic.py` behind it.
 
+`import-subject` is the wrapped entry point the array tasks call: it creates the
+subject's dataset and `datalad run`s the payload inside it. `curate` on its own is
+unwrapped, for dry runs.
+
 **One dataset per subject.** Many array tasks doing `datalad run` in a single
 dataset contend on `.git/index.lock` — the problem BABS exists to solve. Each
 `parts/<subject>` is its own dataset instead. The merge records the source dataset

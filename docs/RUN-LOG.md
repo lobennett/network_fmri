@@ -42,8 +42,17 @@ Sidecars were spot-checked: `Units: Hz` present on fieldmaps, confirming
 | excluded | `rc=16` — 3 invalid sidecars ([SCAN-NOTES.md](SCAN-NOTES.md)) |
 | validation | pending merge |
 
-### Not yet done
+This run predated the `datalad run` wrapping, so its exports carry no provenance
+records. It was moved to `$SCRATCH/network_fmri_pre-provenance` and kept as a
+verification baseline for the re-run below.
 
-This run predates the `datalad run` wrapping, so its exports carry no provenance
-records. `parts/<subject>` are plain directories, not datasets — recording the import
-would mean re-running it.
+## 2026-08-18 — re-run with provenance
+
+Same 57 subjects, now through `import-subject` so each `parts/<subject>` is a dataset
+whose history carries a `[DATALAD RUNCMD]` commit pinning `network_fmri@d3b2b1e`.
+
+One transient Flywheel HTTP 500 during curate (s76), recovered by retry. No hard
+failures.
+
+Verify against the baseline once merged — filenames should be identical to
+`$SCRATCH/network_fmri_pre-provenance/<cohort>/parts/<subject>/`.
