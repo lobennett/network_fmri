@@ -32,6 +32,7 @@ _USAGE = """usage:
   network_fmri merge --cohort C [options]      rsync per-subject parts into one tree
   network_fmri refresh-subject --cohort C --subject S   replace one subject after re-import
   network_fmri behavior-inventory --cohort C   audit raw behavioral vs BIDS (read-only)
+  network_fmri behavior-clean --cohort C       materialise the cleaned 1:1 behavioral tree
   network_fmri validate --cohort C [options]   run the BIDS validator on the merged tree
   network_fmri global-signal --cohort C --label L   global-signal QA -> derivatives/
   network_fmri trim --cohort C [options]       trim dummy volumes in place (recorded)
@@ -243,6 +244,29 @@ def refresh_subject(argv: list[str]) -> int:
     return 0
 
 
+def behavior_clean(argv: list[str]) -> int:
+    """Record the cleaned behavioral tree into the cohort dataset."""
+    from network_fmri import dataset
+
+    p = argparse.ArgumentParser(prog="network_fmri behavior-clean")
+    p.add_argument("--cohort", required=True, choices=list(COHORTS))
+    p.add_argument("--staging", default=DEFAULT_STAGING)
+    p.add_argument("--out", default="sourcedata/behavioral")
+    args = p.parse_args(argv)
+
+    tree = _cohort_dataset(args.staging, args.cohort)
+    env = dataset.datalad_env()
+    dataset.run_recorded(
+        tree,
+        [str(Path(sys.executable).parent / "network_fmri"), "behavior-clean-run",
+         "--cohort", args.cohort, "--bids-dir", ".", "--out", args.out],
+        f"network_fmri@{dataset.code_version()}: clean behavioral -> {args.out} "
+        f"({args.cohort})",
+        outputs=[args.out], env=env,
+    )
+    return 0
+
+
 def merge(argv: list[str]) -> int:
     """rsync per-subject exports into one BIDS tree, recorded with ``datalad run``.
 
@@ -303,6 +327,12 @@ def main(argv: list[str] | None = None) -> int:
         from network_fmri.trim import main as trim_main
 
         return trim_main(argv[1:])
+    if argv[:1] == ["behavior-clean-run"]:
+        from network_fmri.behavior import clean
+
+        return clean(argv[1:])
+    if argv[:1] == ["behavior-clean"]:
+        return behavior_clean(argv[1:])
     if argv[:1] == ["behavior-inventory"]:
         from network_fmri.behavior import main as beh_main
 

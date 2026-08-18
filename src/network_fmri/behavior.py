@@ -88,6 +88,43 @@ def behavior_files(subjects: list[str], root: Path = RAW_ROOT) -> tuple[dict, li
     return found, unparsed
 
 
+# Subjects whose behavioral sessions do not map 1:1 onto populated BIDS sessions.
+# s321's first visit was split across two scans (BIDS ses-01 {flanker,nBack,stopSignal}
+# + ses-02 {spatialTS} == behavioral ses-01), so it has one more populated session.
+SESSION_OVERRIDES = {
+    "s321": {"01": "01", "02": "03", "03": "04", "04": "05", "05": "06", "06": "07",
+             "07": "08", "08": "09", "09": "10", "10": "11", "11": "12", "12": "13"},
+}
+# Tasks in a split session that live in the *next* BIDS session.
+SPLIT_TASKS = {("s321", "01"): {"spatialTS": "02"}}
+
+
+def session_map(subject: str, beh_sessions: list[str], populated: list[str]) -> dict:
+    """behavioral session -> BIDS session.
+
+    Rule: the Nth behavioral session is the Nth BIDS session that contains functional
+    runs. A session number missing from the BIDS tree is one that produced no func
+    (anat-only or fully excluded), which shifts every later session by one.
+    """
+    if subject in SESSION_OVERRIDES:
+        return SESSION_OVERRIDES[subject]
+    if len(beh_sessions) != len(populated):
+        return {}                      # cannot align; caller flags it
+    return dict(zip(beh_sessions, populated))
+
+
+def pick_run(runs: list[int], volumes: dict, median: float) -> tuple[int, list[int]]:
+    """Which run the behavioral file belongs to, plus the aborted runs to drop.
+
+    With more than one run, the behavioral file belongs to the one closest to the
+    task's cohort median; the others are false starts.
+    """
+    if len(runs) == 1:
+        return runs[0], []
+    best = min(runs, key=lambda r: abs(volumes.get(r, 0) - median))
+    return best, [r for r in runs if r != best]
+
+
 def classify(runs: list[int], n_behavior: int, task: str) -> str:
     if task == "rest":
         return "rest_no_behavior_expected"
@@ -161,3 +198,102 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def resolve(bids_root: Path, subjects: list[str]) -> tuple[list[dict], collections.Counter]:
+    """Resolve every in-scanner behavioral file to a (session, task, run) in BIDS terms."""
+    import nibabel as nib
+
+    runs = bids_runs(bids_root, subjects)
+    beh, _ = behavior_files(subjects)
+
+    volumes, by_task = {}, collections.defaultdict(list)
+    for f in bids_root.glob("sub-*/ses-*/func/*echo-1_bold.nii.gz"):
+        m = re.match(r"sub-(\S+?)_ses-(\d+)_task-(\S+?)_run-(\d+)_", f.name)
+        if not m:
+            continue
+        n = nib.load(str(f)).shape[3]
+        volumes[(m.group(1), m.group(2), m.group(3), int(m.group(4)))] = n
+        if m.group(3) != "rest":
+            by_task[m.group(3)].append(n)
+    median = {t: sorted(v)[len(v) // 2] for t, v in by_task.items()}
+
+    populated = collections.defaultdict(list)
+    for (sub, ses, task) in runs:
+        if task != "rest" and ses not in populated[sub]:
+            populated[sub].append(ses)
+    for sub in populated:
+        populated[sub].sort()
+
+    rows, stats = [], collections.Counter()
+    for sub in subjects:
+        bses = sorted({s for (s, ses, t) in beh if s == sub for s in [ses]})
+        beh_sessions = sorted({ses for (s, ses, t) in beh if s == sub})
+        smap = session_map(sub, beh_sessions, populated.get(sub, []))
+        for (s, ses, task), files in sorted(beh.items()):
+            if s != sub:
+                continue
+            dest_ses = SPLIT_TASKS.get((sub, ses), {}).get(task) or smap.get(ses)
+            if not dest_ses:
+                stats["unaligned_session"] += 1
+                rows.append(dict(subject=sub, beh_session=ses, task=task, bids_session="",
+                                 run="", status="unaligned_session", src=files[0], dest=""))
+                continue
+            r = sorted(runs.get((sub, dest_ses, task), []))
+            if not r:
+                stats["no_matching_bold"] += 1
+                rows.append(dict(subject=sub, beh_session=ses, task=task,
+                                 bids_session=dest_ses, run="", status="no_matching_bold",
+                                 src=files[0], dest=""))
+                continue
+            vols = {n: volumes.get((sub, dest_ses, task, n), 0) for n in r}
+            run, dropped = pick_run(r, vols, median.get(task, 0))
+            status = "ok" if len(r) == 1 else f"picked_run-{run}_dropped{dropped}"
+            stats["resolved"] += 1
+            if len(files) > 1:
+                stats["multiple_behavior_files"] += 1
+            rows.append(dict(subject=sub, beh_session=ses, task=task, bids_session=dest_ses,
+                             run=run, status=status, src=files[0],
+                             dest=f"sub-{sub}/ses-{dest_ses}/"
+                                  f"sub-{sub}_ses-{dest_ses}_task-{task}_run-{run}_beh.csv"))
+    return rows, stats
+
+
+def clean(argv: list[str] | None = None) -> int:
+    """Materialise the cleaned 1:1 behavioral tree under the BIDS dataset."""
+    import shutil
+
+    from network_fmri.cohorts import roster
+
+    p = argparse.ArgumentParser(prog="network_fmri behavior-clean-run")
+    p.add_argument("--cohort", required=True)
+    p.add_argument("--bids-dir", required=True)
+    p.add_argument("--out", default="sourcedata/behavioral")
+    args = p.parse_args(argv)
+
+    bids_root = Path(args.bids_dir)
+    rows, stats = resolve(bids_root, roster(args.cohort))
+    out_root = bids_root / args.out
+    out_root.mkdir(parents=True, exist_ok=True)
+
+    copied = 0
+    for r in rows:
+        if not r["dest"]:
+            continue
+        src = RAW_ROOT / r["subject"] / f"ses-{int(r['beh_session'])}" / r["src"]
+        if not src.is_file():
+            src = RAW_ROOT / r["subject"] / f"ses-{r['beh_session']}" / r["src"]
+        dst = out_root / r["dest"]
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        copied += 1
+
+    with open(out_root / "mapping.tsv", "w", newline="") as fh:
+        w = csv.DictWriter(fh, delimiter="\t", fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+
+    print(f"[behavior-clean] copied {copied} files -> {out_root}")
+    for k, v in stats.most_common():
+        print(f"  {v:5d}  {k}")
+    return 0

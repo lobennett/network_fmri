@@ -90,6 +90,27 @@ trace, so it does not mirror trim's coverage.
 the two PDFs directly comparable. The tool is a pure producer: no thresholds, no
 exclusion decisions. Those belong to `network_qa`, which consumes `gs_metrics.tsv`.
 
+## Behavioral alignment
+
+`behavior-inventory` audits raw behavioral against the BIDS tree; `behavior-clean`
+materialises a 1:1 tree at `sourcedata/behavioral/` inside the cohort dataset,
+named `sub-X_ses-YY_task-Z_run-N_beh.csv`, plus a `mapping.tsv` recording every
+decision.
+
+Two things are resolved up front so downstream needs no reconciliation manifest:
+
+**Session alignment.** The Nth behavioral session is the Nth BIDS session that
+contains functional runs. Five validation subjects have a BIDS session number that
+produced no func (anat-only or fully excluded), which shifts every later session by
+one — s1445 ses-02, s1326 ses-03, s1391 ses-06, s1258 ses-07. Sequence alignment on
+task sets and session-number arithmetic agree independently on each. s321 is an
+override: its first visit was split across two scans, so BIDS ses-01+ses-02 together
+equal behavioral ses-01.
+
+**Run selection.** Where a session has more than one run of a task, the behavioral
+file belongs to the run closest to that task's cohort median volume count; the
+others are false starts.
+
 ## Layout
 
 ```
