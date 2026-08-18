@@ -79,6 +79,76 @@ shift   = 10.43 s
 Trimmed files are marked with `NumberOfVolumesDiscardedByUser: 7`, which is how a
 consumer can tell a trimmed run from an untrimmed one.
 
+## Crossed acquisition labels (s43 / ses-11) — fixed at source
+
+Session 22890 had two `stop_with_*` labels applied to the wrong scans:
+
+| Acq time | Volumes | Was labelled | Actually |
+|---|---|---|---|
+| 08:57:54 | 524 (73% of 718 median) | stopSignalWDirectedForgetting | correct, aborted |
+| 09:13:20 | 368 (99.5% of 370 median) | stopSignalWDirectedForgetting_1 | **stopSignalWFlanker**, complete |
+| 09:29:30 | 103 | stopSignalWFlanker | **stopSignalWDirectedForgetting**, aborted |
+
+The two labels were swapped on Flywheel on 2026-08-18 so a re-pull produces correct
+naming. Rollback record: `$SCRATCH/relabel-s43-ses11.json`.
+
+Both behavioral CSVs exist for this session, so nothing is ambiguous once the labels
+are right. **Any dataset exported before the fix still carries the wrong task names
+for this session and needs s43 re-imported.**
+
+## Auditing label vs DICOM SeriesDescription
+
+Comparing each run's BIDS task against its DICOM `SeriesDescription` across 2738 func
+runs found 6 disagreements. Only the s43 pair above was a real error. In the other
+five the **label is right and the DICOM field is stale** — the participant performed a
+different task than the protocol name, or the operator marked the corrected scan:
+
+| Case | Label | DICOM says | Why the label wins |
+|---|---|---|---|
+| s29 / ses-01 | spatialTS | cuedTS | already-documented deliberate relabel |
+| s1258 / ses-02 | spatialTS | cuedTS | only spatialTS behavioral exists; medians (335 vs 336) cannot discriminate |
+| s320 / ses-12 | stopSignalWFlanker | directedForgettingWCuedTS | 106% of flanker median vs 75%; sibling scan is marked `..._real_bold` |
+| s03 / ses-03 | nBack | goNogo | 96.5% of nBack median vs 127%; sibling scan is marked `actual_goNogo` |
+
+**Adjudication rule.** Volume count against the task's cohort median decides it. Where
+volumes agree with the label, the label stands. Where they contradict the label and
+match the DICOM task, the label is wrong. Operator hints like `_real_` and `actual_`
+mark the scan the operator considered correct.
+
+## Multi-run sessions and behavioral pairing (discovery)
+
+288 (subject, session, task) units: 221 pair 1:1, 60 are `rest` (no behavioral
+expected), 4 have no behavioral, 3 had two BOLD runs against one CSV.
+
+| Case | Resolution |
+|---|---|
+| s10 / ses-01 goNogo | run-1 = 38 vols (abort) → CSV pairs with run-2 |
+| s29 / ses-12 directedForgettingWFlanker | run-1 = 61 vols (abort) → CSV pairs with run-2 |
+| s43 / ses-11 | not ambiguous; crossed labels, see above |
+
+Behavioral absent entirely (searched `raw_cleaned`, all 7 `archive/` collections,
+`dropped_subjects`, `exclusions`, `qc`, `mTurk`):
+
+- s03 / ses-01 nBack
+- s19 / ses-02 goNogo
+- s29 / ses-02 goNogo
+- s19 / ses-11 directedForgettingWFlanker — only an already-processed
+  `iti_adjusted_events` TSV survives; treated as irrecoverable
+
+## Behavioral filename regimes
+
+Three coexist in `raw_cleaned`, and **none encodes a run index** — run assignment can
+never come from a filename:
+
+```
+raw               177   go_nogo_single_task_network__fmri_results (12).csv
+clean-hyphen       41   sub-s03_ses-1_task-go-nogo_desc-raw.csv
+clean-underscore    6   sub-s29_ses_11_task-directed_forgetting_with_flanker_desc_raw.csv
+```
+
+`(N)` suffixes are browser-download counters, not run numbers. Out-of-scanner practice
+data lives in a `practice/` subdirectory and is excluded.
+
 ## Known data defect
 
 `sub-s1165/ses-02` `task-directedForgetting` echoes 1–3 carry `SoftwareVersions` as
