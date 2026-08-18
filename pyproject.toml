@@ -1,0 +1,25 @@
+[project]
+name = "network_fmri"
+version = "0.1.0"
+description = "Submit fw-heudiconv Flywheel -> BIDS curation as Slurm jobs."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "datalad>=1.1",
+    # provisions git-annex; pip cannot ship the binary
+    "datalad-installer>=1.1",
+    "fw-heudiconv",
+]
+
+[project.scripts]
+network_fmri = "network_fmri.cli:main"
+
+[tool.uv.sources]
+fw-heudiconv = { git = "https://github.com/lobennett/fw-heudiconv.git", rev = "e7509a4" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/network_fmri"]
