@@ -260,7 +260,12 @@ def resolve(bids_root: Path, subjects: list[str]) -> tuple[list[dict], collectio
 
 
 def clean(argv: list[str] | None = None) -> int:
-    """Materialise the cleaned 1:1 behavioral tree under the BIDS dataset."""
+    """Materialise the cleaned 1:1 behavioral tree under the BIDS dataset.
+
+    The result is canonical: one CSV per BOLD run, named for the run it belongs to.
+    Raw behavioral files carry no trim adjustment, so consumers apply the onset shift
+    unconditionally.
+    """
     import shutil
 
     from network_fmri.cohorts import roster
@@ -288,12 +293,15 @@ def clean(argv: list[str] | None = None) -> int:
         shutil.copy2(src, dst)
         copied += 1
 
-    with open(out_root / "mapping.tsv", "w", newline="") as fh:
-        w = csv.DictWriter(fh, delimiter="\t", fieldnames=list(rows[0]))
-        w.writeheader()
-        w.writerows(rows)
-
+    # No mapping file is written: this tree becomes canonical, so a table of paths
+    # into the raw tree would go stale the moment that tree is archived. Decisions
+    # that are not recoverable from the result are logged here and in
+    # docs/SCAN-NOTES.md instead.
     print(f"[behavior-clean] copied {copied} files -> {out_root}")
     for k, v in stats.most_common():
         print(f"  {v:5d}  {k}")
+    for r in rows:
+        if r["status"] != "ok":
+            print(f"  DECISION {r['subject']} beh ses-{r['beh_session']} {r['task']} -> "
+                  f"ses-{r['bids_session'] or '--'} run-{r['run'] or '-'}  {r['status']}")
     return 0

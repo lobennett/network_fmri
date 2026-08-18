@@ -149,6 +149,23 @@ clean-underscore    6   sub-s29_ses_11_task-directed_forgetting_with_flanker_des
 `(N)` suffixes are browser-download counters, not run numbers. Out-of-scanner practice
 data lives in a `practice/` subdirectory and is excluded.
 
+## Behavioral run assignment (discovery)
+
+`sourcedata/behavioral/` is canonical: one CSV per BOLD run. No mapping table back to
+the raw tree is kept, since that tree may be archived. The decisions that are not
+recoverable from the result:
+
+| Subject | Session | Task | Paired with | Dropped as false start |
+|---|---|---|---|---|
+| s10 | ses-01 | goNogo | run-2 | run-1 (38 vols) |
+| s29 | ses-12 | directedForgettingWFlanker | run-2 | run-1 (61 vols) |
+| s43 | ses-11 | stopSignalWDirectedForgetting | run-1 (524 vols) | run-2 (103 vols) |
+
+All 224 discovery behavioral files resolve; the other 221 are unambiguous 1:1.
+
+Raw behavioral files carry **no** trim adjustment, so the -10.43 s onset shift is
+applied unconditionally downstream.
+
 ## Known data defect
 
 `sub-s1165/ses-02` `task-directedForgetting` echoes 1–3 carry `SoftwareVersions` as

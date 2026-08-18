@@ -94,8 +94,10 @@ exclusion decisions. Those belong to `network_qa`, which consumes `gs_metrics.ts
 
 `behavior-inventory` audits raw behavioral against the BIDS tree; `behavior-clean`
 materialises a 1:1 tree at `sourcedata/behavioral/` inside the cohort dataset,
-named `sub-X_ses-YY_task-Z_run-N_beh.csv`, plus a `mapping.tsv` recording every
-decision.
+named `sub-X_ses-YY_task-Z_run-N_beh.csv`. That tree is canonical, so no mapping
+table back to the raw tree is kept — it would go stale once the raw tree is archived.
+Decisions not recoverable from the result are in
+[SCAN-NOTES.md](SCAN-NOTES.md).
 
 Two things are resolved up front so downstream needs no reconciliation manifest:
 
