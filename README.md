@@ -8,7 +8,6 @@ submission; the fork does the Flywheel work.
 
 - [docs/PIPELINE.md](docs/PIPELINE.md) — how the stages fit together
 - [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md) — what is curated, skipped, or corrected
-- [docs/OPERATIONS.md](docs/OPERATIONS.md) — failure modes and their fixes
 - [docs/RUN-LOG.md](docs/RUN-LOG.md) — what has been run, and how it was verified
 
 ## Setup
@@ -52,8 +51,21 @@ lands under `$SCRATCH/network_fmri/<cohort>/`.
 Steps 2 and 3 take hours at full scale — submit them, do not run them inline.
 
 `--live` writes to the **shared** Flywheel project; snapshot it first if you have
-changed the heuristic. Keep `--throttle` low — see
-[docs/OPERATIONS.md](docs/OPERATIONS.md).
+changed the heuristic.
+
+Progress and failures:
+
+```bash
+squeue --me | grep nf-
+grep -rh 'failed after' $SCRATCH/network_fmri/logs/*/*.err
+```
+
+Resubmit failures with the same `--cohort` plus explicit subjects, so output paths
+stay cohort-scoped:
+
+```bash
+network_fmri submit fw-heudiconv --cohort validation --subject s180 s247 --live
+```
 
 ## Layout
 

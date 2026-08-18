@@ -46,7 +46,8 @@ def get_parser() -> argparse.ArgumentParser:
     p.add_argument("--cpus", type=int, default=2)
     p.add_argument("--mem-gb", type=int, default=8)
     p.add_argument("--time", default="04:00:00")
-    p.add_argument("--throttle", type=int, default=10,
+    # 3 concurrent: Flywheel returns sporadic HTTP 500s at 8.
+    p.add_argument("--throttle", type=int, default=3,
                    help="max concurrent array tasks (the %%K in --array=0-N%%K)")
     p.add_argument("--template", default=str(TEMPLATE))
     p.add_argument("--print", dest="print_only", action="store_true",
