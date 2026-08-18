@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -25,25 +26,36 @@ def git_annex_dir() -> Path:
 
 
 def ensure_git_annex(root: Path) -> Path:
-    """Bin directory holding a datalad-compatible git-annex, installing if absent."""
+    """Bin directory holding a datalad-compatible git-annex, installing if absent.
+
+    Installs to a per-process directory and renames into place, so concurrent array
+    tasks cannot interleave writes into a shared tree.
+    """
     bindir = root / "usr" / "bin"
     if (bindir / "git-annex").is_file():
         return bindir
 
     import certifi
 
-    print(f"installing git-annex into {root}", flush=True)
+    staging = root.with_name(f"{root.name}.{os.getpid()}")
+    print(f"installing git-annex into {staging}", flush=True)
     # uv's CPython ships no CA path, so datalad-installer's urllib calls fail TLS.
     env = dict(os.environ, SSL_CERT_FILE=certifi.where())
     rc = subprocess.run(
         [
             str(Path(sys.executable).parent / "datalad-installer"),
-            "git-annex", "-m", INSTALL_METHOD, "--install-dir", str(root),
+            "git-annex", "-m", INSTALL_METHOD, "--install-dir", str(staging),
         ],
         env=env,
     ).returncode
-    if rc != 0 or not (bindir / "git-annex").is_file():
-        raise SystemExit(f"could not install git-annex into {root} (rc={rc})")
+    if rc != 0 or not (staging / "usr" / "bin" / "git-annex").is_file():
+        raise SystemExit(f"could not install git-annex (rc={rc})")
+    try:
+        staging.rename(root)
+    except OSError:
+        shutil.rmtree(staging, ignore_errors=True)  # another task won the race
+    if not (bindir / "git-annex").is_file():
+        raise SystemExit(f"git-annex missing at {bindir} after install")
     return bindir
 
 
