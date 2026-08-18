@@ -1,10 +1,8 @@
-"""``network_fmri datalad`` — version a merged BIDS tree as a DataLad dataset.
+"""DataLad plumbing: provision git-annex, create datasets, record runs.
 
-Idempotent. ``text2git`` keeps JSON sidecars in git and NIfTIs in the annex.
-
-git-annex is provisioned by ``datalad-installer`` on first use: pip cannot ship the
-binary, and Sherlock's ``system/git-annex`` module (8.x) is below the >= 10.20230126
-that datalad requires.
+``text2git`` keeps JSON sidecars in git and NIfTIs in the annex. git-annex is
+installed by ``datalad-installer`` on first use — pip cannot ship the binary, and
+Sherlock's module (8.x) is below the >= 10.20230126 datalad requires.
 """
 
 from __future__ import annotations
@@ -49,51 +47,50 @@ def ensure_git_annex(root: Path) -> Path:
     return bindir
 
 
-def commands(tree: Path, message: str, jobs: int | None) -> list[list[str]]:
-    """datalad invocations needed; create is skipped if already a dataset."""
-    cmds = []
-    if not (tree / ".datalad").is_dir():
-        cmds.append(["create", "--force", "-c", "text2git", str(tree)])
-    save = ["save", "-d", str(tree), "-m", message]
-    if jobs:
-        save += ["-J", str(jobs)]
-    cmds.append(save)
-    return cmds
+def code_version() -> str:
+    """Short commit of this package's repo, for run records."""
+    repo = Path(__file__).resolve().parents[2]
+    out = subprocess.run(["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
+                         capture_output=True, text=True)
+    return out.stdout.strip() or "unknown"
 
 
-def get_parser() -> argparse.ArgumentParser:
-    from network_fmri.cli import DEFAULT_STAGING
-    from network_fmri.cohorts import COHORTS
-
-    p = argparse.ArgumentParser(prog="network_fmri datalad")
-    p.add_argument("--cohort", required=True, choices=list(COHORTS))
-    p.add_argument("--staging", default=DEFAULT_STAGING)
-    p.add_argument("--message", "-m", default=None)
-    p.add_argument("--jobs", "-J", type=int, default=None,
-                   help="parallel git-annex workers; use several at these sizes")
-    p.add_argument("--git-annex-dir", default=None,
-                   help=f"default: {git_annex_dir()}")
-    return p
+def subject_commit(dataset_path: Path) -> str:
+    """Short commit of a per-subject dataset, for the merge record."""
+    out = subprocess.run(["git", "-C", str(dataset_path), "rev-parse", "--short", "HEAD"],
+                         capture_output=True, text=True)
+    return out.stdout.strip() or "unknown"
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = get_parser().parse_args(argv)
-    tree = Path(args.staging) / args.cohort / "bids"
-    if not tree.is_dir():
-        raise SystemExit(f"no merged tree at {tree} (run `network_fmri merge` first)")
+def datalad_env() -> dict:
+    """Environment with a provisioned git-annex on PATH."""
+    bindir = ensure_git_annex(git_annex_dir())
+    return dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}")
 
-    bindir = ensure_git_annex(Path(args.git_annex_dir or git_annex_dir()))
-    env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}")
-    datalad = str(Path(sys.executable).parent / "datalad")
-    message = args.message or f"network_fmri: import {args.cohort} BIDS from Flywheel"
 
-    for cmd in commands(tree, message, args.jobs):
-        rc = subprocess.run([datalad, *cmd], env=env).returncode
-        if rc != 0:
-            raise SystemExit(f"datalad {cmd[0]} failed (rc={rc})")
-    print(f"[{args.cohort}] {tree} is a DataLad dataset", flush=True)
-    return 0
+def datalad(args: list[str], env: dict, cwd: Path | None = None) -> None:
+    exe = str(Path(sys.executable).parent / "datalad")
+    rc = subprocess.run([exe, *args], env=env, cwd=cwd).returncode
+    if rc != 0:
+        raise SystemExit(f"datalad {args[0]} failed (rc={rc})")
+
+
+def ensure_dataset(path: Path, env: dict) -> None:
+    """``datalad create`` unless ``path`` is already a dataset."""
+    if (path / ".datalad").is_dir():
+        return
+    path.mkdir(parents=True, exist_ok=True)
+    datalad(["create", "--force", "-c", "text2git", str(path)], env)
+
+
+def run_recorded(dataset: Path, cmd: list[str], message: str, outputs: list[str],
+                 env: dict) -> None:
+    """``datalad run`` the command inside ``dataset``, recording it in the history."""
+    args = ["run", "-d", str(dataset), "-m", message]
+    for out in outputs:
+        args += ["--output", out]
+    datalad([*args, "--", *cmd], env, cwd=dataset)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit("network_fmri.dataset provides plumbing; use the network_fmri CLI")

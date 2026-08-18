@@ -27,9 +27,9 @@ DEFAULT_PROJECT = "r01network"
 _USAGE = """usage:
   network_fmri submit fw-heudiconv [options]   render + sbatch a per-subject array
   network_fmri curate [options]                run one subject here (what a task does)
+  network_fmri import-subject [options]        curate+export one subject via datalad run
   network_fmri merge --cohort C [options]      rsync per-subject parts into one tree
   network_fmri validate --cohort C [options]   run the BIDS validator on the merged tree
-  network_fmri datalad --cohort C [options]    make the merged tree a DataLad dataset
 """
 
 
@@ -80,9 +80,9 @@ def render(args: argparse.Namespace) -> str:
         network_fmri=Path(sys.executable).parent / "network_fmri",
         project=args.project,
         heuristic=args.heuristic,
-        parts=Path(args.staging) / name / "parts",
+        cohort=name,
+        staging=args.staging,
         live=" --live" if args.live else "",
-        out=' --out "$OUT"' if args.live else "",
     )
 
 
@@ -98,8 +98,55 @@ def submit(argv: list[str]) -> int:
     return subprocess.run(["sbatch", f.name]).returncode
 
 
+def import_subject(argv: list[str]) -> int:
+    """Curate + export one subject inside its own dataset, via ``datalad run``.
+
+    A dataset per subject keeps 40+ array tasks from contending on one git index,
+    while still recording the command and outputs in history.
+    """
+    from network_fmri import dataset
+
+    p = argparse.ArgumentParser(prog="network_fmri import-subject")
+    p.add_argument("--project", default=DEFAULT_PROJECT)
+    p.add_argument("--cohort", required=True, choices=list(COHORTS))
+    p.add_argument("--subject", required=True)
+    p.add_argument("--staging", default=DEFAULT_STAGING)
+    p.add_argument("--heuristic", default=str(HEURISTIC))
+    p.add_argument("--live", action="store_true")
+    p.add_argument("--retries", type=int, default=3)
+    args = p.parse_args(argv)
+
+    ds = Path(args.staging) / args.cohort / "parts" / args.subject
+    env = dataset.datalad_env()
+    dataset.ensure_dataset(ds, env)
+
+    payload = [
+        str(Path(sys.executable).parent / "network_fmri"), "curate",
+        "--project", args.project, "--subject", args.subject,
+        "--heuristic", args.heuristic, "--retries", str(args.retries),
+    ]
+    if args.live:
+        # Relative to the dataset root, so the recorded command is portable.
+        payload += ["--live", "--out", "bids"]
+
+    dataset.run_recorded(
+        ds, payload,
+        f"network_fmri@{dataset.code_version()}: import {args.subject} "
+        f"({'live' if args.live else 'dry run'})",
+        outputs=["bids"] if args.live else [],
+        env=env,
+    )
+    return 0
+
+
 def merge(argv: list[str]) -> int:
-    """rsync per-subject export dirs into one BIDS tree per cohort. Idempotent."""
+    """rsync per-subject exports into one BIDS tree, recorded with ``datalad run``.
+
+    The parts datasets are outside the cohort dataset, so their commits go in the
+    run message rather than being pinned as ``--input``.
+    """
+    from network_fmri import dataset
+
     p = argparse.ArgumentParser(prog="network_fmri merge")
     p.add_argument("--cohort", required=True, choices=list(COHORTS))
     p.add_argument("--staging", default=DEFAULT_STAGING)
@@ -107,14 +154,25 @@ def merge(argv: list[str]) -> int:
 
     parts = Path(args.staging) / args.cohort / "parts"
     dest = Path(args.staging) / args.cohort / "bids"
-    sources = sorted(d for d in parts.glob("*") if d.is_dir())
+    sources = sorted(d for d in parts.glob("*/bids") if d.is_dir())
     if not sources:
-        raise SystemExit(f"no per-subject exports under {parts}")
-    dest.mkdir(parents=True, exist_ok=True)
-    for src in sources:
-        rc = subprocess.run(["rsync", "-a", f"{src}/", f"{dest}/"]).returncode
-        if rc != 0:
-            raise SystemExit(f"rsync failed for {src} (rc={rc})")
+        raise SystemExit(f"no per-subject exports under {parts}/*/bids")
+
+    env = dataset.datalad_env()
+    dataset.ensure_dataset(dest, env)
+    provenance = " ".join(
+        f"{s.parent.name}@{dataset.subject_commit(s.parent)}" for s in sources
+    )
+    # -L dereferences: the parts are datasets, so their NIfTIs are annex symlinks
+    # into a .git/annex this dataset does not have. Without it we commit dangling links.
+    script = "; ".join(f"rsync -aL {s}/ ." for s in sources)
+    dataset.run_recorded(
+        dest, ["bash", "-c", script],
+        f"network_fmri@{dataset.code_version()}: merge {args.cohort} "
+        f"({len(sources)} subjects) from {provenance}",
+        outputs=["."],
+        env=env,
+    )
     print(f"merged {len(sources)} subjects -> {dest}")
     return 0
 
@@ -127,16 +185,14 @@ def main(argv: list[str] | None = None) -> int:
         from network_fmri.curate import main as curate_main
 
         return curate_main(argv[1:])
+    if argv[:1] == ["import-subject"]:
+        return import_subject(argv[1:])
     if argv[:1] == ["merge"]:
         return merge(argv[1:])
     if argv[:1] == ["validate"]:
         from network_fmri.validate import main as validate_main
 
         return validate_main(argv[1:])
-    if argv[:1] == ["datalad"]:
-        from network_fmri.dataset import main as datalad_main
-
-        return datalad_main(argv[1:])
     sys.stderr.write(_USAGE)
     return 2
 

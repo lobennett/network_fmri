@@ -13,9 +13,7 @@ set -euo pipefail
 
 SUBJ="$(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" {subjects_file})"
 
-# Each task owns its output dir: fw-heudiconv-export rmtree's its root on a file
-# conflict, so a shared destination would let one task destroy another's work.
-OUT="{parts}/$SUBJ"
-
-{network_fmri} curate --project {project} --heuristic {heuristic} \
-  --subject "$SUBJ"{live}{out}
+# One dataset per subject: avoids 40+ tasks contending on a single git index, and
+# export writes into <dataset>/bids so its rmtree cannot touch .git.
+{network_fmri} import-subject --project {project} --cohort {cohort} \
+  --staging {staging} --heuristic {heuristic} --subject "$SUBJ"{live}

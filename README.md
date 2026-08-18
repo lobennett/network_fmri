@@ -35,20 +35,21 @@ network_fmri curate --project r01network --subject s10
 network_fmri submit fw-heudiconv --cohort discovery --live \
   --partition russpold,normal --throttle 3
 
-# 3. per-subject parts -> one tree per cohort
+# 3. per-subject parts -> one cohort dataset
 network_fmri merge --cohort discovery
 
 # 4. official BIDS validator, pulled as a container on first use
 network_fmri validate --cohort discovery -- --ignoreWarnings
-
-# 5. version it; git-annex is installed automatically on first use
-network_fmri datalad --cohort discovery --jobs 4
 ```
+
+Every writing step is recorded with `datalad run`; `merge` creates the cohort
+DataLad dataset as it goes, so there is no separate versioning step. git-annex is
+installed automatically on first use.
 
 Cohorts are `discovery` (5 subjects), `validation` (41), `excluded` (11). Output
 lands under `$SCRATCH/network_fmri/<cohort>/`.
 
-Steps 2, 3 and 5 take hours at full scale — submit them, don't run them inline.
+Steps 2 and 3 take hours at full scale — submit them, do not run them inline.
 
 `--live` writes to the **shared** Flywheel project; snapshot it first if you have
 changed the heuristic. Keep `--throttle` low — see
@@ -65,7 +66,7 @@ src/network_fmri/
 ├── acquisitions.py   task rule, allowlist, skip lists
 ├── cohorts.py        cohort rosters
 ├── validate.py       BIDS validator, via container
-├── dataset.py        DataLad create + save
+├── dataset.py        DataLad plumbing: git-annex, create, recorded runs
 ├── container.py      pull-and-run Apptainer images, cached
 └── template.sbatch   per-subject Slurm array
 ```
