@@ -107,7 +107,7 @@ def import_subject(argv: list[str]) -> int:
     A dataset per subject keeps 40+ array tasks from contending on one git index,
     while still recording the command and outputs in history.
     """
-    from network_fmri import dataset
+    from network_fmri import provenance
 
     p = argparse.ArgumentParser(prog="network_fmri import-subject")
     p.add_argument("--project", default=DEFAULT_PROJECT)
@@ -120,8 +120,8 @@ def import_subject(argv: list[str]) -> int:
     args = p.parse_args(argv)
 
     ds = Path(args.staging) / args.cohort / "parts" / args.subject
-    env = dataset.datalad_env()
-    dataset.ensure_dataset(ds, env)
+    env = provenance.datalad_env()
+    provenance.ensure_dataset(ds, env)
 
     payload = [
         str(Path(sys.executable).parent / "network_fmri"), "curate",
@@ -132,9 +132,9 @@ def import_subject(argv: list[str]) -> int:
         # Relative to the dataset root, so the recorded command is portable.
         payload += ["--live", "--out", "bids"]
 
-    dataset.run_recorded(
+    provenance.run_recorded(
         ds, payload,
-        f"network_fmri@{dataset.code_version()}: import {args.subject} "
+        f"network_fmri@{provenance.code_version()}: import {args.subject} "
         f"({'live' if args.live else 'dry run'})",
         outputs=["bids"] if args.live else [],
         env=env,
@@ -144,7 +144,7 @@ def import_subject(argv: list[str]) -> int:
 
 def global_signal(argv: list[str]) -> int:
     """Record a global-signal QA pass into derivatives/global_signal/<label>."""
-    from network_fmri import dataset
+    from network_fmri import provenance
 
     p = argparse.ArgumentParser(prog="network_fmri global-signal")
     p.add_argument("--cohort", required=True, choices=list(COHORTS))
@@ -165,11 +165,11 @@ def global_signal(argv: list[str]) -> int:
     if args.tr_marker is not None:
         cmd += ["--tr-marker", str(args.tr_marker)]
 
-    env = dataset.datalad_env()
+    env = provenance.datalad_env()
     (tree / out).mkdir(parents=True, exist_ok=True)
-    dataset.run_recorded(
+    provenance.run_recorded(
         tree, cmd,
-        f"network_fmri@{dataset.code_version()}: global signal ({args.label}) {args.cohort}",
+        f"network_fmri@{provenance.code_version()}: global signal ({args.label}) {args.cohort}",
         outputs=[out], env=env,
     )
     return 0
@@ -182,7 +182,7 @@ def trim(argv: list[str]) -> int:
     annexed NIfTIs means copying ~100 GB out of the annex. Trimming replaces each
     file by rename instead, so the default save-everything behaviour is enough.
     """
-    from network_fmri import dataset
+    from network_fmri import provenance
 
     p = argparse.ArgumentParser(prog="network_fmri trim")
     p.add_argument("--cohort", required=True, choices=list(COHORTS))
@@ -191,12 +191,12 @@ def trim(argv: list[str]) -> int:
     args = p.parse_args(argv)
 
     tree = cohort_dataset(args.staging, args.cohort)
-    env = dataset.datalad_env()
-    dataset.run_recorded(
+    env = provenance.datalad_env()
+    provenance.run_recorded(
         tree,
         [str(Path(sys.executable).parent / "network_fmri"), "trim-bold",
          "--bids-dir", ".", "--jobs", str(args.jobs)],
-        f"network_fmri@{dataset.code_version()}: trim {N_DUMMY} dummy volumes "
+        f"network_fmri@{provenance.code_version()}: trim {N_DUMMY} dummy volumes "
         f"from {args.cohort}",
         outputs=[], env=env,
     )
@@ -205,7 +205,7 @@ def trim(argv: list[str]) -> int:
 
 def fix_sidecars(argv: list[str]) -> int:
     """Record a sidecar type-coercion pass over the cohort dataset."""
-    from network_fmri import dataset
+    from network_fmri import provenance
 
     p = argparse.ArgumentParser(prog="network_fmri fix-sidecars")
     p.add_argument("--cohort", required=True, choices=list(COHORTS))
@@ -213,12 +213,12 @@ def fix_sidecars(argv: list[str]) -> int:
     args = p.parse_args(argv)
 
     tree = cohort_dataset(args.staging, args.cohort)
-    env = dataset.datalad_env()
-    dataset.run_recorded(
+    env = provenance.datalad_env()
+    provenance.run_recorded(
         tree,
         [str(Path(sys.executable).parent / "network_fmri"), "fix-sidecars-run",
          "--bids-dir", "."],
-        f"network_fmri@{dataset.code_version()}: coerce sidecar string fields "
+        f"network_fmri@{provenance.code_version()}: coerce sidecar string fields "
         f"in {args.cohort}",
         outputs=[], env=env,
     )
@@ -227,7 +227,7 @@ def fix_sidecars(argv: list[str]) -> int:
 
 def behavior_clean(argv: list[str]) -> int:
     """Record the cleaned behavioral tree into the cohort dataset."""
-    from network_fmri import dataset
+    from network_fmri import provenance
 
     p = argparse.ArgumentParser(prog="network_fmri behavior-clean")
     p.add_argument("--cohort", required=True, choices=list(COHORTS))
@@ -236,12 +236,12 @@ def behavior_clean(argv: list[str]) -> int:
     args = p.parse_args(argv)
 
     tree = cohort_dataset(args.staging, args.cohort)
-    env = dataset.datalad_env()
-    dataset.run_recorded(
+    env = provenance.datalad_env()
+    provenance.run_recorded(
         tree,
         [str(Path(sys.executable).parent / "network_fmri"), "behavior-clean-run",
          "--cohort", args.cohort, "--bids-dir", ".", "--out", args.out],
-        f"network_fmri@{dataset.code_version()}: clean behavioral -> {args.out} "
+        f"network_fmri@{provenance.code_version()}: clean behavioral -> {args.out} "
         f"({args.cohort})",
         outputs=[args.out], env=env,
     )
@@ -254,7 +254,7 @@ def merge(argv: list[str]) -> int:
     The parts datasets are outside the cohort dataset, so their commits go in the
     run message rather than being pinned as ``--input``.
     """
-    from network_fmri import dataset
+    from network_fmri import provenance
 
     p = argparse.ArgumentParser(prog="network_fmri merge")
     p.add_argument("--cohort", required=True, choices=list(COHORTS))
@@ -267,18 +267,18 @@ def merge(argv: list[str]) -> int:
     if not sources:
         raise SystemExit(f"no per-subject exports under {parts}/*/bids")
 
-    env = dataset.datalad_env()
-    dataset.ensure_dataset(dest, env)
-    provenance = " ".join(
-        f"{s.parent.name}@{dataset.subject_commit(s.parent)}" for s in sources
+    env = provenance.datalad_env()
+    provenance.ensure_dataset(dest, env)
+    provenance_note = " ".join(
+        f"{s.parent.name}@{provenance.subject_commit(s.parent)}" for s in sources
     )
     # -L dereferences: the parts are datasets, so their NIfTIs are annex symlinks
     # into a .git/annex this dataset does not have. Without it we commit dangling links.
     script = "; ".join(f"rsync -aL {s}/ ." for s in sources)
-    dataset.run_recorded(
+    provenance.run_recorded(
         dest, ["bash", "-c", script],
-        f"network_fmri@{dataset.code_version()}: merge {args.cohort} "
-        f"({len(sources)} subjects) from {provenance}",
+        f"network_fmri@{provenance.code_version()}: merge {args.cohort} "
+        f"({len(sources)} subjects) from {provenance_note}",
         outputs=["."],
         env=env,
     )

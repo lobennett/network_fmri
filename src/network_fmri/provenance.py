@@ -1,4 +1,4 @@
-"""DataLad plumbing: provision git-annex, create datasets, record runs.
+"""Provenance plumbing: provision git-annex, create datasets, record runs.
 
 ``text2git`` keeps JSON sidecars in git and NIfTIs in the annex. git-annex is
 installed by ``datalad-installer`` on first use — pip cannot ship the binary, and
@@ -104,4 +104,4 @@ def run_recorded(dataset: Path, cmd: list[str], message: str, outputs: list[str]
 
 
 if __name__ == "__main__":
-    raise SystemExit("network_fmri.dataset provides plumbing; use the network_fmri CLI")
+    raise SystemExit("network_fmri.provenance provides plumbing; use the network_fmri CLI")
