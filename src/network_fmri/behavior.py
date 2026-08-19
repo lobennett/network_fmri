@@ -124,6 +124,12 @@ def pick_run(runs: list[int], volumes: dict, median: float) -> tuple[int, list[i
     return best, [r for r in runs if r != best]
 
 
+def download_order(name: str) -> int:
+    """Browser duplicate-download index: ``foo.csv`` -> 0, ``foo (12).csv`` -> 12."""
+    m = re.search(r" \((\d+)\)\.csv$", name)
+    return int(m.group(1)) if m else 0
+
+
 def classify(runs: list[int], n_behavior: int, task: str) -> str:
     if task == "rest":
         return "rest_no_behavior_expected"
@@ -246,15 +252,26 @@ def resolve(bids_root: Path, subjects: list[str]) -> tuple[list[dict], collectio
                                  src=files[0], dest=""))
                 continue
             vols = {n: volumes.get((sub, dest_ses, task, n), 0) for n in r}
-            run, dropped = pick_run(r, vols, median.get(task, 0))
-            status = "ok" if len(r) == 1 else f"picked_run-{run}_dropped{dropped}"
-            stats["resolved"] += 1
-            if len(files) > 1:
-                stats["multiple_behavior_files"] += 1
-            rows.append(dict(subject=sub, beh_session=ses, task=task, bids_session=dest_ses,
-                             run=run, status=status, src=files[0],
-                             dest=f"sub-{sub}/ses-{dest_ses}/beh/"
-                                  f"sub-{sub}_ses-{dest_ses}_task-{task}_run-{run}_beh.csv"))
+            if len(files) > 1 and len(files) == len(r):
+                # As many complete behavioral files as runs: the task was repeated, so
+                # pair them in download order rather than discarding one. Nothing in the
+                # files themselves identifies which run they came from — see SCAN-NOTES.md.
+                pairs = [(f, run) for f, run in zip(sorted(files, key=download_order), r)]
+                stats["paired_by_download_order"] += len(pairs)
+            else:
+                run, dropped = pick_run(r, vols, median.get(task, 0))
+                pairs = [(files[0], run)]
+                stats["resolved"] += 1
+                if len(files) > 1:
+                    stats["multiple_behavior_files"] += 1
+            for src_name, run in pairs:
+                status = ("paired_by_download_order" if len(pairs) > 1
+                          else "ok" if len(r) == 1
+                          else f"picked_run-{run}_dropped{[x for x in r if x != run]}")
+                rows.append(dict(subject=sub, beh_session=ses, task=task, bids_session=dest_ses,
+                                 run=run, status=status, src=src_name,
+                                 dest=f"sub-{sub}/ses-{dest_ses}/beh/"
+                                      f"sub-{sub}_ses-{dest_ses}_task-{task}_run-{run}_beh.csv"))
     return rows, stats
 
 

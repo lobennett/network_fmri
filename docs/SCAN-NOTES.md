@@ -191,6 +191,53 @@ All 224 discovery behavioral files resolve; the other 221 are unambiguous 1:1.
 Raw behavioral files carry **no** trim adjustment, so the -10.43 s onset shift is
 applied unconditionally downstream.
 
+## Behavioral run assignment (validation)
+
+1887 of 1893 non-rest runs get a behavioral CSV. The exceptions, all verified against a
+session map that is identity 1:1 (each subject's raw and BIDS task sets match
+session-for-session, so none of these is an alignment artefact):
+
+**Two false starts**, resolved by volume count as above:
+
+| Subject | Session | Task | Paired with | Dropped |
+|---|---|---|---|---|
+| s336 | ses-05 | goNogo | run-2 (382 vols, = median) | run-1 (298) |
+| s216 | ses-05 | directedForgetting | run-2 (434) | run-1 (94) |
+
+**Four behavioral files genuinely absent** — the task was scanned but no file exists in
+any raw session, so these runs get no events:
+
+| Subject | Session | Task |
+|---|---|---|
+| s1292 | ses-04 | nBack |
+| s300 | ses-08 | flanker |
+| s180 | ses-12 | shapeMatchingWCuedTS |
+| s1175 | ses-11 | cuedTSWFlanker |
+
+s180 and s1175 each *do* have one file for that task in the adjacent session, but it is
+correctly consumed by that session's own scan — the task was simply run twice with only
+one file saved.
+
+**Three repeated tasks with two complete files** — the pairing is an assumption:
+
+| Subject | Session | Task | run-1 | run-2 |
+|---|---|---|---|---|
+| s76 | ses-12 | directedForgettingWFlanker | `... (11).csv` | `... (12).csv` |
+| s247 | ses-12 | stopSignalWDirectedForgetting | `....csv` | `... (1).csv` |
+| s1175 | ses-12 | cuedTSWFlanker | `....csv` | `... (1).csv` |
+
+Both scans and both files are complete in each case, so `pick_run`'s median rule does not
+apply — and nothing recoverable says which file came from which run. Ruled out as
+discriminators: file mtimes (one bulk 2024-07-31 copy, seconds apart), total and
+in-scanner duration (the ordering that fits s76 inverts for s247 and s1175), and any
+absolute timestamp (the CSVs carry only relative `time_elapsed`).
+
+So they are paired by **browser download order** — bare `.csv` before ` (1)`, and `(11)`
+before `(12)` — on the assumption that each run's file was downloaded after that run.
+The condition sequences are randomised per run and differ on 24–97% of trials, so if the
+assumption is wrong for a given case, that pair's events are swapped. Treat these 6 runs
+as lower confidence than the rest.
+
 ## Known data defect
 
 `sub-s1165/ses-02` `task-directedForgetting` echoes 1–3 carry `SoftwareVersions` as
