@@ -238,6 +238,29 @@ The condition sequences are randomised per run and differ on 24–97% of trials,
 assumption is wrong for a given case, that pair's events are swapped. Treat these 6 runs
 as lower confidence than the rest.
 
+## T1w selection from MRIQC (discovery)
+
+Discovery has 7 T1w images across 5 subjects. s10, s29 and s43 have one each; s03 and
+s19 have two, so only those two need a choice. Session-level MRIQC 24.0.2 IQMs:
+
+| | s03 ses-05 | s03 ses-13 | | s19 ses-03 | s19 ses-05 |
+|---|---|---|---|---|---|
+| `cjv` (lower better) | 0.9755 | **0.6925** | | 0.7176 | **0.6971** |
+| `cnr` (higher better) | 0.8667 | **1.4734** | | 1.3149 | **1.3357** |
+| `snr_total` (higher) | 3.9246 | **5.3842** | | 4.6347 | **4.6496** |
+| `efc` (lower) | 0.5363 | **0.5041** | | **0.4900** | 0.5018 |
+| `fber` (higher) | 2536.7 | **7153.2** | | **4689.3** | 4429.8 |
+| `wm2max` (lower) | 0.4036 | **0.3942** | | 0.4125 | **0.4016** |
+| `qi_2` (lower) | 0.0009 | **0.0005** | | **0.0005** | 0.0007 |
+
+**s03 → keep ses-13.** It wins every metric (7-0, `qi_1` tied at 0) by wide margins: CJV
+29% better, CNR 41%, FBER 64%. ses-05 is a genuinely poor scan.
+
+**s19 → keep ses-05, but the two are near-equivalent.** The split is 4-3 and every margin
+on the winning side is under 3% (`snr_total` differs by 0.3%). The call rests on `cjv`,
+`cnr` and `snr_total` — CJV being the most informative single T1w metric for INU and
+motion — while `efc`, `fber` and `qi_2` favour ses-03. Either would be defensible.
+
 ## Known data defect
 
 `sub-s1165/ses-02` `task-directedForgetting` echoes 1–3 carry `SoftwareVersions` as
