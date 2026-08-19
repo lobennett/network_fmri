@@ -38,6 +38,7 @@ _USAGE = """usage:
   network_fmri trim --cohort C [options]       trim dummy volumes in place (recorded)
   network_fmri study-meta --bids-dir D --out O  mechababs study metadata TSVs
   network_fmri qa-reject --target S/SES/SUFFIX  mark QA-failed scans on Flywheel
+  network_fmri fix-sidecars --cohort C         coerce sidecar fields to BIDS types
 """
 
 
@@ -216,6 +217,28 @@ def trim(argv: list[str]) -> int:
     return 0
 
 
+def fix_sidecars(argv: list[str]) -> int:
+    """Record a sidecar type-coercion pass over the cohort dataset."""
+    from network_fmri import dataset
+
+    p = argparse.ArgumentParser(prog="network_fmri fix-sidecars")
+    p.add_argument("--cohort", required=True, choices=list(COHORTS))
+    p.add_argument("--staging", default=DEFAULT_STAGING)
+    args = p.parse_args(argv)
+
+    tree = _cohort_dataset(args.staging, args.cohort)
+    env = dataset.datalad_env()
+    dataset.run_recorded(
+        tree,
+        [str(Path(sys.executable).parent / "network_fmri"), "fix-sidecars-run",
+         "--bids-dir", "."],
+        f"network_fmri@{dataset.code_version()}: coerce sidecar string fields "
+        f"in {args.cohort}",
+        outputs=[], env=env,
+    )
+    return 0
+
+
 def refresh_subject(argv: list[str]) -> int:
     """Replace one subject in the cohort dataset from its (re-imported) parts.
 
@@ -343,6 +366,12 @@ def main(argv: list[str] | None = None) -> int:
         from network_fmri.validate import main as validate_main
 
         return validate_main(argv[1:])
+    if argv[:1] == ["fix-sidecars"]:
+        return fix_sidecars(argv[1:])
+    if argv[:1] == ["fix-sidecars-run"]:
+        from network_fmri.sidecars import main as sidecar_main
+
+        return sidecar_main(argv[1:])
     if argv[:1] == ["qa-reject"]:
         from network_fmri.qa_reject import main as reject_main
 
