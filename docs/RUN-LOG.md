@@ -83,6 +83,19 @@ Two setup requirements, both non-obvious:
 - `con-duct` must be installed explicitly: mechababs shells out to `duct` but does not
   declare it as a dependency.
 
+All 7 units `COMPLETED` in 36–49 min (`MaxRSS` 21–22 GB), merged, ledger
+`babs-merged: true`. T1w selection and the resulting deletions are in
+[SCAN-NOTES.md](SCAN-NOTES.md); discovery now holds 5 T1w, one per subject, with the two
+rejected images recoverable from `e2073f76` in the cohort dataset.
+
+Earlier attempts, both archived under `derivative-attempts/`:
+
+`39725072`'s predecessor failed all 7 tasks at the zip step with `7z: command not found`
+— MRIQC itself had finished, and cleanup then dropped ~40 min of compute per task. `7z`
+lives in Sherlock's `system p7zip/16.02`; the binary is self-contained, so the fix is a
+`PATH` entry rather than an Lmod load. `--mem` also went 24G → 32G after the observed
+21–22 GB peaks.
+
 The first submission (`39706846`) failed all 7 tasks in 39 s on two errors in
 `clusters/sherlock.yaml`: `job_compute_space: /scratch/${USER}` (on Sherlock `$SCRATCH`
 is `/scratch/users/<sunetid>`, and `/scratch` is root-owned) and a `source
