@@ -942,6 +942,16 @@ wheels = [
 ]
 
 [[package]]
+name = "network-events"
+version = "0.1.0"
+source = { git = "https://github.com/lobennett/network_events.git?rev=7dcad31#7dcad31ece05378bbc0b16fc924b545a41f84ef8" }
+dependencies = [
+    { name = "nibabel" },
+    { name = "numpy" },
+    { name = "pandas" },
+]
+
+[[package]]
 name = "network-fmri"
 version = "0.1.0"
 source = { editable = "." }
@@ -950,6 +960,7 @@ dependencies = [
     { name = "datalad-installer" },
     { name = "fw-heudiconv" },
     { name = "global-signal-plots", extra = ["plot"] },
+    { name = "network-events" },
 ]
 
 [package.metadata]
@@ -958,6 +969,7 @@ requires-dist = [
     { name = "datalad-installer", specifier = ">=1.1" },
     { name = "fw-heudiconv", git = "https://github.com/lobennett/fw-heudiconv.git?rev=e7509a4" },
     { name = "global-signal-plots", extras = ["plot"], git = "https://github.com/lobennett/global_signal_plots.git?rev=5d92c33" },
+    { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=7dcad31" },
 ]
 
 [[package]]

@@ -18,7 +18,8 @@ from pathlib import Path
 from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, roster
 
 NF = str(Path(sys.executable).parent / "network_fmri")
-NE = str(Path(sys.executable).parent.parent.parent / "network_events" / "bin" / "network-events")
+# Same venv: network_events is a pinned dependency, so its console script sits beside ours.
+NE = str(Path(sys.executable).parent / "network-events")
 
 
 def stages(cohort: str, staging: str, events_bin: str) -> list[dict]:
@@ -48,10 +49,9 @@ def stages(cohort: str, staging: str, events_bin: str) -> list[dict]:
                        "--label", "post-trim"]),
         dict(name="ingest-beh", cpus=2, mem="8G", time="02:00:00",
              cmd=nf + ["ingest-beh", "--cohort", cohort, "--staging", staging]),
-        # network_events lives in its own venv and owns three steps: events, the
-        # truncation QC that writes trim_list.json, and the behaviour-driven truncation
-        # that consumes it. `run` would also re-migrate out-of-scanner data, which the
-        # canonical tree already covers.
+        # network_events owns three steps: events, the truncation QC that writes
+        # trim_list.json, and the behaviour-driven truncation that consumes it. `run`
+        # would also re-migrate out-of-scanner data, which the canonical tree covers.
         dict(name="events", cpus=4, mem="16G", time="08:00:00",
              cmd=[events_bin, "create", "--sourcedata", "sourcedata", "--bids-dir", "."],
              cwd=True),
@@ -76,7 +76,6 @@ def get_parser() -> argparse.ArgumentParser:
     p.add_argument("--throttle", type=int, default=3,
                    help="concurrent export tasks; Flywheel returns HTTP 500s above ~8")
     p.add_argument("--project", default="r01network")
-    p.add_argument("--events-bin", default=NE)
     p.add_argument("--from", dest="start", default="export",
                    help="resume at this stage instead of the beginning")
     p.add_argument("--print", dest="print_only", action="store_true",
@@ -89,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     from network_fmri.fw2bids.jobs import sbatch_array
 
     args = get_parser().parse_args(argv)
-    chain = stages(args.cohort, args.staging, args.events_bin)
+    chain = stages(args.cohort, args.staging, NE)
     names = [s["name"] for s in chain]
     if args.start not in names:
         raise SystemExit(f"--from must be one of: {' '.join(names)}")

@@ -148,7 +148,7 @@ comparison, because the raw filenames encode no run index — but that answer on
 *functional* side changes, so it is derived once and frozen there with its own provenance record
 and the code that produced it. This repo no longer reads the raw tree, which is being archived.
 
-Then three stages from `network_events` (a separate repo, its own venv):
+Then three stages from `network_events`, a pinned dependency so `uv sync` provisions it:
 
 ```bash
 network-events create --sourcedata sourcedata --bids-dir .   # _events.tsv

@@ -10,6 +10,10 @@ dependencies = [
     "datalad-installer>=1.1",
     "fw-heudiconv",
     "global-signal-plots[plot]",
+    # Owns the behavioural half: events.tsv, truncation QC, behaviour-driven trimming.
+    # A dependency rather than a sibling venv so `uv sync` provisions the whole chain and
+    # the pipeline calls its console script by name like any other stage.
+    "network-events",
 ]
 
 [project.scripts]
@@ -23,6 +27,7 @@ constraint-dependencies = ["pillow<12"]
 [tool.uv.sources]
 fw-heudiconv = { git = "https://github.com/lobennett/fw-heudiconv.git", rev = "e7509a4" }
 global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "5d92c33" }
+network_events = { git = "https://github.com/lobennett/network_events.git", rev = "7dcad31" }
 
 [build-system]
 requires = ["hatchling"]
