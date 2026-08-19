@@ -1,4 +1,4 @@
-"""Session numbering and subject aliasing. See docs/PIPELINE.md."""
+"""Session numbering and subject aliasing. See README.md."""
 
 from __future__ import annotations
 

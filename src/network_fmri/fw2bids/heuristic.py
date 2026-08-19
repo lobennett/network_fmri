@@ -2,13 +2,13 @@
 
 The default ``--heuristic``. Loaded by path, so ``network_fmri`` must be importable
 in the job. The Replace* hooks read env set by curate.py; without it they pass
-through. See docs/PIPELINE.md.
+through. See README.md.
 """
 
 import os
 
-from network_fmri import sessions
-from network_fmri.acquisitions import map_acquisition
+from network_fmri.fw2bids import sessions
+from network_fmri.fw2bids.acquisitions import map_acquisition
 
 
 def create_key(template, outtype=("nii.gz",), annotation_classes=None):

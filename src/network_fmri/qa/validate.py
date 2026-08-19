@@ -10,14 +10,13 @@ import argparse
 import sys
 from pathlib import Path
 
-from network_fmri import container
+from network_fmri.qa import container
 
 VALIDATOR_URI = "docker://bids/validator:3.0.1"
 
 
 def get_parser() -> argparse.ArgumentParser:
-    from network_fmri.cli import DEFAULT_STAGING
-    from network_fmri.cohorts import COHORTS
+    from network_fmri.cohorts import COHORTS, DEFAULT_STAGING
 
     p = argparse.ArgumentParser(prog="network_fmri validate")
     p.add_argument("--cohort", required=True, choices=list(COHORTS))
