@@ -113,29 +113,6 @@ def fix_sidecars(argv: list[str]) -> int:
     return 0
 
 
-def behavior_clean(argv: list[str]) -> int:
-    """Record the cleaned behavioral tree into the cohort dataset."""
-    from network_fmri import provenance
-
-    p = argparse.ArgumentParser(prog="network_fmri behavior-clean")
-    p.add_argument("--cohort", required=True, choices=list(COHORTS))
-    p.add_argument("--staging", default=DEFAULT_STAGING)
-    p.add_argument("--out", default="sourcedata")
-    args = p.parse_args(argv)
-
-    tree = cohort_dataset(args.staging, args.cohort)
-    env = provenance.datalad_env()
-    provenance.run_recorded(
-        tree,
-        [str(Path(sys.executable).parent / "network_fmri"), "behavior-clean-run",
-         "--cohort", args.cohort, "--bids-dir", ".", "--out", args.out],
-        f"network_fmri@{provenance.code_version()}: clean behavioral -> {args.out} "
-        f"({args.cohort})",
-        outputs=[args.out], env=env,
-    )
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:2] == ["submit", "fw-heudiconv"]:
@@ -170,12 +147,14 @@ def main(argv: list[str] | None = None) -> int:
         from network_fmri.prepare.b0link import main as b0link_main
 
         return b0link_main(argv[1:])
+    if argv[:1] == ["behavior-clean"]:
+        from network_fmri.behavior.clean import record
+
+        return record(argv[1:])
     if argv[:1] == ["behavior-clean-run"]:
-        from network_fmri.behavior import clean
+        from network_fmri.behavior.clean import clean
 
         return clean(argv[1:])
-    if argv[:1] == ["behavior-clean"]:
-        return behavior_clean(argv[1:])
     if argv[:1] == ["validate"]:
         from network_fmri.validate import main as validate_main
 

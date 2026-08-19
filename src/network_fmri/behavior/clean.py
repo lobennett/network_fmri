@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import collections
 import re
+import sys
 from pathlib import Path
 
 RAW_ROOT = Path("/oak/stanford/groups/russpold/data/network_grant/behavioral_data/raw_cleaned")
@@ -244,4 +245,27 @@ def clean(argv: list[str] | None = None) -> int:
         if r["status"] != "ok":
             print(f"  DECISION {r['subject']} beh ses-{r['beh_session']} {r['task']} -> "
                   f"ses-{r['bids_session'] or '--'} run-{r['run'] or '-'}  {r['status']}")
+    return 0
+
+
+def record(argv: list[str] | None = None) -> int:
+    """Record the cleaned behavioural tree into the cohort dataset."""
+    from network_fmri import provenance
+    from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, cohort_dataset
+
+    p = argparse.ArgumentParser(prog="network_fmri behavior-clean")
+    p.add_argument("--cohort", required=True, choices=list(COHORTS))
+    p.add_argument("--staging", default=DEFAULT_STAGING)
+    p.add_argument("--out", default="sourcedata")
+    args = p.parse_args(argv)
+
+    tree = cohort_dataset(args.staging, args.cohort)
+    provenance.run_recorded(
+        tree,
+        [str(Path(sys.executable).parent / "network_fmri"), "behavior-clean-run",
+         "--cohort", args.cohort, "--bids-dir", ".", "--out", args.out],
+        f"network_fmri@{provenance.code_version()}: clean behavioral -> {args.out} "
+        f"({args.cohort})",
+        outputs=[args.out], env=provenance.datalad_env(),
+    )
     return 0
