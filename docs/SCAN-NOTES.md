@@ -261,6 +261,30 @@ on the winning side is under 3% (`snr_total` differs by 0.3%). The call rests on
 `cnr` and `snr_total` — CJV being the most informative single T1w metric for INU and
 motion — while `efc`, `fber` and `qi_2` favour ses-03. Either would be defensible.
 
+## T2w selection from MRIQC (discovery)
+
+Six T2w across four subjects; s43 has none in any session, so **four of five** subjects
+end with exactly one T2w, not all five. Only s19 and s29 had a choice.
+
+| | s19 ses-01 | s19 ses-03 | | s29 ses-01 | s29 ses-04 |
+|---|---|---|---|---|---|
+| `cjv` (lower better) | **1.0038** | 1.0465 | | 1.0557 | **1.0180** |
+| `cnr` (higher better) | **0.7450** | 0.7162 | | **0.7194** | 0.7018 |
+| `snr_total` (higher) | **3.5656** | 3.5555 | | 3.8254 | **3.8578** |
+| `efc` (lower) | 0.5272 | **0.5177** | | 0.5173 | **0.5132** |
+| `wm2max` (lower) | 0.1942 | **0.1940** | | 0.1893 | **0.1877** |
+| `qi_2` (lower) | **0.0009** | 0.0011 | | 0.0010 | **0.0007** |
+
+**s19 → keep ses-01** (4-2), **s29 → keep ses-04** (5-1).
+
+`fber` is excluded from both tallies: it is `-1` for s19 ses-01 and for *both* s29
+sessions, which is MRIQC's could-not-estimate sentinel rather than a measurement — the
+CUBE PROMO T2w does not give it usable background. Counting `-1` as a value would have
+flipped s19 to ses-03 on a number that means nothing.
+
+s29's kept T2w happens to sit in ses-04 alongside its kept T1w. s19's do not (T2w ses-01,
+T1w ses-05), which is fine — fMRIPrep coregisters across sessions.
+
 ## Keeping QA-rejected scans out of the next pull
 
 A scan dropped after QA must not reappear when the project is re-pulled, so the
@@ -273,15 +297,21 @@ cannot see the session: `infotodict` is called per session but `SeqInfo.accessio
 is `None` (only `patient_id` is populated), and a subject-level skip would drop the kept
 scan along with the rejected one.
 
-Applied so far (rollback record: `$SCRATCH/qa-reject-t1w.json`):
+Applied so far (rollback records: `$SCRATCH/qa-reject-t1w.json`, `qa-reject-t2w.json`):
 
 | Target | Flywheel session | Label |
 |---|---|---|
 | s03 ses-05 T1w | 22734 | `NEW Sag_MPRAGE_T1_qa-reject` |
 | s19 ses-03 T1w | 22542 | `NEW Sag_MPRAGE_T1_qa-reject` |
+| s19 ses-03 T2w | 22542 | `T2w CUBE PROMO .8mm sag_qa-reject` |
+| s29 ses-01 T2w | 20201113 | `T2w CUBE PROMO .8mm sag_qa-reject` |
 
 Each was verified before renaming by matching the acquisition's NIfTI byte size against
 the annex key of the file deleted from BIDS, rather than trusting the session numbering.
+
+A fresh pull now curates exactly one T1w and one T2w per subject (T1w only for s43),
+which matches the pruned tree — confirmed by replaying `map_acquisition` over every
+anat acquisition in the project.
 
 ## Known data defect
 
