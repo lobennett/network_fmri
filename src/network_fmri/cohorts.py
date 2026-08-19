@@ -1,7 +1,7 @@
 """Cohort rosters and where their BIDS trees live on staging.
 
 An alias (``s19-2``) or a reassigned session never appears here; those resolve in
-:mod:`network_fmri.sessions`.
+:mod:`network_fmri.fw2bids.sessions`.
 """
 
 from __future__ import annotations

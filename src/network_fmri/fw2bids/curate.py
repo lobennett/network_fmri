@@ -21,7 +21,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from network_fmri import sessions
+from network_fmri.fw2bids import sessions
 
 HEURISTIC = Path(__file__).parent / "heuristic.py"
 

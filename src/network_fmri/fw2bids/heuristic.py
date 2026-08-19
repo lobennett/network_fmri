@@ -7,8 +7,8 @@ through. See docs/PIPELINE.md.
 
 import os
 
-from network_fmri import sessions
-from network_fmri.acquisitions import map_acquisition
+from network_fmri.fw2bids import sessions
+from network_fmri.fw2bids.acquisitions import map_acquisition
 
 
 def create_key(template, outtype=("nii.gz",), annotation_classes=None):

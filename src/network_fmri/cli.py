@@ -16,10 +16,10 @@ import tempfile
 from pathlib import Path
 
 from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, cohort_dataset, roster
-from network_fmri.curate import HEURISTIC
+from network_fmri.fw2bids.curate import HEURISTIC
 from network_fmri.trim import N_DUMMY
 
-TEMPLATE = Path(__file__).parent / "template.sbatch"
+TEMPLATE = Path(__file__).parent / "fw2bids" / "template.sbatch"
 DEFAULT_PROJECT = "r01network"
 
 _USAGE = """usage:
@@ -291,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:2] == ["submit", "fw-heudiconv"]:
         return submit(argv[2:])
     if argv[:1] == ["curate"]:
-        from network_fmri.curate import main as curate_main
+        from network_fmri.fw2bids.curate import main as curate_main
 
         return curate_main(argv[1:])
     if argv[:1] == ["import-subject"]:
