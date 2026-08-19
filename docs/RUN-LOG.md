@@ -72,10 +72,21 @@ Onset shift is 7 × 1.49 s = 10.43 s, applied in `network_events` from the sidec
 
 ## 2026-08-18 — MRIQC on discovery
 
-Array `39706846`, 7 session-level jobs (s03 ses-05/13, s10 ses-09, s19 ses-03/05,
+Array `39709054`, 7 session-level jobs (s03 ses-05/13, s10 ses-09, s19 ses-03/05,
 s29 ses-04, s43 ses-05) via the mechababs campaign at
-`$SCRATCH/mechababs_campaigns/r01network` (`code/mechababs@05350a7`, MRIQC 24.0.2).
+`$SCRATCH/mechababs_campaigns/r01network` (`code/mechababs@a31fb43`, MRIQC 24.0.2).
 
-Campaign venv needs **Python 3.12** — babs pins `numpy < 2.0`, which has no cp313
-wheels. `con-duct` must be installed explicitly: mechababs shells out to `duct` but
-does not declare it as a dependency.
+Two setup requirements, both non-obvious:
+
+- Campaign venv must be **Python 3.12** — babs pins `numpy < 2.0`, which has no cp313
+  wheels.
+- `con-duct` must be installed explicitly: mechababs shells out to `duct` but does not
+  declare it as a dependency.
+
+The first submission (`39706846`) failed all 7 tasks in 39 s on two errors in
+`clusters/sherlock.yaml`: `job_compute_space: /scratch/${USER}` (on Sherlock `$SCRATCH`
+is `/scratch/users/<sunetid>`, and `/scratch` is root-owned) and a `source
+/etc/profile.d/modules.sh` that does not exist here. Since `babs init` bakes the
+preamble into `code/participant_job.sh`, the fix needs
+`mechababs retire-derivative` and a re-scaffold, not just a config edit — the failed
+attempt is archived at `derivative-attempts/discovery-MRIQC-24.0.2-attempt-1`.
