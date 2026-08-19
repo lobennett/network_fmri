@@ -311,10 +311,19 @@ rather than a measurement — it affects the CUBE PROMO T2w in particular.
 ## No distortion correction for one session
 
 `sub-s1399/ses-12` has 3 BOLD runs (9 files) and no field map, so those runs go through
-fMRIPrep uncorrected. It is the only such session across discovery and validation; every
-other session has exactly one field map with its `_magnitude`, and there are no field maps
-without BOLD — the standing check that [session merges](#split-scanner-visits-fieldmap-stranded)
-still hold.
+fMRIPrep uncorrected. It is the only session in either cohort with BOLD and no field map.
+
+The converse case exists once and is harmless: `sub-s03/ses-13` has a field map and a T1w
+but **no functional runs at all**. It is a standalone structural re-scan on 2022-05-25, 14
+months after that subject's last task session, with zero task acquisitions — so there is
+nothing for the field map to correct. `b0link` counts it as `orphan_fmap` and skips it.
+
+This is *not* the stranded-fieldmap problem that
+[session merges](#split-scanner-visits-fieldmap-stranded) fix: those were same-day splits
+where the field map belonged to a twin session's runs. `ses-13` shares its date with no
+other session. The standing check that the merges still hold is therefore "no orphan field
+map in a session that shares a date with another session", not "no orphan field maps at
+all".
 
 ## Keeping QA-rejected scans out of the next pull
 
