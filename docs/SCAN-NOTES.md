@@ -19,10 +19,27 @@ plus six rows. Rollback: `$SCRATCH/normalize-r01network.json`.
 | `Processed Images*` | scanner-derived, not source data |
 | `run-1_sbref` | single-band reference, unused downstream |
 | `T1w MPRAGE PROMO` | 4D PROMO motion-nav series; not a valid `_T1w` (`T1W_FILE_WITH_TOO_MANY_DIMENSIONS`) |
-| `fmap-fieldmap_1` | a genuine second fieldmap — see below |
+| `fmap-fieldmap_1` | a second fieldmap that cannot improve SDC — see below |
 Subject `n01` (the pilot) uses a different naming convention entirely and nothing maps it.
-**`fmap-fieldmap_1` is real data being dropped**: four sessions have a second fieldmap (s76 ×3,
-s1486), and the fmap template hardcodes `run-1`, so curating them needs a run index first.
+
+**Why the second fieldmap is dropped rather than salvaged.** Exactly four sessions have two,
+and their acquisition times show none is a mid-session re-shim:
+
+| Session | Ordering |
+|---|---|
+| s76 / 24392 | both fieldmaps at the **same timestamp** (00:20:14), before any run |
+| s76 / 24425 | both at the **same timestamp** (00:03:23), before any run |
+| s76 / 25492 | fmap 23:14:43 → all 3 runs → fmap_1 at 00:03:48, **after every run** |
+| s1486 / 28061 | fmap 02:13:36 → all 5 runs → fmap_1 at 03:21:03, **after every run** |
+
+Two are one acquisition landing in two Flywheel containers, so either copy is equivalent. The
+other two are *trailing* fieldmaps with no subsequent runs; the leading fieldmap, taken 1-2 min
+before the first run, is a strictly better match for those runs than one taken 20-50 min later.
+No run in this project is ever preceded by a fieldmap it does not already get, so a run index
+plus time-partitioned `B0FieldSource` would add machinery for no gain.
+
+A trailing fieldmap could still support a field-drift estimate across a session — a motion and
+shim-stability QA signal, which belongs to `network_qa`, not to SDC. The data stays on Flywheel.
 
 ## Wrong source records
 Five sessions sit under the wrong subject on Flywheel, compensated for in code; none are fixed at
