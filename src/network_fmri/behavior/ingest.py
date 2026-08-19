@@ -58,7 +58,11 @@ def record(argv: list[str] | None = None) -> int:
     source = Path(args.source)
     subjects = subject_dirs(source, args.cohort)
     if not subjects:
-        raise SystemExit(f"no canonical behavioural data for {args.cohort} under {source}")
+        # Not an error: the excluded cohort has no behavioural data in any raw session, so a
+        # scripted chain should carry on rather than stop here.
+        print(f"no canonical behavioural data for {args.cohort} under {source} — nothing to do",
+              flush=True)
+        return 0
     check_content(source, subjects)
 
     (tree / args.out).mkdir(parents=True, exist_ok=True)

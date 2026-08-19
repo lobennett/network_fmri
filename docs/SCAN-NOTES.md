@@ -223,6 +223,12 @@ runs at all** (a standalone re-scan 14 months after the last task session), so `
 fieldmaps](#split-scanner-visits-fieldmap-stranded) above, it shares its date with no other
 session.
 
+## The excluded cohort has no behavioural data
+
+None of the 11 excluded subjects has a directory in the raw behavioural tree, so there is
+nothing to reconcile and nothing in the canonical dataset for them. `ingest-beh` reports this
+and exits 0 rather than failing, so a scripted run of all three cohorts does not stop on it.
+
 ## Keeping QA-rejected scans out of the next pull
 A scan dropped after QA must not reappear on re-pull, so rejection is recorded **on Flywheel**:
 `network_fmri qa-reject --target s03/05/T1w` appends `_qa-reject`, and `map_acquisition` returns
