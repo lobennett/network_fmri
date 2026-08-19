@@ -10,17 +10,11 @@
 from __future__ import annotations
 
 import argparse
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
-from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, cohort_dataset, roster
-from network_fmri.fw2bids.curate import HEURISTIC
+from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, cohort_dataset
 from network_fmri.trim import N_DUMMY
-
-TEMPLATE = Path(__file__).parent / "fw2bids" / "template.sbatch"
-DEFAULT_PROJECT = "r01network"
 
 _USAGE = """usage:
   network_fmri submit fw-heudiconv [options]   render + sbatch a per-subject array
@@ -33,113 +27,6 @@ _USAGE = """usage:
   network_fmri trim --cohort C [options]       trim dummy volumes in place (recorded)
   network_fmri fix-sidecars --cohort C         coerce sidecar fields to BIDS types
 """
-
-
-def get_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="network_fmri submit fw-heudiconv")
-    p.add_argument("--project", default=DEFAULT_PROJECT, help="Flywheel project label")
-    p.add_argument("--cohort", choices=list(COHORTS), help="submit this cohort's roster")
-    p.add_argument("--subject", nargs="+", help="explicit subjects instead of --cohort")
-    p.add_argument("--staging", default=DEFAULT_STAGING, help=f"default: {DEFAULT_STAGING}")
-    p.add_argument("--heuristic", default=str(HEURISTIC), help=f"default: {HEURISTIC}")
-    p.add_argument("--live", action="store_true",
-                   help="tag Flywheel and export to <staging>/<cohort>/parts/<subject>")
-    p.add_argument("--partition", default="normal")
-    p.add_argument("--cpus", type=int, default=2)
-    p.add_argument("--mem-gb", type=int, default=8)
-    p.add_argument("--time", default="04:00:00")
-    # 3 concurrent: Flywheel returns sporadic HTTP 500s at 8.
-    p.add_argument("--throttle", type=int, default=3,
-                   help="max concurrent array tasks (the %%K in --array=0-N%%K)")
-    p.add_argument("--template", default=str(TEMPLATE))
-    p.add_argument("--print", dest="print_only", action="store_true",
-                   help="print the rendered script instead of submitting")
-    return p
-
-
-def render(args: argparse.Namespace) -> str:
-    subjects = args.subject or (roster(args.cohort) if args.cohort else None)
-    if not subjects:
-        get_parser().error("need --cohort or --subject")
-    name = args.cohort or "adhoc"
-
-    # Outside the BIDS tree: sbatch logs inside a dataset trip bids-validator.
-    log_dir = Path(args.staging) / "logs" / name
-    log_dir.mkdir(parents=True, exist_ok=True)
-    subjects_file = log_dir / f"{name}_subjects.txt"
-    subjects_file.write_text("\n".join(subjects) + "\n")
-
-    return Path(args.template).read_text().format(
-        job_name=f"nf-{name}",
-        partition=args.partition,
-        cpus=args.cpus,
-        mem_gb=args.mem_gb,
-        time=args.time,
-        log_dir=log_dir,
-        last=len(subjects) - 1,
-        throttle=args.throttle,
-        subjects_file=subjects_file,
-        # Absolute path to this venv's console script: no PATH setup in the job.
-        network_fmri=Path(sys.executable).parent / "network_fmri",
-        project=args.project,
-        heuristic=args.heuristic,
-        cohort=name,
-        staging=args.staging,
-        live=" --live" if args.live else "",
-    )
-
-
-def submit(argv: list[str]) -> int:
-    args = get_parser().parse_args(argv)
-    script = render(args)
-    if args.print_only:
-        print(script)
-        return 0
-    with tempfile.NamedTemporaryFile("w", suffix=".sbatch", delete=False) as f:
-        f.write(script)
-    print(f"sbatch script: {f.name}")
-    return subprocess.run(["sbatch", f.name]).returncode
-
-
-def import_subject(argv: list[str]) -> int:
-    """Curate + export one subject inside its own dataset, via ``datalad run``.
-
-    A dataset per subject keeps 40+ array tasks from contending on one git index,
-    while still recording the command and outputs in history.
-    """
-    from network_fmri import provenance
-
-    p = argparse.ArgumentParser(prog="network_fmri import-subject")
-    p.add_argument("--project", default=DEFAULT_PROJECT)
-    p.add_argument("--cohort", required=True, choices=list(COHORTS))
-    p.add_argument("--subject", required=True)
-    p.add_argument("--staging", default=DEFAULT_STAGING)
-    p.add_argument("--heuristic", default=str(HEURISTIC))
-    p.add_argument("--live", action="store_true")
-    p.add_argument("--retries", type=int, default=3)
-    args = p.parse_args(argv)
-
-    ds = Path(args.staging) / args.cohort / "parts" / args.subject
-    env = provenance.datalad_env()
-    provenance.ensure_dataset(ds, env)
-
-    payload = [
-        str(Path(sys.executable).parent / "network_fmri"), "curate",
-        "--project", args.project, "--subject", args.subject,
-        "--heuristic", args.heuristic, "--retries", str(args.retries),
-    ]
-    if args.live:
-        # Relative to the dataset root, so the recorded command is portable.
-        payload += ["--live", "--out", "bids"]
-
-    provenance.run_recorded(
-        ds, payload,
-        f"network_fmri@{provenance.code_version()}: import {args.subject} "
-        f"({'live' if args.live else 'dry run'})",
-        outputs=["bids"] if args.live else [],
-        env=env,
-    )
-    return 0
 
 
 def global_signal(argv: list[str]) -> int:
@@ -248,55 +135,23 @@ def behavior_clean(argv: list[str]) -> int:
     return 0
 
 
-def merge(argv: list[str]) -> int:
-    """rsync per-subject exports into one BIDS tree, recorded with ``datalad run``.
-
-    The parts datasets are outside the cohort dataset, so their commits go in the
-    run message rather than being pinned as ``--input``.
-    """
-    from network_fmri import provenance
-
-    p = argparse.ArgumentParser(prog="network_fmri merge")
-    p.add_argument("--cohort", required=True, choices=list(COHORTS))
-    p.add_argument("--staging", default=DEFAULT_STAGING)
-    args = p.parse_args(argv)
-
-    parts = Path(args.staging) / args.cohort / "parts"
-    dest = Path(args.staging) / args.cohort / "bids"
-    sources = sorted(d for d in parts.glob("*/bids") if d.is_dir())
-    if not sources:
-        raise SystemExit(f"no per-subject exports under {parts}/*/bids")
-
-    env = provenance.datalad_env()
-    provenance.ensure_dataset(dest, env)
-    provenance_note = " ".join(
-        f"{s.parent.name}@{provenance.subject_commit(s.parent)}" for s in sources
-    )
-    # -L dereferences: the parts are datasets, so their NIfTIs are annex symlinks
-    # into a .git/annex this dataset does not have. Without it we commit dangling links.
-    script = "; ".join(f"rsync -aL {s}/ ." for s in sources)
-    provenance.run_recorded(
-        dest, ["bash", "-c", script],
-        f"network_fmri@{provenance.code_version()}: merge {args.cohort} "
-        f"({len(sources)} subjects) from {provenance_note}",
-        outputs=["."],
-        env=env,
-    )
-    print(f"merged {len(sources)} subjects -> {dest}")
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:2] == ["submit", "fw-heudiconv"]:
+        from network_fmri.fw2bids.jobs import submit
+
         return submit(argv[2:])
     if argv[:1] == ["curate"]:
         from network_fmri.fw2bids.curate import main as curate_main
 
         return curate_main(argv[1:])
     if argv[:1] == ["import-subject"]:
+        from network_fmri.fw2bids.jobs import import_subject
+
         return import_subject(argv[1:])
     if argv[:1] == ["merge"]:
+        from network_fmri.fw2bids.jobs import merge
+
         return merge(argv[1:])
     if argv[:1] == ["global-signal"]:
         return global_signal(argv[1:])
