@@ -2,7 +2,7 @@
 
 The default ``--heuristic``. Loaded by path, so ``network_fmri`` must be importable
 in the job. The Replace* hooks read env set by curate.py; without it they pass
-through. See docs/PIPELINE.md.
+through. See README.md.
 """
 
 import os
