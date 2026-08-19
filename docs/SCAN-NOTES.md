@@ -285,6 +285,37 @@ flipped s19 to ses-03 on a number that means nothing.
 s29's kept T2w happens to sit in ses-04 alongside its kept T1w. s19's do not (T2w ses-01,
 T1w ses-05), which is fine — fMRIPrep coregisters across sessions.
 
+## Anat selection from MRIQC (validation)
+
+41 subjects, all with at least one T1w and one T2w. Six needed a choice; MRIQC ran on all
+48 anat-bearing sessions.
+
+| Subject | Scan | Keep | Drop | Tally | Margin on the deciding metrics |
+|---|---|---|---|---|---|
+| s1127 | T1w | ses-09 | ses-01 | 6-1 | cjv 8.3%, cnr 7.4%, snr 5.2% |
+| s1270 | T1w | ses-06 | ses-01 | 6-1 | cnr 9.5%, fber 16%, snr 7.9% |
+| s216 | T1w | ses-11 | ses-01 | 5-2 | cjv 10%, cnr 14.2%, fber 15.8% |
+| s1258 | T1w | ses-06 | ses-01 | 4-3 | cjv 1.9%, cnr 3.3% — both primaries agree |
+| s1351 | T1w | ses-01 | ses-08 | 3-4 | cjv 2.6%, cnr 3.9% — **tally disagrees** |
+| s1399 | T2w | ses-01 | ses-02 | 4-2 | cjv 4.8%, cnr 2.1%; `fber` excluded (-1) |
+
+**The rule is CJV and CNR first**, not a majority of the eight IQMs. They are the most
+informative for INU and motion, and on a near-identical pair the other metrics move within
+noise. s1351 is where the two criteria actually diverge: ses-08 wins four metrics, but one
+of them (`snr_total`) by 0.3%, while both primaries favour ses-01. Decided on the primaries,
+consistent with discovery's s19.
+
+`fber` is excluded wherever it reads `-1`, which is MRIQC's could-not-estimate sentinel
+rather than a measurement — it affects the CUBE PROMO T2w in particular.
+
+## No distortion correction for one session
+
+`sub-s1399/ses-12` has 3 BOLD runs (9 files) and no field map, so those runs go through
+fMRIPrep uncorrected. It is the only such session across discovery and validation; every
+other session has exactly one field map with its `_magnitude`, and there are no field maps
+without BOLD — the standing check that [session merges](#split-scanner-visits-fieldmap-stranded)
+still hold.
+
 ## Keeping QA-rejected scans out of the next pull
 
 A scan dropped after QA must not reappear when the project is re-pulled, so the
@@ -305,13 +336,22 @@ Applied so far (rollback records: `$SCRATCH/qa-reject-t1w.json`, `qa-reject-t2w.
 | s19 ses-03 T1w | 22542 | `NEW Sag_MPRAGE_T1_qa-reject` |
 | s19 ses-03 T2w | 22542 | `T2w CUBE PROMO .8mm sag_qa-reject` |
 | s29 ses-01 T2w | 20201113 | `T2w CUBE PROMO .8mm sag_qa-reject` |
+| s1127 ses-01 T1w | 27774 | `NEW Sag_MPRAGE_T1_qa-reject` |
+| s1258 ses-01 T1w | 27821 | `NEW Sag_MPRAGE_T1_qa-reject` |
+| s1270 ses-01 T1w | 27820 | `NEW Sag_MPRAGE_T1_qa-reject` |
+| s1351 ses-08 T1w | 28579 | `NEW Sag_MPRAGE_T1_qa-reject` |
+| s216 ses-01 T1w | 26051 | `NEW Sag_MPRAGE_T1_qa-reject` |
+| s1399 ses-02 T2w | 28131 | `T2w CUBE PROMO .8mm sag_qa-reject` |
 
 Each was verified before renaming by matching the acquisition's NIfTI byte size against
 the annex key of the file deleted from BIDS, rather than trusting the session numbering.
 
-A fresh pull now curates exactly one T1w and one T2w per subject (T1w only for s43),
-which matches the pruned tree — confirmed by replaying `map_acquisition` over every
-anat acquisition in the project.
+A fresh pull now curates exactly one T1w and one T2w per subject — T1w only for s43, which
+has no T2w in any session. Confirmed by replaying `map_acquisition` over every anat
+acquisition in the project: all 41 validation subjects and 4 of 5 discovery subjects come
+back exactly 1/1.
+
+Rollback records: `$SCRATCH/qa-reject-{t1w,t2w,validation}.json`.
 
 ## Known data defect
 
