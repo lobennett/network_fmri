@@ -30,39 +30,6 @@ _USAGE = """usage:
 """
 
 
-def global_signal(argv: list[str]) -> int:
-    """Record a global-signal QA pass into derivatives/global_signal/<label>."""
-    from network_fmri import provenance
-
-    p = argparse.ArgumentParser(prog="network_fmri global-signal")
-    p.add_argument("--cohort", required=True, choices=list(COHORTS))
-    p.add_argument("--staging", default=DEFAULT_STAGING)
-    p.add_argument("--label", required=True, help="e.g. pre-trim, post-trim")
-    p.add_argument("--tr-marker", type=int, default=None,
-                   help="draw a marker at this volume (e.g. 7 to show where trim cuts)")
-    args = p.parse_args(argv)
-
-    tree = cohort_dataset(args.staging, args.cohort)
-    out = f"derivatives/global_signal/{args.label}"
-    cmd = [
-        str(Path(sys.executable).parent / "nf-global-signal"),
-        "--bids-dir", ".",
-        "--out-tsv", f"{out}/gs_metrics.tsv",
-        "--out-pdf", f"{out}/gs_traces.pdf",
-    ]
-    if args.tr_marker is not None:
-        cmd += ["--tr-marker", str(args.tr_marker)]
-
-    env = provenance.datalad_env()
-    (tree / out).mkdir(parents=True, exist_ok=True)
-    provenance.run_recorded(
-        tree, cmd,
-        f"network_fmri@{provenance.code_version()}: global signal ({args.label}) {args.cohort}",
-        outputs=[out], env=env,
-    )
-    return 0
-
-
 def trim(argv: list[str]) -> int:
     """Record an in-place trim of the cohort's BOLD volumes.
 
@@ -132,7 +99,9 @@ def main(argv: list[str] | None = None) -> int:
 
         return merge(argv[1:])
     if argv[:1] == ["global-signal"]:
-        return global_signal(argv[1:])
+        from network_fmri.qa.globalsignal import record
+
+        return record(argv[1:])
     if argv[:1] == ["trim"]:
         return trim(argv[1:])
     if argv[:1] == ["trim-bold"]:
@@ -156,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
 
         return clean(argv[1:])
     if argv[:1] == ["validate"]:
-        from network_fmri.validate import main as validate_main
+        from network_fmri.qa.validate import main as validate_main
 
         return validate_main(argv[1:])
     if argv[:1] == ["fix-sidecars"]:

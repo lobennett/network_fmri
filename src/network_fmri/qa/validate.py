@@ -10,7 +10,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from network_fmri import container
+from network_fmri.qa import container
 
 VALIDATOR_URI = "docker://bids/validator:3.0.1"
 
