@@ -10,19 +10,16 @@
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-from network_fmri.cohorts import COHORTS, roster
+from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, cohort_dataset, roster
 from network_fmri.curate import HEURISTIC
 from network_fmri.trim import N_DUMMY
 
 TEMPLATE = Path(__file__).parent / "template.sbatch"
-# Not bids_staging: that holds the previous pipeline's output, our baseline.
-DEFAULT_STAGING = str(Path(os.environ.get("SCRATCH", Path.home())) / "network_fmri")
 DEFAULT_PROJECT = "r01network"
 
 _USAGE = """usage:
@@ -145,13 +142,6 @@ def import_subject(argv: list[str]) -> int:
     return 0
 
 
-def _cohort_dataset(staging: str, cohort: str) -> Path:
-    tree = Path(staging) / cohort / "bids"
-    if not (tree / ".datalad").is_dir():
-        raise SystemExit(f"{tree} is not a DataLad dataset (run `network_fmri merge` first)")
-    return tree
-
-
 def global_signal(argv: list[str]) -> int:
     """Record a global-signal QA pass into derivatives/global_signal/<label>."""
     from network_fmri import dataset
@@ -164,7 +154,7 @@ def global_signal(argv: list[str]) -> int:
                    help="draw a marker at this volume (e.g. 7 to show where trim cuts)")
     args = p.parse_args(argv)
 
-    tree = _cohort_dataset(args.staging, args.cohort)
+    tree = cohort_dataset(args.staging, args.cohort)
     out = f"derivatives/global_signal/{args.label}"
     cmd = [
         str(Path(sys.executable).parent / "nf-global-signal"),
@@ -200,7 +190,7 @@ def trim(argv: list[str]) -> int:
     p.add_argument("--jobs", type=int, default=4)
     args = p.parse_args(argv)
 
-    tree = _cohort_dataset(args.staging, args.cohort)
+    tree = cohort_dataset(args.staging, args.cohort)
     env = dataset.datalad_env()
     dataset.run_recorded(
         tree,
@@ -222,7 +212,7 @@ def fix_sidecars(argv: list[str]) -> int:
     p.add_argument("--staging", default=DEFAULT_STAGING)
     args = p.parse_args(argv)
 
-    tree = _cohort_dataset(args.staging, args.cohort)
+    tree = cohort_dataset(args.staging, args.cohort)
     env = dataset.datalad_env()
     dataset.run_recorded(
         tree,
@@ -245,7 +235,7 @@ def behavior_clean(argv: list[str]) -> int:
     p.add_argument("--out", default="sourcedata")
     args = p.parse_args(argv)
 
-    tree = _cohort_dataset(args.staging, args.cohort)
+    tree = cohort_dataset(args.staging, args.cohort)
     env = dataset.datalad_env()
     dataset.run_recorded(
         tree,

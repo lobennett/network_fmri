@@ -1,10 +1,13 @@
-"""Cohort rosters — canonical subject IDs, not Flywheel subject labels.
+"""Cohort rosters and where their BIDS trees live on staging.
 
 An alias (``s19-2``) or a reassigned session never appears here; those resolve in
 :mod:`network_fmri.sessions`.
 """
 
 from __future__ import annotations
+
+import os
+from pathlib import Path
 
 COHORTS: dict[str, tuple[str, ...]] = {
     "discovery": ("s03", "s10", "s19", "s29", "s43"),
@@ -28,3 +31,15 @@ def roster(cohort: str) -> list[str]:
         return list(COHORTS[cohort])
     except KeyError:
         raise SystemExit(f"unknown cohort {cohort!r} (have: {', '.join(COHORTS)})") from None
+
+
+# Not bids_staging: that holds the previous pipeline's output, our baseline.
+DEFAULT_STAGING = str(Path(os.environ.get("SCRATCH", Path.home())) / "network_fmri")
+
+
+def cohort_dataset(staging: str, cohort: str) -> Path:
+    """The cohort's merged BIDS tree, which must already be a DataLad dataset."""
+    tree = Path(staging) / cohort / "bids"
+    if not (tree / ".datalad").is_dir():
+        raise SystemExit(f"{tree} is not a DataLad dataset (run `network_fmri merge` first)")
+    return tree
