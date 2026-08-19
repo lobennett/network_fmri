@@ -1,20 +1,19 @@
-"""Audit raw behavioral files against the BIDS tree.
+"""Resolve raw behavioral files to BOLD runs and materialise a 1:1 sourcedata tree.
 
-Read-only. Reports, per (subject, session, task), whether the in-scanner behavioral
-file and the BOLD run(s) correspond 1:1 — the precondition for writing events.tsv.
+`resolve` decides, per (subject, session, task), which BOLD run each in-scanner
+behavioral file belongs to; `clean` copies them into the BIDS dataset under the name of
+that run. The result is canonical, so no mapping back to the raw tree is kept.
 
-Four filename regimes coexist in the raw tree and none encodes a run index, so run
-assignment can never come from a filename. Out-of-scanner practice data is excluded:
-it appears both in `practice/` subdirectories and loose in session directories.
+Three filename regimes coexist in the raw tree and none encodes a run index, so run
+assignment can never come from a filename. Out-of-scanner practice data is excluded: it
+appears both in `practice/` subdirectories and loose in session directories.
 """
 
 from __future__ import annotations
 
 import argparse
 import collections
-import csv
 import re
-import sys
 from pathlib import Path
 
 RAW_ROOT = Path("/oak/stanford/groups/russpold/data/network_grant/behavioral_data/raw_cleaned")
@@ -128,81 +127,6 @@ def download_order(name: str) -> int:
     """Browser duplicate-download index: ``foo.csv`` -> 0, ``foo (12).csv`` -> 12."""
     m = re.search(r" \((\d+)\)\.csv$", name)
     return int(m.group(1)) if m else 0
-
-
-def classify(runs: list[int], n_behavior: int, task: str) -> str:
-    if task == "rest":
-        return "rest_no_behavior_expected"
-    if runs and not n_behavior:
-        return "BOLD_without_behavior"
-    if n_behavior and not runs:
-        return "behavior_without_BOLD"
-    if len(runs) == n_behavior == 1:
-        return "ok_1to1"
-    if len(runs) > 1 and n_behavior == 1:
-        return "AMBIGUOUS_multirun_single_behavior"
-    return f"other_{len(runs)}bold_{n_behavior}beh"
-
-
-def get_parser() -> argparse.ArgumentParser:
-    from network_fmri.cli import DEFAULT_STAGING
-    from network_fmri.cohorts import COHORTS
-
-    p = argparse.ArgumentParser(prog="network_fmri behavior-inventory")
-    p.add_argument("--cohort", required=True, choices=list(COHORTS))
-    p.add_argument("--staging", default=DEFAULT_STAGING)
-    p.add_argument("--bids-root", default=None,
-                   help="override; defaults to <staging>/<cohort>/bids")
-    p.add_argument("--out", default=None, help="TSV output path")
-    return p
-
-
-def main(argv: list[str] | None = None) -> int:
-    from network_fmri.cohorts import roster
-
-    args = get_parser().parse_args(argv)
-    subjects = roster(args.cohort)
-    bids_root = Path(args.bids_root) if args.bids_root else \
-        Path(args.staging) / args.cohort / "bids"
-    if not bids_root.is_dir():
-        raise SystemExit(f"no BIDS tree at {bids_root}")
-
-    runs = bids_runs(bids_root, subjects)
-    beh, unparsed = behavior_files(subjects)
-
-    counts, rows = collections.Counter(), []
-    for key in sorted(set(runs) | set(beh)):
-        sub, ses, task = key
-        r, files = sorted(runs.get(key, [])), beh.get(key, [])
-        status = classify(r, len(files), task)
-        counts[status] += 1
-        rows.append([sub, ses, task, len(r), ",".join(map(str, r)), len(files),
-                     status, ";".join(files)])
-
-    out = Path(args.out) if args.out else \
-        Path(args.staging) / "logs" / args.cohort / "behavior_inventory.tsv"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with open(out, "w", newline="") as fh:
-        w = csv.writer(fh, delimiter="\t")
-        w.writerow(["subject", "session", "task", "n_bold_runs", "runs",
-                    "n_behavior", "status", "behavior_files"])
-        w.writerows(rows)
-
-    print(f"[{args.cohort}] {len(rows)} units, unparsed behavioral names: {len(unparsed)}")
-    for u in unparsed[:10]:
-        print(f"    {u}")
-    for status, n in counts.most_common():
-        print(f"  {n:5d}  {status}")
-    print(f"\nneeds a decision:")
-    for r in rows:
-        if r[6] not in ("ok_1to1", "rest_no_behavior_expected"):
-            print(f"  sub-{r[0]:7s} ses-{r[1]} {r[2]:30s} runs={r[4] or '-':6s} beh={r[5]}  {r[6]}")
-    print(f"\nwrote {out}")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
 
 
 def resolve(bids_root: Path, subjects: list[str]) -> tuple[list[dict], collections.Counter]:

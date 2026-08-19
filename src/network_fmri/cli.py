@@ -30,14 +30,10 @@ _USAGE = """usage:
   network_fmri curate [options]                run one subject here (what a task does)
   network_fmri import-subject [options]        curate+export one subject via datalad run
   network_fmri merge --cohort C [options]      rsync per-subject parts into one tree
-  network_fmri refresh-subject --cohort C --subject S   replace one subject after re-import
-  network_fmri behavior-inventory --cohort C   audit raw behavioral vs BIDS (read-only)
   network_fmri behavior-clean --cohort C       materialise the cleaned 1:1 behavioral tree
   network_fmri validate --cohort C [options]   run the BIDS validator on the merged tree
   network_fmri global-signal --cohort C --label L   global-signal QA -> derivatives/
   network_fmri trim --cohort C [options]       trim dummy volumes in place (recorded)
-  network_fmri study-meta --bids-dir D --out O  mechababs study metadata TSVs
-  network_fmri qa-reject --target S/SES/SUFFIX  mark QA-failed scans on Flywheel
   network_fmri fix-sidecars --cohort C         coerce sidecar fields to BIDS types
 """
 
@@ -239,36 +235,6 @@ def fix_sidecars(argv: list[str]) -> int:
     return 0
 
 
-def refresh_subject(argv: list[str]) -> int:
-    """Replace one subject in the cohort dataset from its (re-imported) parts.
-
-    `merge` only ever adds, so a subject whose task labels changed would keep its
-    stale filenames alongside the new ones. This removes the subject's tree first.
-    """
-    from network_fmri import dataset
-
-    p = argparse.ArgumentParser(prog="network_fmri refresh-subject")
-    p.add_argument("--cohort", required=True, choices=list(COHORTS))
-    p.add_argument("--subject", required=True)
-    p.add_argument("--staging", default=DEFAULT_STAGING)
-    args = p.parse_args(argv)
-
-    tree = _cohort_dataset(args.staging, args.cohort)
-    src = Path(args.staging) / args.cohort / "parts" / args.subject / "bids"
-    if not src.is_dir():
-        raise SystemExit(f"no export at {src} (run `network_fmri import-subject` first)")
-
-    env = dataset.datalad_env()
-    dataset.run_recorded(
-        tree,
-        ["bash", "-c", f"rm -rf sub-{args.subject} && rsync -aL {src}/ ."],
-        f"network_fmri@{dataset.code_version()}: refresh sub-{args.subject} in "
-        f"{args.cohort} from {args.subject}@{dataset.subject_commit(src.parent)}",
-        outputs=[], env=env,
-    )
-    return 0
-
-
 def behavior_clean(argv: list[str]) -> int:
     """Record the cleaned behavioral tree into the cohort dataset."""
     from network_fmri import dataset
@@ -340,8 +306,6 @@ def main(argv: list[str] | None = None) -> int:
         return curate_main(argv[1:])
     if argv[:1] == ["import-subject"]:
         return import_subject(argv[1:])
-    if argv[:1] == ["refresh-subject"]:
-        return refresh_subject(argv[1:])
     if argv[:1] == ["merge"]:
         return merge(argv[1:])
     if argv[:1] == ["global-signal"]:
@@ -358,10 +322,6 @@ def main(argv: list[str] | None = None) -> int:
         return clean(argv[1:])
     if argv[:1] == ["behavior-clean"]:
         return behavior_clean(argv[1:])
-    if argv[:1] == ["behavior-inventory"]:
-        from network_fmri.behavior import main as beh_main
-
-        return beh_main(argv[1:])
     if argv[:1] == ["validate"]:
         from network_fmri.validate import main as validate_main
 
@@ -372,14 +332,6 @@ def main(argv: list[str] | None = None) -> int:
         from network_fmri.sidecars import main as sidecar_main
 
         return sidecar_main(argv[1:])
-    if argv[:1] == ["qa-reject"]:
-        from network_fmri.qa_reject import main as reject_main
-
-        return reject_main(argv[1:])
-    if argv[:1] == ["study-meta"]:
-        from network_fmri.study_meta import main as meta_main
-
-        return meta_main(argv[1:])
     sys.stderr.write(_USAGE)
     return 2
 
