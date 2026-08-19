@@ -4,7 +4,7 @@ Verb dispatch only. Each stage owns its own logic and its ``datalad run`` wrappe
 
     fw2bids/   Flywheel -> BIDS (submit, import-subject, merge, curate)
     prepare/   in-place fixes to the exported tree (trim, b0link, fix-sidecars)
-    behavior/  raw behavioural -> sourcedata
+    behavior/  canonical behavioural data -> sourcedata
     qa/        BIDS validation, global-signal traces
 
 The ``*-run`` verbs are the inner commands ``datalad run`` records; the bare verb is the
@@ -25,7 +25,7 @@ _USAGE = """usage:
   network_fmri global-signal --cohort C --label L   global-signal QA -> derivatives/
   network_fmri trim --cohort C [options]       trim dummy volumes in place
   network_fmri b0link --cohort C               link field maps to their BOLD runs
-  network_fmri behavior-clean --cohort C       materialise the cleaned 1:1 behavioral tree
+  network_fmri ingest-beh --cohort C           copy canonical behavioural data -> sourcedata/
 """
 
 
@@ -75,12 +75,8 @@ def main(argv: list[str] | None = None) -> int:
         from network_fmri.prepare.sidecars import main as f
 
         return f(rest)
-    if verb == "behavior-clean":
-        from network_fmri.behavior.clean import record as f
-
-        return f(rest)
-    if verb == "behavior-clean-run":
-        from network_fmri.behavior.clean import clean as f
+    if verb == "ingest-beh":
+        from network_fmri.behavior.ingest import record as f
 
         return f(rest)
     if verb == "global-signal":

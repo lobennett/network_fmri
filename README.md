@@ -109,16 +109,24 @@ sbatch -J nf-gs-post -p russpold,normal -c 2 --mem=8G -t 06:00:00 \
 Trim is per-file parallel, so give it cores; going wider than one node isn't possible since
 parallel array tasks would contend on the dataset's git index.
 
-### 9. Behavioral cleaning, then events
+### 9. Behavioral data, then events
 
 ```bash
-network_fmri behavior-clean --cohort discovery
+network_fmri ingest-beh --cohort discovery
 ```
 
-Materialises a 1:1 behavioral tree at `sourcedata/sub-X/ses-YY/beh/`. Follow with `network-events
-create` (a separate repo) to build `_events.tsv`; that step applies the −10.43 s onset shift
-caused by trimming (see [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md)) — get it wrong and nothing fails
-validation, only the first-level models.
+Copies the cohort's subjects from the canonical behavioural dataset at
+`$OAK/.../behavioral_data/canonical` into `sourcedata/sub-X/ses-YY/beh/`.
+
+That dataset is already reconciled: one CSV per BOLD run, named for the run it belongs to.
+Working out which run each raw file belonged to needed session alignment and volume-count
+comparison, because the raw filenames encode no run index — but that answer only changes if the
+*functional* side changes, so it is derived once and frozen there with its own provenance record
+and the code that produced it. This repo no longer reads the raw tree, which is being archived.
+
+Follow with `network-events create` (a separate repo) to build `_events.tsv`; that step applies
+the −10.43 s onset shift caused by trimming (see [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md)) — get
+it wrong and nothing fails validation, only the first-level models.
 
 ### 10. Validate again
 
@@ -126,8 +134,8 @@ validation, only the first-level models.
 network_fmri validate --cohort discovery -- --ignoreWarnings
 ```
 
-Confirms the tree is still BIDS-compatible after trimming, field-map linking and behavioral
-cleaning.
+Confirms the tree is still BIDS-compatible after trimming, field-map linking and behavioural
+ingestion.
 
 ### 11. MRIQC / fMRIPrep
 
@@ -189,7 +197,7 @@ src/network_fmri/
   prepare/trim.py          drop dummy volumes in place, stamp the sidecar
   prepare/b0link.py        link field maps to their BOLD runs
   prepare/sidecars.py      coerce multi-valued DICOM tags to BIDS strings
-  behavior/clean.py        raw behavioral -> sourcedata, 1:1 with BOLD runs
+  behavior/ingest.py       canonical behavioural data -> sourcedata
   qa/validate.py           BIDS validator, via container
   qa/container.py          pull-and-run Apptainer images, cached
   qa/globalsignal.py       global-signal traces into derivatives/

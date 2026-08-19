@@ -1,1 +1,1 @@
-"""Raw in-scanner behavioural files -> a 1:1 sourcedata tree beside the BOLD runs."""
+"""Canonical behavioural data -> the cohort's sourcedata/ tree."""
