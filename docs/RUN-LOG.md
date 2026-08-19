@@ -56,3 +56,26 @@ failures.
 
 Verify against the baseline once merged — filenames should be identical to
 `$SCRATCH/network_fmri_pre-provenance/<cohort>/parts/<subject>/`.
+
+## 2026-08-18 — discovery through events
+
+| Stage | Result |
+|---|---|
+| trim | 873 BOLDs, median 336 → 329 volumes |
+| global-signal | pre-trim and post-trim, echo-2 only (291 files) |
+| behavior-clean | 224 CSVs, 1:1 with BIDS func runs |
+| events | 224 `_events.tsv`, min onset 0.179 s, 0 negatives |
+| validate | `rc=0`, 2289 files |
+
+Onset shift is 7 × 1.49 s = 10.43 s, applied in `network_events` from the sidecar's
+`NumberOfVolumesDiscardedByUser` — never baked into the raw behavioral files.
+
+## 2026-08-18 — MRIQC on discovery
+
+Array `39706846`, 7 session-level jobs (s03 ses-05/13, s10 ses-09, s19 ses-03/05,
+s29 ses-04, s43 ses-05) via the mechababs campaign at
+`$SCRATCH/mechababs_campaigns/r01network` (`code/mechababs@05350a7`, MRIQC 24.0.2).
+
+Campaign venv needs **Python 3.12** — babs pins `numpy < 2.0`, which has no cp313
+wheels. `con-duct` must be installed explicitly: mechababs shells out to `duct` but
+does not declare it as a dependency.

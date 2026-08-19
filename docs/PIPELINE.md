@@ -90,6 +90,27 @@ trace, so it does not mirror trim's coverage.
 the two PDFs directly comparable. The tool is a pure producer: no thresholds, no
 exclusion decisions. Those belong to `network_qa`, which consumes `gs_metrics.tsv`.
 
+## Anatomical QA (MRIQC)
+
+MRIQC runs through a [mechababs](https://github.com/lobennett/mechababs) campaign at
+`$SCRATCH/mechababs_campaigns/r01network`, not through this package — BABS owns its own
+`datalad run` provenance, so wrapping it again would only nest records. The campaign
+points at `<cohort>/bids`, whose dataset id and commit BABS stores, continuing the chain.
+
+The unit is a **session**, not a subject: T1w acquisition is per visit, and the point of
+this stage is choosing between a subject's T1w images. Selection rule
+`require_datatypes: [anat], require_positive: [t1w_num]` yields 7 units for discovery —
+only s03 (ses-05/ses-13) and s19 (ses-03/ses-05) have a choice to make; s10, s29 and s43
+have one T1w each.
+
+The winner per subject is kept and the loser's `anat/` dropped, so fMRIPrep sees exactly
+one T1w per subject rather than averaging two of unequal quality.
+
+Sherlock specifics live in `code/mechababs/clusters/sherlock.yaml`: an explicit
+`--partition russpold,normal` (no auto-routing), a standalone git-annex ≥10 on `PATH`
+(the `system git-annex` module is 8.x and cannot read our v10 repos), and `$JOB_TMP` on
+scratch bound to `/tmp` in the container.
+
 ## Behavioral alignment
 
 `behavior-inventory` audits raw behavioral against the BIDS tree; `behavior-clean`
