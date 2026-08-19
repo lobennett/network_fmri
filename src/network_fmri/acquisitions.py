@@ -10,6 +10,13 @@ import re
 
 CANONICAL_FUNC = re.compile(r"^task-(?P<task>[A-Za-z0-9]+)_bold(?:_\d+|_run_\d+)?$")
 
+# Scans failed by QA are marked on Flywheel by appending this to the acquisition label,
+# so they are never curated and so never downloaded again. Keyed at the source rather
+# than in a table here because the heuristic cannot see the session: SeqInfo carries
+# patient_id but its accession_number is None, and a subject-level skip would drop the
+# kept scan too. See docs/SCAN-NOTES.md.
+QA_REJECT = re.compile(r"_qa-reject$")
+
 TASKS = {
     # single
     "rest", "cuedTS", "spatialTS", "directedForgetting", "flanker", "goNogo",
@@ -58,7 +65,7 @@ SKIP_ACQUISITIONS = {
 
 def map_acquisition(label: str) -> dict[str, str] | None:
     """Acquisition label -> BIDS entities, or ``None`` to leave the series alone."""
-    if label in SKIP_ACQUISITIONS:
+    if label in SKIP_ACQUISITIONS or QA_REJECT.search(label):
         return None
     m = CANONICAL_FUNC.match(label)
     if m and m["task"] in TASKS:

@@ -36,6 +36,8 @@ _USAGE = """usage:
   network_fmri validate --cohort C [options]   run the BIDS validator on the merged tree
   network_fmri global-signal --cohort C --label L   global-signal QA -> derivatives/
   network_fmri trim --cohort C [options]       trim dummy volumes in place (recorded)
+  network_fmri study-meta --bids-dir D --out O  mechababs study metadata TSVs
+  network_fmri qa-reject --target S/SES/SUFFIX  mark QA-failed scans on Flywheel
 """
 
 
@@ -341,6 +343,14 @@ def main(argv: list[str] | None = None) -> int:
         from network_fmri.validate import main as validate_main
 
         return validate_main(argv[1:])
+    if argv[:1] == ["qa-reject"]:
+        from network_fmri.qa_reject import main as reject_main
+
+        return reject_main(argv[1:])
+    if argv[:1] == ["study-meta"]:
+        from network_fmri.study_meta import main as meta_main
+
+        return meta_main(argv[1:])
     sys.stderr.write(_USAGE)
     return 2
 
