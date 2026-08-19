@@ -53,5 +53,27 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def record(argv: list[str] | None = None) -> int:
+    """Record a sidecar type-coercion pass over the cohort dataset."""
+    from network_fmri import provenance
+    from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, cohort_dataset
+
+    p = argparse.ArgumentParser(prog="network_fmri fix-sidecars")
+    p.add_argument("--cohort", required=True, choices=list(COHORTS))
+    p.add_argument("--staging", default=DEFAULT_STAGING)
+    args = p.parse_args(argv)
+
+    tree = cohort_dataset(args.staging, args.cohort)
+    provenance.run_recorded(
+        tree,
+        [str(Path(sys.executable).parent / "network_fmri"), "fix-sidecars-run",
+         "--bids-dir", "."],
+        f"network_fmri@{provenance.code_version()}: coerce sidecar string fields "
+        f"in {args.cohort}",
+        outputs=[], env=provenance.datalad_env(),
+    )
+    return 0
+
+
 if __name__ == "__main__":
     sys.exit(main())

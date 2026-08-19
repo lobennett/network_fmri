@@ -98,5 +98,33 @@ def main(argv: list[str] | None = None) -> int:
     return 1 if summary["error"] else 0
 
 
+def record(argv: list[str] | None = None) -> int:
+    """Record an in-place trim of the cohort's BOLD volumes.
+
+    Outputs are not declared: `datalad run` unlocks declared outputs, which for annexed
+    NIfTIs means copying ~100 GB out of the annex. Trimming replaces each file by rename,
+    so the default save-everything behaviour is enough.
+    """
+    from network_fmri import provenance
+    from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, cohort_dataset
+
+    p = argparse.ArgumentParser(prog="network_fmri trim")
+    p.add_argument("--cohort", required=True, choices=list(COHORTS))
+    p.add_argument("--staging", default=DEFAULT_STAGING)
+    p.add_argument("--jobs", type=int, default=4)
+    args = p.parse_args(argv)
+
+    tree = cohort_dataset(args.staging, args.cohort)
+    provenance.run_recorded(
+        tree,
+        [str(Path(sys.executable).parent / "network_fmri"), "trim-bold",
+         "--bids-dir", ".", "--jobs", str(args.jobs)],
+        f"network_fmri@{provenance.code_version()}: trim {N_DUMMY} dummy volumes "
+        f"from {args.cohort}",
+        outputs=[], env=provenance.datalad_env(),
+    )
+    return 0
+
+
 if __name__ == "__main__":
     sys.exit(main())
