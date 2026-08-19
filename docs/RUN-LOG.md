@@ -70,6 +70,23 @@ Verify against the baseline once merged — filenames should be identical to
 Onset shift is 7 × 1.49 s = 10.43 s, applied in `network_events` from the sidecar's
 `NumberOfVolumesDiscardedByUser` — never baked into the raw behavioral files.
 
+## 2026-08-18 — validation through events
+
+| Stage | Result |
+|---|---|
+| trim | 6924 BOLDs, 0 errors |
+| behavior-clean | 1887 CSVs for 1893 non-rest runs ([SCAN-NOTES.md](SCAN-NOTES.md) for the 6) |
+| events | complete |
+| fix-sidecars | 103 of 8083 sidecars coerced |
+| validate | `rc=0`, BIDS compatible |
+
+The validator first returned `rc=16`: 103 sidecars carried `SoftwareVersions` — plus
+`ScanOptions` and `ScanningSequence` — as multi-valued DICOM lists where BIDS wants a
+string. Coerced in-pipeline rather than on Flywheel, so a re-pull and any newly uploaded
+scan from the same scanner are covered without touching shared metadata.
+
+Discovery re-validated `rc=0` after its rejected T1w were removed.
+
 ## 2026-08-18 — MRIQC on discovery
 
 Array `39709054`, 7 session-level jobs (s03 ses-05/13, s10 ses-09, s19 ses-03/05,
