@@ -261,6 +261,28 @@ on the winning side is under 3% (`snr_total` differs by 0.3%). The call rests on
 `cnr` and `snr_total` — CJV being the most informative single T1w metric for INU and
 motion — while `efc`, `fber` and `qi_2` favour ses-03. Either would be defensible.
 
+## Keeping QA-rejected scans out of the next pull
+
+A scan dropped after QA must not reappear when the project is re-pulled, so the
+rejection is recorded **on Flywheel**: `network_fmri qa-reject --target s03/05/T1w`
+appends `_qa-reject` to the acquisition label, and `map_acquisition` returns `None` for
+any label matching that marker. The scan is never curated, so `export` never downloads it.
+
+It has to be keyed at the source rather than in a table here, because the heuristic
+cannot see the session: `infotodict` is called per session but `SeqInfo.accession_number`
+is `None` (only `patient_id` is populated), and a subject-level skip would drop the kept
+scan along with the rejected one.
+
+Applied so far (rollback record: `$SCRATCH/qa-reject-t1w.json`):
+
+| Target | Flywheel session | Label |
+|---|---|---|
+| s03 ses-05 T1w | 22734 | `NEW Sag_MPRAGE_T1_qa-reject` |
+| s19 ses-03 T1w | 22542 | `NEW Sag_MPRAGE_T1_qa-reject` |
+
+Each was verified before renaming by matching the acquisition's NIfTI byte size against
+the annex key of the file deleted from BIDS, rather than trusting the session numbering.
+
 ## Known data defect
 
 `sub-s1165/ses-02` `task-directedForgetting` echoes 1–3 carry `SoftwareVersions` as
