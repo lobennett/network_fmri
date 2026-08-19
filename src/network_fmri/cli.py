@@ -25,6 +25,7 @@ _USAGE = """usage:
   network_fmri validate --cohort C [options]   run the BIDS validator on the merged tree
   network_fmri global-signal --cohort C --label L   global-signal QA -> derivatives/
   network_fmri trim --cohort C [options]       trim dummy volumes in place (recorded)
+  network_fmri b0link --cohort C               link field maps to their BOLD runs
   network_fmri fix-sidecars --cohort C         coerce sidecar fields to BIDS types
 """
 
@@ -161,6 +162,14 @@ def main(argv: list[str] | None = None) -> int:
         from network_fmri.prepare.trim import main as trim_main
 
         return trim_main(argv[1:])
+    if argv[:1] == ["b0link"]:
+        from network_fmri.prepare.b0link import record
+
+        return record(argv[1:])
+    if argv[:1] == ["b0link-run"]:
+        from network_fmri.prepare.b0link import main as b0link_main
+
+        return b0link_main(argv[1:])
     if argv[:1] == ["behavior-clean-run"]:
         from network_fmri.behavior import clean
 
