@@ -76,16 +76,26 @@ def render(args: argparse.Namespace) -> str:
     )
 
 
-def submit(argv: list[str]) -> int:
-    args = get_parser().parse_args(argv)
+def sbatch_array(args: argparse.Namespace) -> str:
+    """Render the per-subject array and submit it, returning the Slurm job id.
+
+    Separate from :func:`submit` so ``pipeline`` can chain the rest of the stages onto
+    this array with ``--dependency=afterok``.
+    """
     script = render(args)
-    if args.print_only:
-        print(script)
-        return 0
     with tempfile.NamedTemporaryFile("w", suffix=".sbatch", delete=False) as f:
         f.write(script)
-    print(f"sbatch script: {f.name}")
-    return subprocess.run(["sbatch", f.name]).returncode
+    out = subprocess.run(["sbatch", f.name], capture_output=True, text=True, check=True)
+    return out.stdout.strip().split()[-1]
+
+
+def submit(argv: list[str]) -> int:
+    args = get_parser().parse_args(argv)
+    if args.print_only:
+        print(render(args))
+        return 0
+    print(f"submitted array {sbatch_array(args)}")
+    return 0
 
 
 def import_subject(argv: list[str]) -> int:

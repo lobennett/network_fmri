@@ -25,6 +25,30 @@ via `sbatch` — never a login node.
 Cohorts are `discovery` (5 subjects), `validation` (41), `excluded` (11). Output lands under
 `$SCRATCH/network_fmri/<cohort>/`.
 
+### The whole chain in one command
+
+```bash
+network_fmri pipeline --cohort discovery --live          # see the plan first with --print
+```
+
+Submits all 13 stages as dependent Slurm jobs and returns immediately. Slurm is the DAG
+engine: each stage carries `--dependency=afterok` on the one before it, so a failure stops the
+rest instead of corrupting the tree, and nothing polls or blocks. Resume after fixing a failure
+with `--from <stage>`; stage names are in the `--print` output.
+
+```bash
+for c in discovery validation excluded; do
+  network_fmri pipeline --cohort $c --live
+done
+```
+
+Deliberately not Make or Snakemake: the chain is a straight line per cohort, Slurm already
+provides the dependency graph, and job arrays already provide the fan-out those tools would be
+brought in for.
+
+The rest of this section documents each stage individually — useful for re-running one, and for
+understanding what the chain does.
+
 ### 1-2. Curate + export, then merge
 
 ```bash
@@ -124,9 +148,19 @@ comparison, because the raw filenames encode no run index — but that answer on
 *functional* side changes, so it is derived once and frozen there with its own provenance record
 and the code that produced it. This repo no longer reads the raw tree, which is being archived.
 
-Follow with `network-events create` (a separate repo) to build `_events.tsv`; that step applies
-the −10.43 s onset shift caused by trimming (see [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md)) — get
-it wrong and nothing fails validation, only the first-level models.
+Then three stages from `network_events` (a separate repo, its own venv):
+
+```bash
+network-events create --sourcedata sourcedata --bids-dir .   # _events.tsv
+network-events qc     --sourcedata sourcedata --bids-dir .   # -> sourcedata/behavioral_qc/trim_list.json
+network-events trim   --bids-dir .                           # -> derivatives/trimmed/
+```
+
+`create` applies the −10.43 s onset shift caused by dummy-volume trimming (see
+[docs/SCAN-NOTES.md](docs/SCAN-NOTES.md)) — get it wrong and nothing fails validation, only the
+first-level models. `qc` writes the truncation record, and `trim` uses it to truncate runs where
+the task itself ran short. That is a different operation from `network_fmri trim`, which removes
+non-steady-state volumes; this one is driven by the behavioural data.
 
 ### 10. Validate again
 

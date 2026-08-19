@@ -16,6 +16,7 @@ from __future__ import annotations
 import sys
 
 _USAGE = """usage:
+  network_fmri pipeline --cohort C --live      submit the whole chain, one command
   network_fmri submit fw-heudiconv [options]   render + sbatch a per-subject array
   network_fmri curate [options]                run one subject here (what a task does)
   network_fmri import-subject [options]        curate+export one subject via datalad run
@@ -38,6 +39,11 @@ def main(argv: list[str] | None = None) -> int:
         return submit(argv[2:])
 
     verb, rest = (argv[0], argv[1:]) if argv else ("", [])
+
+    if verb == "pipeline":
+        from network_fmri.pipeline import main as f
+
+        return f(rest)
 
     if verb == "curate":
         from network_fmri.fw2bids.curate import main as f
