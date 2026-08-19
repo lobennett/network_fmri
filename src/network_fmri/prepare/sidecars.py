@@ -13,13 +13,11 @@ list-valued ``ImageType`` validates clean.
 from __future__ import annotations
 
 import argparse
-import json
 import logging
-import os
 import sys
 from pathlib import Path
 
-log = logging.getLogger(__name__)
+from network_fmri.prepare.sidecar import read, update
 
 # BIDS type: string. All three come from multi-valued GE DICOM tags.
 STRING_FIELDS = ("SoftwareVersions", "ScanningSequence", "ScanOptions")
@@ -28,24 +26,10 @@ SEP = "/"
 
 def fix_one(path: Path) -> bool:
     """Join list-valued string fields in one sidecar. True if it changed."""
-    try:
-        sidecar = json.loads(path.read_text())
-    except (json.JSONDecodeError, OSError) as e:
-        log.warning("unreadable sidecar, skipping: %s (%s)", path.name, e)
-        return False
-
-    changed = False
-    for field in STRING_FIELDS:
-        value = sidecar.get(field)
-        if isinstance(value, list):
-            sidecar[field] = SEP.join(str(v) for v in value)
-            changed = True
-
-    if changed:
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(sidecar, indent=2) + "\n")
-        os.replace(tmp, path)
-    return changed
+    data = read(path)
+    fields = {f: SEP.join(str(v) for v in data[f])
+              for f in STRING_FIELDS if isinstance(data.get(f), list)}
+    return update(path, **fields) if fields else False
 
 
 def fix_tree(bids_dir: Path) -> dict:

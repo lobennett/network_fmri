@@ -11,12 +11,12 @@ independent, so ``--jobs`` is safe.
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import multiprocessing
-import os
 import sys
 from pathlib import Path
+
+from network_fmri.prepare.sidecar import path_for, read, update
 
 log = logging.getLogger(__name__)
 
@@ -27,20 +27,13 @@ def trim_one(nifti_path: Path) -> str:
     """Trim or skip one BOLD NIfTI. Returns trimmed / already / too_short / error."""
     import nibabel as nib
 
-    json_path = nifti_path.with_name(nifti_path.name.replace(".nii.gz", ".json"))
+    json_path = path_for(nifti_path)
     tmp_path = nifti_path.parent / nifti_path.name.replace("_bold.nii.gz", "_bold_tmp.nii.gz")
 
     try:
-        sidecar = {}
-        if json_path.exists():
-            try:
-                sidecar = json.loads(json_path.read_text())
-            except (json.JSONDecodeError, OSError) as e:
-                # A truncated sidecar must not abort the file or the worker.
-                log.warning("malformed sidecar, treating as empty: %s (%s)", json_path.name, e)
-            else:
-                if sidecar.get("NumberOfVolumesDiscardedByUser") == N_DUMMY:
-                    return "already"
+        sidecar = read(json_path)
+        if sidecar.get("NumberOfVolumesDiscardedByUser") == N_DUMMY:
+            return "already"
 
         img = nib.load(str(nifti_path))
         n_vols = img.shape[3] if len(img.shape) > 3 else 1
@@ -51,12 +44,10 @@ def trim_one(nifti_path: Path) -> str:
         nib.save(img.slicer[:, :, :, N_DUMMY:], str(tmp_path))
         tmp_path.rename(nifti_path)
 
-        sidecar["NumberOfVolumesDiscardedByUser"] = N_DUMMY
+        fields = {"NumberOfVolumesDiscardedByUser": N_DUMMY}
         if "NumVolumes" in sidecar:
-            sidecar["NumVolumes"] = n_vols - N_DUMMY
-        tmp_json = json_path.with_suffix(".json.tmp")
-        tmp_json.write_text(json.dumps(sidecar, indent=2) + "\n")
-        os.replace(tmp_json, json_path)
+            fields["NumVolumes"] = n_vols - N_DUMMY
+        update(json_path, **fields)
 
         log.info("trimmed %d -> %d volumes: %s", n_vols, n_vols - N_DUMMY, nifti_path.name)
         return "trimmed"

@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, cohort_dataset
-from network_fmri.trim import N_DUMMY
+from network_fmri.prepare.trim import N_DUMMY
 
 _USAGE = """usage:
   network_fmri submit fw-heudiconv [options]   render + sbatch a per-subject array
@@ -158,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] == ["trim"]:
         return trim(argv[1:])
     if argv[:1] == ["trim-bold"]:
-        from network_fmri.trim import main as trim_main
+        from network_fmri.prepare.trim import main as trim_main
 
         return trim_main(argv[1:])
     if argv[:1] == ["behavior-clean-run"]:
@@ -174,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] == ["fix-sidecars"]:
         return fix_sidecars(argv[1:])
     if argv[:1] == ["fix-sidecars-run"]:
-        from network_fmri.sidecars import main as sidecar_main
+        from network_fmri.prepare.sidecars import main as sidecar_main
 
         return sidecar_main(argv[1:])
     sys.stderr.write(_USAGE)
