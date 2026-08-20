@@ -737,7 +737,7 @@ wheels = [
 [[package]]
 name = "network-events"
 version = "0.1.0"
-source = { git = "https://github.com/lobennett/network_events.git?rev=b0a6e04#b0a6e04d39cc28409bf349c281bcbe20b06adada" }
+source = { git = "https://github.com/lobennett/network_events.git?rev=6b9a8b8#6b9a8b89a594fb6c3118aa4fcd033246a093e50e" }
 dependencies = [
     { name = "nibabel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -764,9 +764,9 @@ requires-dist = [
     { name = "datalad-installer", specifier = ">=1.1" },
     { name = "fw-heudiconv", git = "https://github.com/lobennett/fw-heudiconv.git?rev=e7509a4" },
     { name = "global-signal-plots", extras = ["plot"], git = "https://github.com/lobennett/global_signal_plots.git?rev=5d92c33" },
-    { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=b0a6e04" },
+    { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=6b9a8b8" },
     { name = "network-glm", git = "https://github.com/lobennett/network_glm.git?rev=305e1e0" },
-    { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=314b6b6" },
+    { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=5d7ef4f" },
 ]
 
 [[package]]
@@ -790,7 +790,7 @@ dependencies = [
 [[package]]
 name = "network-qa"
 version = "0.1.0"
-source = { git = "https://github.com/lobennett/network_qa.git?rev=314b6b6#314b6b6718e55362a4700fd21c0bc81b1b6f71c3" }
+source = { git = "https://github.com/lobennett/network_qa.git?rev=5d7ef4f#5d7ef4fcb93a3aac59ffa89ceb1f9a0c084dfdea" }
 dependencies = [
     { name = "network-events", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nibabel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
