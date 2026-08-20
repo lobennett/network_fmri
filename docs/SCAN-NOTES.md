@@ -257,7 +257,7 @@ and 4 of 5 discovery subjects come back exactly 1/1. Rollback:
 
 ## Aborted runs leave events past the end of the scan
 When a run is aborted at the scanner the behavioural session keeps going, so the CSV records
-trials that were never imaged. Nothing clipped them, so **21 runs carried `events.tsv` rows past
+trials that were never imaged. Nothing clipped them, so **22 runs carried `events.tsv` rows past
 the end of their timeseries** — a first-level model on those builds regressors for timepoints that
 do not exist, silently. Worst case `sub-s1391/ses-07` `task-shapeMatching`: 348.7 s of scan against
 1626.1 s of events.
@@ -267,8 +267,13 @@ NIfTI rather than the sidecar because `NumberOfTemporalPositions` records the *i
 count — `sub-s19/ses-07` claims 524 for a 223-volume scan. What the clip costs is reported under
 `scan_*` keys in the truncation sidecar for `network_qa` to threshold on.
 
-**No scan needs rejecting for this.** All 21 keep every real `trial_type` after clipping (retention
+**No scan needs rejecting for this.** All 22 keep every real `trial_type` after clipping (retention
 0.50–1.00); the only losses are the `unknown` and `n/a` junk categories.
+
+`onset` is clipped, `duration` is not, so 12 runs still hold a final trial whose box-car ends up to
+6.7 s past the last volume. That is deliberate: the trial was presented and its onset is inside the
+scan, so the design matrix simply has no timepoints for the tail. Truncating `duration` would
+misstate the stimulus and dropping the trial would discard real data.
 
 Volume count alone is the wrong test. Task duration varies by design, so "shorter than the task's
 modal length" flags 870 of 2738 acquisitions and misses the ones that matter — 12 of the 21
