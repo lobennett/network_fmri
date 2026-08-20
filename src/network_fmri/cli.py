@@ -6,6 +6,7 @@ Verb dispatch only. Each stage owns its own logic and its ``datalad run`` wrappe
     prepare/   in-place fixes to the exported tree (trim, b0link, fix-sidecars)
     behavior/  canonical behavioural data -> sourcedata
     qa/        BIDS validation, global-signal traces
+    glm/       submit network_glm's first/second-level fits
 
 The ``*-run`` verbs are the inner commands ``datalad run`` records; the bare verb is the
 recorded wrapper around it.
@@ -27,6 +28,9 @@ _USAGE = """usage:
   network_fmri trim --cohort C [options]       trim dummy volumes in place
   network_fmri b0link --cohort C               link field maps to their BOLD runs
   network_fmri ingest-beh --cohort C           copy canonical behavioural data -> sourcedata/
+  network_fmri glm-lev1 --cohort C --all -- ...   first-level GLMs, one task per subject x task
+  network_fmri glm-lev2 --lev1-dirs D --all -- ...  second level, one task per contrast
+  network_fmri glm-outliers --results-dir D -- ...  cohort outlier QC
 """
 
 
@@ -87,6 +91,18 @@ def main(argv: list[str] | None = None) -> int:
         return f(rest)
     if verb == "global-signal":
         from network_fmri.qa.globalsignal import record as f
+
+        return f(rest)
+    if verb == "glm-lev1":
+        from network_fmri.glm.submit import lev1 as f
+
+        return f(rest)
+    if verb == "glm-lev2":
+        from network_fmri.glm.submit import lev2 as f
+
+        return f(rest)
+    if verb == "glm-outliers":
+        from network_fmri.glm.submit import outliers as f
 
         return f(rest)
     if verb == "validate":
