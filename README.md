@@ -178,6 +178,51 @@ Run through a [mechababs](https://github.com/lobennett/mechababs) campaign point
 wrapping it again would only nest records. It records the input dataset's id and commit,
 continuing the chain.
 
+MRIQC and fMRIPrep are independent consumers of the same tree and can run **concurrently**:
+the only reason to serialise them was choosing between duplicate anatomicals, and that
+decision now lives on Flywheel as `_qa-reject` marks (see
+[docs/SCAN-NOTES.md](docs/SCAN-NOTES.md)) rather than something a downstream stage consults.
+
+### 12-14. GLMs
+
+First and second level fits plus cohort outlier QC, from
+[network_glm](https://github.com/lobennett/network_glm) — a pinned dependency, so `uv sync`
+provides it and these run in the same venv as everything else.
+
+```bash
+# one array task per subject x task
+network_fmri glm-lev1 --cohort discovery --base-tasks --results-dir <lev1_out> -- \
+    --bids-dir <cohort>/bids --fmriprep-dir <fmriprep> \
+    --exclusions-file <lock.json> --residuals
+
+# one array task per contrast, discovered from the lev1 tree
+network_fmri glm-lev2 --lev1-dirs <lev1_out> --all --results-dir <lev2_out> -- \
+    --num-permutations 5000
+
+# a single job over the finished lev1 maps
+network_fmri glm-outliers --results-dir <lev1_out> --
+```
+
+These need fMRIPrep derivatives, so they are **not** part of the `pipeline` chain, which
+ends at the second `validate`. Chain them onto a finished fMRIPrep with `--dependency`.
+
+Everything after `--` is passed to `network-glm` untouched: this repo owns the fan-out,
+the resources and the host modules; `network_glm` owns what the modelling flags mean. Per
+level defaults match what it documents — lev1 1 CPU / 64 GB / 2 days, lev2 2 CPUs / 4 GB /
+4 h, outliers 2 CPUs / 16 GB / 1 h.
+
+Host modules are loaded only where a run can actually reach them: FreeSurfer for
+`mri_surf2surf` when the space is a surface space **and** `--smoothing-fwhm` is given, FSL
+for `lev2` volume randomise. Neither tool is bundled anywhere; both are licensed and
+resolved from Sherlock's module system.
+
+### 15. Exclusions and reports
+
+[network_qa](https://github.com/lobennett/network_qa) compiles the final exclusions from
+the QC produced along the way — MRIQC IQMs, global-signal metrics, the behavioural
+truncation record, and lev1 design diagnostics. It is a dependency of `network_glm`, so it
+is already installed.
+
 ### Progress and failures
 
 ```bash
@@ -235,7 +280,13 @@ src/network_fmri/
   qa/validate.py           BIDS validator, via container
   qa/container.py          pull-and-run Apptainer images, cached
   qa/globalsignal.py       global-signal traces into derivatives/
+  glm/submit.py            fan network_glm's levels out over Slurm arrays
 ```
+
+External packages are pinned dependencies, not assumed installs: a pinned fork of
+fw-heudiconv does the Flywheel work, `global_signal_plots` the traces, `network_events` the
+events/QC/truncation stages, and `network_glm` (with `network_qa`) the models. One
+`uv sync` provisions the whole pipeline.
 
 `fw-heudiconv` loads `heuristic.py` **by path**, which is why `curate.py` and `heuristic.py` must
 stay in the same package (`fw2bids/`). External tooling is provisioned, not assumed: the validator

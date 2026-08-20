@@ -65,11 +65,22 @@ def _sbatch(name: str, body: str, args: argparse.Namespace, log_dir: Path,
     return out.stdout.strip().split()[-1]
 
 
-def _common(p: argparse.ArgumentParser) -> None:
+# Defaults carried over from the submit layer this replaces: lev1 is memory-hungry and
+# slow, lev2 is permutation-bound but small, outliers is a single quick pass. A single
+# shared default would either starve lev1 or waste an allocation on the other two.
+DEFAULTS = {
+    "lev1": dict(cpus=1, mem_gb=64, time="2-00:00:00"),
+    "lev2": dict(cpus=2, mem_gb=4, time="04:00:00"),
+    "outliers": dict(cpus=2, mem_gb=16, time="01:00:00"),
+}
+
+
+def _common(p: argparse.ArgumentParser, level: str) -> None:
+    d = DEFAULTS[level]
     p.add_argument("--partition", default="russpold,normal")
-    p.add_argument("--cpus", type=int, default=8)
-    p.add_argument("--mem-gb", type=int, default=32)
-    p.add_argument("--time", default="12:00:00")
+    p.add_argument("--cpus", type=int, default=d["cpus"])
+    p.add_argument("--mem-gb", type=int, default=d["mem_gb"])
+    p.add_argument("--time", default=d["time"])
     p.add_argument("--throttle", type=int, default=20)
     p.add_argument("--dependency", default=None, help="Slurm job id to wait on")
     p.add_argument("--log-dir", default=None, help="default: <results-dir>/logs")
@@ -92,7 +103,7 @@ def lev1(argv: list[str] | None = None) -> int:
     g.add_argument("--dual-tasks", dest="taskset", action="store_const", const="dual")
     p.add_argument("--results-dir", required=True)
     p.add_argument("--space", default="MNI")
-    _common(p)
+    _common(p, "lev1")
     args = p.parse_args(own)
 
     subjects = args.subjects or (roster(args.cohort) if args.cohort else None)
@@ -101,7 +112,9 @@ def lev1(argv: list[str] | None = None) -> int:
     tasks = {"all": get_all_tasks, "base": get_base_tasks,
              "dual": get_dual_tasks}[args.taskset]() if args.taskset else args.tasks
 
-    pairs = [f"{s} {t}" for s in subjects for t in tasks]
+    # sub- prefixed: file discovery normalises either form, but the runner interpolates
+    # subj_id raw into output filenames, so bare ids would produce non-BIDS names.
+    pairs = [f"sub-{s.removeprefix('sub-')} {t}" for s in subjects for t in tasks]
     log_dir = Path(args.log_dir or Path(args.results_dir) / "logs")
     listfile = _write_list(log_dir, "lev1_units.txt", pairs)
 
@@ -114,7 +127,7 @@ def lev1(argv: list[str] | None = None) -> int:
             f'UNIT="$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {listfile})"\n'
             f'{GLM} lev1 --subj-id "${{UNIT%% *}}" --task-name "${{UNIT##* }}" '
             f'--results-dir {args.results_dir} --space {args.space} {" ".join(extra)}')
-    job = _sbatch(f"glm-lev1", body, args, log_dir, len(pairs))
+    job = _sbatch("glm-lev1", body, args, log_dir, len(pairs))
     print(f"  glm-lev1 {job}  ({len(subjects)} subjects x {len(tasks)} tasks = {len(pairs)} tasks)")
     return 0
 
@@ -135,7 +148,7 @@ def lev2(argv: list[str] | None = None) -> int:
     g.add_argument("--base-tasks", dest="taskset", action="store_const", const="base")
     g.add_argument("--dual-tasks", dest="taskset", action="store_const", const="dual")
     p.add_argument("--space", default="volume")
-    _common(p)
+    _common(p, "lev2")
     args = p.parse_args(own)
 
     if args.contrasts:
@@ -168,7 +181,7 @@ def outliers(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="network_fmri glm-outliers",
                                 epilog="Flags after -- go to `network-glm cohort-outliers`.")
     p.add_argument("--results-dir", required=True)
-    _common(p)
+    _common(p, "outliers")
     args = p.parse_args(own)
 
     log_dir = Path(args.log_dir or Path(args.results_dir) / "logs")
