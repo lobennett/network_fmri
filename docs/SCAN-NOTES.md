@@ -255,6 +255,28 @@ session) — confirmed by replaying `map_acquisition` over every anat acquisitio
 and 4 of 5 discovery subjects come back exactly 1/1. Rollback:
 `$SCRATCH/qa-reject-{t1w,t2w,validation}.json`.
 
+## Aborted runs leave events past the end of the scan
+When a run is aborted at the scanner the behavioural session keeps going, so the CSV records
+trials that were never imaged. Nothing clipped them, so **21 runs carried `events.tsv` rows past
+the end of their timeseries** — a first-level model on those builds regressors for timepoints that
+do not exist, silently. Worst case `sub-s1391/ses-07` `task-shapeMatching`: 348.7 s of scan against
+1626.1 s of events.
+
+Fixed in `network_events` (`c5f653b`): onsets are clipped to the acquired length, read from the
+NIfTI rather than the sidecar because `NumberOfTemporalPositions` records the *intended* volume
+count — `sub-s19/ses-07` claims 524 for a 223-volume scan. What the clip costs is reported under
+`scan_*` keys in the truncation sidecar for `network_qa` to threshold on.
+
+**No scan needs rejecting for this.** All 21 keep every real `trial_type` after clipping (retention
+0.50–1.00); the only losses are the `unknown` and `n/a` junk categories.
+
+Volume count alone is the wrong test. Task duration varies by design, so "shorter than the task's
+modal length" flags 870 of 2738 acquisitions and misses the ones that matter — 12 of the 21
+overruns sit above 0.60 of modal. Separately, **7 short scans have no `events.tsv` at all**
+(`sub-s19/ses-02` goNogo at 22 volumes, `sub-s599/ses-02` rest at 31, and five where a complete
+run-2 exists): the behavioural pairing already rejected them, so they cannot reach a model and
+cost only preprocessing time. Audit scripts and results: `$SCRATCH/nf_audit/`.
+
 ## Known data defect
 `sub-s1165/ses-02` `task-directedForgetting` echoes 1–3 carry `SoftwareVersions` as a list:
 ```json
