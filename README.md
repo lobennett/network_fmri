@@ -31,7 +31,7 @@ Cohorts are `discovery` (5 subjects), `validation` (41), `excluded` (11). Output
 network_fmri pipeline --cohort discovery --live          # see the plan first with --print
 ```
 
-Submits all 13 stages as dependent Slurm jobs and returns immediately. Slurm is the DAG
+Submits all 11 stages as dependent Slurm jobs and returns immediately. Slurm is the DAG
 engine: each stage carries `--dependency=afterok` on the one before it, so a failure stops the
 rest instead of corrupting the tree, and nothing polls or blocks. Resume after fixing a failure
 with `--from <stage>`; stage names are in the `--print` output.
@@ -148,7 +148,7 @@ comparison, because the raw filenames encode no run index — but that answer on
 *functional* side changes, so it is derived once and frozen there with its own provenance record
 and the code that produced it. This repo no longer reads the raw tree, which is being archived.
 
-Then three stages from `network_events`, a pinned dependency so `uv sync` provisions it:
+Then events, from `network_events` — a pinned dependency, so `uv sync` provisions it:
 
 ```bash
 network-events create --sourcedata sourcedata --bids-dir .   # _events.tsv
