@@ -1,11 +1,9 @@
 [project]
 name = "network_fmri"
 version = "0.1.0"
-description = "Submit fw-heudiconv Flywheel -> BIDS curation as Slurm jobs."
+description = "Flywheel -> BIDS curation and pipeline submission for the r01network study"
 readme = "README.md"
-# Upper bound is real, not defensive: network_glm pins numpy 2.2.6 / scipy 1.14.1 /
-# pandas 3.0.3, none of which support 3.14, and uv resolves every version the
-# project claims to support.
+# Bounded: network_glm's pinned stack has no 3.14 wheels.
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "datalad>=1.1",
@@ -37,7 +35,7 @@ override-dependencies = [
 fw-heudiconv = { git = "https://github.com/lobennett/fw-heudiconv.git", rev = "e7509a4" }
 global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "5d92c33" }
 network_events = { git = "https://github.com/lobennett/network_events.git", rev = "7dcad31" }
-network_glm = { git = "https://github.com/lobennett/network_glm.git", rev = "93451c7" }
+network_glm = { git = "https://github.com/lobennett/network_glm.git", rev = "fe74923" }
 
 [build-system]
 requires = ["hatchling"]

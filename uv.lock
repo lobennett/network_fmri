@@ -764,13 +764,13 @@ requires-dist = [
     { name = "fw-heudiconv", git = "https://github.com/lobennett/fw-heudiconv.git?rev=e7509a4" },
     { name = "global-signal-plots", extras = ["plot"], git = "https://github.com/lobennett/global_signal_plots.git?rev=5d92c33" },
     { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=7dcad31" },
-    { name = "network-glm", git = "https://github.com/lobennett/network_glm.git?rev=93451c7" },
+    { name = "network-glm", git = "https://github.com/lobennett/network_glm.git?rev=fe74923" },
 ]
 
 [[package]]
 name = "network-glm"
 version = "0.1.0"
-source = { git = "https://github.com/lobennett/network_glm.git?rev=93451c7#93451c757dc5987456e048f691e2b83cdbbd387b" }
+source = { git = "https://github.com/lobennett/network_glm.git?rev=fe74923#fe749237b993dd69790e820497379409c8f4feeb" }
 dependencies = [
     { name = "matplotlib", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nibabel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -1090,7 +1090,7 @@ wheels = [
 [[package]]
 name = "randomise-prep"
 version = "0.1.0"
-source = { git = "https://github.com/jmumford/randomise-prep.git#f740e742411305f72248df5811267671e1a7cc4f" }
+source = { git = "https://github.com/jmumford/randomise-prep.git?rev=f740e74#f740e742411305f72248df5811267671e1a7cc4f" }
 dependencies = [
     { name = "ipykernel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nilearn", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
