@@ -38,8 +38,7 @@ fw-heudiconv = { git = "https://github.com/lobennett/fw-heudiconv.git", rev = "e
 global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "5d92c33" }
 network_events = { git = "https://github.com/lobennett/network_events.git", rev = "aedfad1" }
 network_glm = { git = "https://github.com/lobennett/network_glm.git", rev = "fe74923" }
-# TODO repin to main once fix/code-sha-provenance merges.
-network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "b79e4de" }
+network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "3455fd7" }
 
 [build-system]
 requires = ["hatchling"]
