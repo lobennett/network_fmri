@@ -1,12 +1,19 @@
 # network_fmri
 
-Flywheel → BIDS curation for the r01network study, run as Slurm array jobs on Sherlock with full
-DataLad provenance — wrapping a pinned fork of
-[fw-heudiconv](https://github.com/lobennett/fw-heudiconv) (`e7509a4`) that does the Flywheel work,
-while this repo owns the heuristic, session numbering and job submission.
+Flywheel → BIDS for the r01network study, then the QA gates and models that run off it. One
+command per cohort, Slurm as the DAG engine, DataLad provenance on every writing step.
 
-See [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md) for what gets curated, what is deliberately skipped,
-and which source records are wrong.
+Wraps a pinned fork of [fw-heudiconv](https://github.com/lobennett/fw-heudiconv) (`e7509a4`) that
+does the Flywheel work; this repo owns the heuristic, session numbering, job submission and the
+exclusion gates. `network_events`, `network_glm` and `network_qa` are pinned dependencies, so one
+`uv sync` provisions everything and the same venv runs every stage.
+
+As built: **57 subjects, 590 sessions, 2738 BOLD acquisitions, 2111 `events.tsv`.** Cohorts are
+`discovery` (5 subjects), `validation` (41), `excluded` (11). Output lands in
+`$SCRATCH/network_fmri/<cohort>/`.
+
+Which scan was dropped and why is in [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md); the summary is
+[below](#what-gets-dropped-and-where).
 
 ## Setup
 
@@ -15,351 +22,199 @@ export UV_PROJECT_ENVIRONMENT="$SCRATCH/venvs/network_fmri"
 uv sync
 ```
 
-The venv goes on `$SCRATCH`, not `$HOME` (15 GB, NFS) — export that variable in every shell or
-`uv` builds a second venv at `./.venv`. Flywheel credentials come from
-`~/.config/flywheel/user.json` (`fw login <key>`). Run everything on a compute node (`sh_dev`) or
-via `sbatch` — never a login node.
+Export that variable in every shell or `uv` builds a second venv at `./.venv`; it goes on
+`$SCRATCH` because `$HOME` is 15 GB of NFS. Use `uv sync`, not `uv pip install` — the latter
+resolves outside the lock. Flywheel credentials come from `~/.config/flywheel/user.json`
+(`fw login <key>`). Run everything on a compute node or via `sbatch`, never a login node.
 
-## Steps
-
-Cohorts are `discovery` (5 subjects), `validation` (41), `excluded` (11). Output lands under
-`$SCRATCH/network_fmri/<cohort>/`.
-
-### The whole chain in one command
+## Run it
 
 ```bash
-network_fmri pipeline --cohort discovery --live          # see the plan first with --print
+network_fmri pipeline --cohort discovery --print    # the plan, no submission
+network_fmri pipeline --cohort discovery --live     # submit all 12 stages
+network_fmri pipeline --cohort discovery --from trim --live   # resume after a fix
 ```
 
-Submits all 12 stages as dependent Slurm jobs and returns immediately. Slurm is the DAG
-engine: each stage carries `--dependency=afterok` on the one before it, so a failure stops the
-rest instead of corrupting the tree, and nothing polls or blocks. Resume after fixing a failure
-with `--from <stage>`; stage names are in the `--print` output.
+Each stage carries `--dependency=afterok` on the one before, so a failure stops the rest instead
+of corrupting the tree, and the call returns immediately without polling. The chain ends in
+`check`, so a cohort that reaches the end has asserted its own correctness.
+
+Not Make or Snakemake: the chain is a straight line per cohort, and Slurm already provides both
+the dependency graph and the array fan-out those tools would be brought in for.
 
 ```bash
-for c in discovery validation excluded; do
-  network_fmri pipeline --cohort $c --live
-done
+squeue --me | grep nf-                                    # progress
+grep -rh 'failed after' $SCRATCH/network_fmri/logs/*/*.err # failures
 ```
 
-Deliberately not Make or Snakemake: the chain is a straight line per cohort, Slurm already
-provides the dependency graph, and job arrays already provide the fan-out those tools would be
-brought in for.
+## Stages
 
-The rest of this section documents each stage individually — useful for re-running one, and for
-understanding what the chain does.
+Every stage is also a standalone verb (`network_fmri <stage> --cohort C`), which is how you
+intervene at one point without re-running the rest.
 
-### 0. Mark QA-rejected scans (once per Flywheel project)
-
-```bash
-network_fmri qa-reject                 # dry run: prints the plan
-network_fmri qa-reject --apply --rollback $SCRATCH/qa-reject.json
-```
-
-Not part of the chain, because it mutates Flywheel rather than the tree — but it is a
-*precondition* of a correct export, so it comes first. With no `--target` it replays
-`qa_reject.REJECTS`, the ten anatomicals dropped on MRIQC evidence (which scan won, and why, is
-in [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md)). Marking is idempotent, so re-running a
-project already in the right state prints the plan and changes nothing.
-
-### 1-2. Curate + export, then merge
-
-```bash
-# dry run one subject first: read-only, writes nothing
-network_fmri curate --project r01network --subject s10
-
-# curate + export a cohort, one array task per subject
-network_fmri submit fw-heudiconv --cohort discovery --live \
-  --partition russpold,normal --throttle 3
-
-# per-subject parts -> one cohort dataset (submit it; ~1 TB of rsync)
-network_fmri merge --cohort discovery
-```
-
-`submit fw-heudiconv` renders one array task per subject; each calls `import-subject`, which
-creates `parts/<subject>` as a dataset and records the curate+export command in it (git-annex
-installs itself on first use). To redo one subject with its record intact: `network_fmri
-import-subject --cohort discovery --subject s10 --live`. To read what was recorded:
-
-```bash
-git -C $SCRATCH/network_fmri/discovery/parts/s10 log --oneline
-git -C $SCRATCH/network_fmri/discovery/bids log -1 --format=%B   # cmd, exit, outputs
-```
-
-`merge` takes hours at full scale and does not submit itself, so submit it directly:
-
-```bash
-NF=$SCRATCH/venvs/network_fmri/bin/network_fmri
-for c in discovery excluded validation; do
-  sbatch -J nf-merge-$c -p russpold,normal -c 2 --mem=8G -t 12:00:00 \
-    -o $SCRATCH/network_fmri/logs/$c/merge-%j.out \
-    -e $SCRATCH/network_fmri/logs/$c/merge-%j.err \
-    --wrap "$NF merge --cohort $c"
-done
-```
-
-`--live` writes to the **shared** Flywheel project; snapshot it first if you have changed the
-heuristic.
-
-### 3-4. Fix sidecars, then validate
-
-```bash
-network_fmri fix-sidecars --cohort discovery
-network_fmri validate --cohort discovery -- --ignoreWarnings
-```
-
-`fix-sidecars` coerces multi-valued DICOM tags into the strings BIDS expects, so the validator can
-run at all; `validate` (the official validator, pulled as a container on first use) is quick
-enough for an interactive node.
-
-### 5-8. Global-signal QA, trim, link field maps, global-signal QA again
-
-```bash
-network_fmri global-signal --cohort discovery --label pre-trim --tr-marker 7
-network_fmri trim --cohort discovery --jobs 16
-network_fmri b0link --cohort discovery
-network_fmri global-signal --cohort discovery --label post-trim
-```
-
-`global-signal` writes `derivatives/global_signal/<label>/`; `--tr-marker 7` marks where trim will
-cut, so the two PDFs are comparable. `trim` removes 7 dummy volumes from every BOLD in place.
-`b0link` stamps `B0FieldIdentifier`/`B0FieldSource` so SDCFlows can group each field map with the
-runs it corrects. Chain them so a failure can't trim data with no baseline, or link field maps
-before they exist:
-
-```bash
-NF=$SCRATCH/venvs/network_fmri/bin/network_fmri; L=$SCRATCH/network_fmri/logs/discovery
-GS1=$(sbatch -J nf-gs-pre -p russpold,normal -c 2 --mem=8G -t 06:00:00 \
-  -o $L/gs-pre-%j.out -e $L/gs-pre-%j.err \
-  --wrap "$NF global-signal --cohort discovery --label pre-trim --tr-marker 7" | grep -oP '\d+$')
-TRIM=$(sbatch -J nf-trim -p russpold,normal -c 16 --mem=32G -t 06:00:00 \
-  --dependency=afterok:$GS1 -o $L/trim-%j.out -e $L/trim-%j.err \
-  --wrap "$NF trim --cohort discovery --jobs 16" | grep -oP '\d+$')
-B0LINK=$(sbatch -J nf-b0link -p russpold,normal -c 2 --mem=8G -t 01:00:00 \
-  --dependency=afterok:$TRIM -o $L/b0link-%j.out -e $L/b0link-%j.err \
-  --wrap "$NF b0link --cohort discovery" | grep -oP '\d+$')
-sbatch -J nf-gs-post -p russpold,normal -c 2 --mem=8G -t 06:00:00 \
-  --dependency=afterok:$B0LINK -o $L/gs-post-%j.out -e $L/gs-post-%j.err \
-  --wrap "$NF global-signal --cohort discovery --label post-trim"
-```
-
-Trim is per-file parallel, so give it cores; going wider than one node isn't possible since
-parallel array tasks would contend on the dataset's git index.
-
-### 9. Behavioral data, then events
-
-```bash
-network_fmri ingest-beh --cohort discovery
-```
-
-Copies the cohort's subjects from the canonical behavioural dataset at
-`$OAK/.../behavioral_data/canonical` into `sourcedata/sub-X/ses-YY/beh/`.
-
-That dataset is already reconciled: one CSV per BOLD run, named for the run it belongs to.
-Working out which run each raw file belonged to needed session alignment and volume-count
-comparison, because the raw filenames encode no run index — but that answer only changes if the
-*functional* side changes, so it is derived once and frozen there with its own provenance record
-and the code that produced it. This repo no longer reads the raw tree, which is being archived.
-
-Then events, from `network_events` — a pinned dependency, so `uv sync` provisions it:
-
-```bash
-network-events create --sourcedata sourcedata --bids-dir .   # _events.tsv
-```
-
-`create` applies the −10.43 s onset shift caused by dummy-volume trimming (see
-[docs/SCAN-NOTES.md](docs/SCAN-NOTES.md)) — get it wrong and nothing fails validation, only the
-first-level models. It also applies two truncations: at the first backward onset step, a clock
-glitch past which behavioural time no longer maps to the scanner; and at the end of the acquired
-scan, since a run aborted at the scanner leaves the behavioural session running and the CSV
-then describes trials that were never imaged. Both trial costs go into a sidecar that
-`qa-motion` later reads.
-
-### 10-11. Validate, then check
-
-```bash
-network_fmri validate --cohort discovery -- --ignoreWarnings
-network_fmri check --cohort discovery
-```
-
-`validate` confirms the tree is still BIDS-compatible after trimming, field-map linking and
-behavioural ingestion. `check` confirms it is *right*: every defect found in this dataset so far
-passed validation silently, so each stage's intended outcome is asserted rather than assumed.
-
-| check | asserts | the bug it catches |
+| | Stage | What it does |
 |---|---|---|
-| `events` | onsets fall inside the acquired scan | aborted run, events describing volumes that don't exist |
-| `anat` | at most one T1w and one T2w per subject | a `_qa-reject` mark that didn't take effect |
+| 1 | `export` | One array task per subject: `curate` writes BIDS names into Flywheel's `info.BIDS`, `export` downloads what it tagged. Each subject becomes its own dataset under `parts/`. |
+| 2 | `merge` | rsync the per-subject parts into one cohort tree. Hours at full scale. |
+| 3 | `fix-sidecars` | Coerce multi-valued DICOM tags to the strings BIDS wants, so the validator can run at all. |
+| 4 | `validate-pre` | Official BIDS validator, in a container pulled on first use. |
+| 5 | `gs-pre` | Global-signal traces → `derivatives/global_signal/pre-trim/`. `--tr-marker 7` marks where trim will cut so the two PDFs compare. |
+| 6 | `trim` | Drop the first 7 volumes of every BOLD in place; stamp `NumberOfVolumesDiscardedByUser`. Per-file parallel, so give it cores. |
+| 7 | `b0link` | Stamp `B0FieldIdentifier`/`B0FieldSource` so SDCFlows pairs each field map with the runs it corrects. |
+| 8 | `gs-post` | Global-signal traces again, for comparison. |
+| 9 | `ingest-beh` | Copy the cohort's subjects from the canonical behavioural dataset on `$OAK` into `sourcedata/`. |
+| 10 | `events` | `network-events create` writes `_events.tsv`: shifts onsets by −10.43 s for the trim, then truncates twice (see below). |
+| 11 | `validate-post` | Validator again, after trim, linking and ingestion. |
+| 12 | `check` | Assert what the validator can't see. Fails the rebuild rather than handing on a plausible tree. |
+
+`check` asserts one invariant per class of defect this dataset has actually produced — each of
+which passed BIDS validation silently. Run one with `--only events`.
+
+| check | asserts | catches |
+|---|---|---|
+| `events` | onsets fall inside the acquired scan | events describing volumes that were never imaged |
+| `anat` | ≤1 T1w and ≤1 T2w per subject | a `_qa-reject` mark that didn't take effect |
 | `trim` | every BOLD stamped `NumberOfVolumesDiscardedByUser` | an untrimmed run against a −10.43 s shift |
-| `b0link` | field maps and their BOLDs carry `B0FieldIdentifier`/`B0FieldSource` | SDCFlows silently pairing nothing |
+| `b0link` | field maps and their BOLDs cross-referenced | SDCFlows silently pairing nothing |
 
-Run one with `--only events`. Exits non-zero on any problem, so as the chain's last stage it
-fails the rebuild rather than handing on a plausible-looking tree.
+### After the chain
 
-### 12. MRIQC / fMRIPrep
+These need fMRIPrep derivatives, so they are not part of `pipeline`. Chain them onto a finished
+job with `--dependency`.
 
-Run through a [mechababs](https://github.com/lobennett/mechababs) campaign pointed at
-`<cohort>/bids`, not through this package — BABS owns its own `datalad run` provenance, so
-wrapping it again would only nest records. It records the input dataset's id and commit,
-continuing the chain.
-
-MRIQC and fMRIPrep are independent consumers of the same tree and can run **concurrently**:
-the only reason to serialise them was choosing between duplicate anatomicals, and that
-decision now lives on Flywheel as `_qa-reject` marks (see
-[docs/SCAN-NOTES.md](docs/SCAN-NOTES.md)) rather than something a downstream stage consults.
-
-### 13. Motion exclusions
+| Stage | What it does |
+|---|---|
+| MRIQC / fMRIPrep | Run via a [mechababs](https://github.com/lobennett/mechababs) campaign pointed at `<cohort>/bids`, not through this package — BABS owns its own `datalad run` provenance. They are independent consumers of the same tree and can run **concurrently**. |
+| `qa-motion` | Compile `network_qa`'s `motion` + `behavioral` generators into the lockfile `glm-lev1 --exclusions-file` reads. FD/DVARS only exist after fMRIPrep. |
+| `glm-lev1` | First-level fits, one array task per subject × task. |
+| `glm-lev2` | Second level, one array task per contrast, discovered from the lev1 tree. |
+| `glm-outliers` | Cohort outlier QC over the finished lev1 maps. |
+| `qa-lev1` | Add `network_qa`'s `lev1_outlier` generator, gating what enters lev2. |
 
 ```bash
 network_fmri qa-motion --cohort discovery --dependency <fmriprep-job>
-```
-
-Compiles [network_qa](https://github.com/lobennett/network_qa)'s `motion` and `behavioral`
-generators into a lockfile. FD/DVARS only exist once fMRIPrep has run, which is why this
-cannot happen earlier. The lockfile is what `glm-lev1 --exclusions-file` consumes.
-
-The full BIDS tree goes through MRIQC and fMRIPrep unfiltered — no bids-filter reshapes what
-they see. Scans that are simply bad are excluded at the Flywheel source instead
-(`network_fmri qa-reject`); exclusions that need preprocessing evidence happen here.
-
-### 14-16. GLMs
-
-First and second level fits plus cohort outlier QC, from
-[network_glm](https://github.com/lobennett/network_glm) — a pinned dependency, so `uv sync`
-provides it and these run in the same venv as everything else.
-
-```bash
-# one array task per subject x task
-network_fmri glm-lev1 --cohort discovery --base-tasks --results-dir <lev1_out> -- \
-    --bids-dir <cohort>/bids --fmriprep-dir <fmriprep> \
-    --exclusions-file <lock.json> --residuals
-
-# one array task per contrast, discovered from the lev1 tree
-network_fmri glm-lev2 --lev1-dirs <lev1_out> --all --results-dir <lev2_out> -- \
-    --num-permutations 5000
-
-# a single job over the finished lev1 maps
-network_fmri glm-outliers --results-dir <lev1_out> --
-```
-
-These need fMRIPrep derivatives, so they are **not** part of the `pipeline` chain, which
-ends at the second `validate`. Chain them onto a finished fMRIPrep with `--dependency`.
-
-Everything after `--` is passed to `network-glm` untouched: this repo owns the fan-out,
-the resources and the host modules; `network_glm` owns what the modelling flags mean. Per
-level defaults match what it documents — lev1 1 CPU / 64 GB / 2 days, lev2 2 CPUs / 4 GB /
-4 h, outliers 2 CPUs / 16 GB / 1 h.
-
-Host modules are loaded only where a run can actually reach them: FreeSurfer for
-`mri_surf2surf` when the space is a surface space **and** `--smoothing-fwhm` is given, FSL
-for `lev2` volume randomise. Neither tool is bundled anywhere; both are licensed and
-resolved from Sherlock's module system.
-
-### 17. Lev1 outliers, then reports
-
-```bash
+network_fmri glm-lev1 --cohort discovery --base-tasks --results-dir <lev1> -- \
+    --bids-dir <bids> --fmriprep-dir <fmriprep> --exclusions-file <lock.json> --residuals
+network_fmri glm-lev2 --lev1-dirs <lev1> --all --results-dir <lev2> -- --num-permutations 5000
+network_fmri glm-outliers --results-dir <lev1>
 network_fmri qa-lev1 --cohort discovery --dependency <glm-outliers-job>
 ```
 
-Adds `network_qa`'s `lev1_outlier` generator, which reads `glm-outliers`' `lev1_outliers.csv`
-and gates what enters the second level.
+Everything after `--` passes to `network-glm` untouched: this repo owns the fan-out, the resources
+and the host modules; `network_glm` owns what the modelling flags mean. Host modules load only
+where a run can reach them — FreeSurfer for `mri_surf2surf` when the space is a surface **and**
+`--smoothing-fwhm` is given, FSL for `lev2` volume randomise.
 
-### Progress and failures
+## What gets dropped, and where
 
-```bash
-squeue --me | grep nf-
-grep -rh 'failed after' $SCRATCH/network_fmri/logs/*/*.err
-```
+Nothing is filtered before preprocessing: the full tree goes through MRIQC and fMRIPrep, and
+exclusion happens at the point of use. Bad scans are dropped at the Flywheel source instead, so
+they never re-appear on a fresh pull.
 
-Resubmit failures with the same `--cohort` plus explicit subjects, so paths stay cohort-scoped:
-`network_fmri submit fw-heudiconv --cohort validation --subject s180 s247 --live`.
+| Where | Mechanism | What it drops | Count |
+|---|---|---|---|
+| `curate` | `acquisitions.py` allowlists | localizers, shims, sbref, the PROMO motion-nav series, a second fieldmap | — |
+| `curate` | subject/session skips | the `n01` pilot; `s29/22424`, an fmap-only test session | 2 |
+| `curate` | `_qa-reject` label on Flywheel | duplicate anatomicals losing on MRIQC IQMs | **10 scans** |
+| `ingest-beh` | false-start rule (volume count vs task median) | the aborted run of a repeated pair gets no CSV | **5 runs** |
+| `ingest-beh` | no behavioural file exists anywhere | run gets no `events.tsv`, so no model | **8 runs** |
+| `events` | non-monotonic onset truncation | trials after a backward clock jump | varies |
+| `events` | scan-length clip | trials the scanner never imaged | **22 runs** |
+| `qa-motion` | FD/DVARS thresholds | runs excluded from lev1 | lockfile |
+| `qa-lev1` | lev1 outlier statistics | runs excluded from lev2 | lockfile |
 
-## Reproducing the corrected dataset from scratch
+`events.tsv` counts: 2111 written, 502 `rest` runs never expect one, and 125 non-rest runs have
+none — 7 in discovery and 6 in validation (the false starts and absent files above), plus all 112
+in `excluded`, which has no behavioural data at all.
 
-Every data decision is either code in this repo, a pinned dependency commit, or a mark on
-Flywheel that `qa-reject` replays — nothing is a hand edit. To rebuild all three cohorts:
+The two `events` truncations are both data-integrity fixes, not policy: a backward
+`time_elapsed` jump means behavioural time no longer maps to the scanner, and a run aborted at the
+scanner leaves the behavioural session running so the CSV describes trials that do not exist. Each
+records its trial cost in a sidecar `qa-motion` later reads, so the decision to *keep or drop* the
+surviving run stays with `network_qa`.
+
+## Reproduce from scratch
+
+Every data decision is code here, a pinned dependency commit, or a Flywheel mark `qa-reject`
+replays — none is a hand edit.
 
 ```bash
 export UV_PROJECT_ENVIRONMENT="$SCRATCH/venvs/network_fmri"
-uv sync                                   # never `uv pip install` -- it resolves outside the lock
-network_fmri qa-reject --apply             # idempotent; no-ops if the project is already marked
+uv sync
+network_fmri qa-reject --apply          # idempotent; no-ops on an already-marked project
 for c in discovery validation excluded; do
   network_fmri pipeline --cohort $c --live
 done
 ```
 
-The chain ends in `check`, so a cohort that reaches the end has asserted its own correctness.
-`squeue --me | grep nf-` to watch; a `check` failure names the file and the invariant.
+`qa-reject` with no `--target` replays `qa_reject.REJECTS`, the ten anatomicals dropped on MRIQC
+evidence. It is not a pipeline stage because it mutates Flywheel rather than the tree, but it is a
+precondition of a correct export.
 
-Three pieces of state live outside this repo and must be in place first:
+Three pieces of state live outside this repo:
 
 | State | Where | Recreate with |
 |---|---|---|
-| `_qa-reject` marks + `BIDS.ignore` | the Flywheel project | `network_fmri qa-reject --apply` |
-| Reconciled behavioural CSVs | `$OAK/.../behavioral_data/canonical` | DataLad dataset, has its own provenance |
+| `_qa-reject` labels + `BIDS.ignore` flags | the Flywheel project | `network_fmri qa-reject --apply` |
+| Reconciled behavioural CSVs | `$OAK/.../behavioral_data/canonical` | a DataLad dataset with its own provenance |
 | Dependency versions | `uv.lock` + `[tool.uv.sources]` | `uv sync` |
 
-`curate --live` is the one step that is not reproducible in the strict sense: it mutates a
-shared remote and produces no filesystem output, so re-running re-tags Flywheel rather than
-reproducing a result. Everything downstream of the exported tree is replayable.
+`curate --live` is the one step not reproducible in the strict sense: it mutates a shared remote
+and produces no filesystem output, so re-running re-tags Flywheel rather than reproducing a
+result. Everything downstream of the exported tree replays.
 
-## Design rationale
+## Design notes
 
-**Why curate and export are separate.** `curate` applies the heuristic and writes the BIDS naming
-into each file's `info.BIDS` on the Flywheel server — a remote write. `export` then downloads what
-curate tagged. Without `--live` it is a dry run: names are computed, nothing is written.
+**Curate and export are separate** because `curate` is a remote write — it puts BIDS naming into
+each file's `info.BIDS` on the Flywheel server — and `export` then downloads what it tagged.
+Without `--live` names are computed and nothing is written.
 
-**What this repo adds over the fork.** Session numbering: the engine's `ReplaceSession` hook
-receives one accession at a time and so cannot renumber anything, so `curate.py` sorts a subject's
-sessions by timestamp and passes the map via `FWBIDS_SESSION_MAP`. Cross-subject sessions:
-`ReplaceSubject` never sees the session, so one filed under the wrong subject needs its own curate
-invocation with `FWBIDS_FORCE_SUBJECT`. Run numbering needs nothing — the fork sorts acquisitions
-by timestamp before assigning `{seqitem}`, so a repeated task becomes run-1/run-2 in acquisition
-order for free.
+**A reject needs both halves.** Renaming an acquisition stops `curate` tagging it again, but
+`curate` only ever *adds* tags, and `export` downloads anything whose `info.BIDS.ignore` is falsy.
+So `qa-reject` sets `ignore` as well; the label alone let every rejected scan back into a rebuild.
 
-**Provenance.** Every writing step is wrapped in `datalad run`, so history records the command,
-its outputs and the exit code. One dataset per subject, because many array tasks doing `datalad
-run` in one dataset contend on `.git/index.lock` — the problem BABS exists to solve. Run messages
-pin the pipeline commit (`network_fmri@<sha>`) since `datalad run` records a command string, not
-`heuristic.py` itself. **Not reproducible:** `curate --live` mutates a shared remote with no
-filesystem output, so re-running re-tags Flywheel rather than reproducing a result; everything
-downstream of the exported tree is replayable.
+**What this repo adds over the fork.** Session numbering: the engine's `ReplaceSession` hook sees
+one accession at a time and so cannot renumber, so `curate.py` sorts a subject's sessions by
+timestamp and passes the map via `FWBIDS_SESSION_MAP`. Cross-subject sessions: `ReplaceSubject`
+never sees the session, so one filed under the wrong subject needs its own invocation with
+`FWBIDS_FORCE_SUBJECT`. Run numbering needs nothing — the fork sorts acquisitions by timestamp
+before assigning `{seqitem}`.
 
-**Why trim declares no outputs.** `datalad run` unlocks declared outputs, which for annexed NIfTIs
+**One dataset per subject** because many array tasks doing `datalad run` in one dataset contend on
+`.git/index.lock` — the problem BABS exists to solve. Run messages pin the pipeline commit, since
+`datalad run` records a command string rather than `heuristic.py` itself.
+
+**Trim declares no outputs.** `datalad run` unlocks declared outputs, which for annexed NIfTIs
 means copying ~100 GB out of the annex. Trim replaces each file by rename instead, so the default
-save-everything behaviour suffices — the same reasoning applies to `b0link` and `fix-sidecars`.
+save-everything behaviour suffices — same for `b0link` and `fix-sidecars`.
+
+**`fw-heudiconv` loads `heuristic.py` by path**, which is why it and `curate.py` must stay in the
+same package. External tooling is provisioned, not assumed: the validator arrives as a container,
+git-annex via `datalad-installer`.
 
 ## Layout
 
 ```
 src/network_fmri/
   cli.py                   verb dispatch only
+  pipeline.py              the 12-stage chain, as dependent Slurm jobs
+  cohorts.py               rosters, staging paths
   provenance.py            git-annex provisioning, datalad run
-  cohorts.py               rosters, DEFAULT_STAGING, cohort_dataset
   fw2bids/sessions.py      chronological numbering, aliases, session overrides
-  fw2bids/acquisitions.py  task rule, allowlist, skip lists
-  fw2bids/heuristic.py     acquisition label -> BIDS filename (fw-heudiconv hooks)
-  fw2bids/curate.py        the payload one array task runs
+  fw2bids/acquisitions.py  acquisition label -> task, allowlists, skips
+  fw2bids/heuristic.py     label -> BIDS filename (fw-heudiconv hooks)
+  fw2bids/curate.py        what one array task runs
   fw2bids/jobs.py          submit / import-subject / merge
-  fw2bids/template.sbatch  per-subject Slurm array
-  prepare/sidecar.py       shared atomic sidecar read/update
-  prepare/trim.py          drop dummy volumes in place, stamp the sidecar
+  fw2bids/qa_reject.py     mark QA-failed scans on Flywheel; REJECTS is the applied set
+  prepare/trim.py          drop dummy volumes in place
   prepare/b0link.py        link field maps to their BOLD runs
-  prepare/sidecars.py      coerce multi-valued DICOM tags to BIDS strings
+  prepare/sidecars.py      coerce multi-valued DICOM tags
+  prepare/sidecar.py       shared atomic sidecar read/update
   behavior/ingest.py       canonical behavioural data -> sourcedata
   qa/validate.py           BIDS validator, via container
-  qa/check.py              assert each stage's outcome; the validator can't see these
+  qa/check.py              assert each stage's outcome
+  qa/exclusions.py         compile network_qa lockfiles (qa-motion, qa-lev1)
+  qa/globalsignal.py       global-signal traces
   qa/container.py          pull-and-run Apptainer images, cached
-  qa/globalsignal.py       global-signal traces into derivatives/
-  glm/submit.py            fan network_glm's levels out over Slurm arrays
+  glm/submit.py            fan network_glm's levels over Slurm arrays
 ```
-
-External packages are pinned dependencies, not assumed installs: a pinned fork of
-fw-heudiconv does the Flywheel work, `global_signal_plots` the traces, `network_events` the
-events/QC/truncation stages, and `network_glm` the models. One
-`uv sync` provisions the whole pipeline.
-
-`fw-heudiconv` loads `heuristic.py` **by path**, which is why `curate.py` and `heuristic.py` must
-stay in the same package (`fw2bids/`). External tooling is provisioned, not assumed: the validator
-is pulled as a container, git-annex by `datalad-installer` — neither needs host setup or an image
-to share.

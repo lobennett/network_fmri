@@ -1,23 +1,17 @@
 """Mark QA-failed acquisitions on Flywheel so later pulls skip them.
 
-Two changes are needed, and the label alone is not enough. Renaming stops `curate` from
-tagging the file again, but `curate` only ever adds tags -- a tag written by an earlier
-run survives, and `export` downloads anything whose ``info.BIDS.ignore`` is falsy. So the
-files also get ``ignore`` set.
+Both halves are needed. Appending ``_qa-reject`` makes ``map_acquisition`` return None so
+``curate`` stops tagging the file -- but ``curate`` only ever *adds* tags, and ``export``
+downloads anything whose ``info.BIDS.ignore`` is falsy, so a tag from an earlier run
+survives. Hence ``ignore`` is set as well; the label alone let every reject back into a
+rebuild.
 
-Appends ``_qa-reject`` to the acquisition label, which makes
-:func:`network_fmri.acquisitions.map_acquisition` return ``None`` — the scan is never
-curated, so ``export`` never downloads it. Fixing it at the source keeps the decision
-out of a per-subject table in this package and survives a fresh pull.
+Targets are ``subject/bids_session/suffix`` (e.g. ``s03/05/T1w``), resolved through the
+same chronological map curate uses so the argument matches the BIDS tree rather than a
+Flywheel accession.
 
-Targets are given as ``subject/bids_session/suffix`` (e.g. ``s03/05/T1w``). The BIDS
-session number is resolved through the same chronological map curate uses, so the
-argument matches what you see in the BIDS tree rather than a Flywheel accession.
-
-:data:`REJECTS` is the set applied to the project, so ``qa-reject --apply`` with no
-``--target`` replays every decision made so far. Marking is idempotent, so replaying costs
-nothing; without this list a fresh Flywheel project could not be brought to the same state
-from the repository alone.
+:data:`REJECTS` is the applied set, so ``--apply`` with no ``--target`` replays every
+decision and a fresh project reaches this state from the repo alone. Idempotent.
 """
 
 from __future__ import annotations

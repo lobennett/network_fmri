@@ -1,13 +1,11 @@
 """Copy the canonical behavioural tree into a cohort's ``sourcedata/``.
 
-Deciding which BOLD run each raw behavioural CSV belongs to is a one-time reconciliation:
-the raw filenames encode no run index, so it has to be worked out from session alignment
-and volume counts. That answer does not change unless the functional side does, so it is
-frozen at :data:`CANONICAL` — a DataLad dataset carrying its own derivation record and the
-code that produced it.
+Raw behavioural filenames encode no run index, so pairing each CSV to a BOLD run took
+session alignment and volume counts. That answer only changes if the functional side does,
+so it is frozen at :data:`CANONICAL` — a DataLad dataset with its own derivation record.
 
-This stage only copies. Nothing here re-derives anything, reads a NIfTI, or depends on the
-raw tree, which is being archived.
+This stage only copies: it re-derives nothing, reads no NIfTI, and never touches the raw
+tree, which is being archived.
 """
 
 from __future__ import annotations

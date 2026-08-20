@@ -24,12 +24,9 @@ SESSION_OVERRIDES: dict[str, dict[str, dict]] = {
 }
 
 
-# Flywheel split a single scanner visit into two sessions, leaving the fieldmap
-# stranded in a container of its own ~1.5 min before the first BOLD run. Moving the
-# acquisition at source is refused ("403 Can't create ad hoc when lab edition is
-# off"), so the stray session is curated under its twin's number instead: the
-# fieldmap lands with the runs it belongs to and the empty container stops consuming
-# a session number. {canonical: {stray_accession: twin_accession}}
+# Flywheel split one scanner visit into two sessions, stranding the fieldmap in a
+# container of its own. Moving it at source is refused, so the stray session is curated
+# under its twin's number. {canonical: {stray_accession: twin_accession}}
 SESSION_MERGES = {
     "s1258": {"unknown_2": "28338"},
     "s1391": {"unknown": "28270"},

@@ -1,21 +1,16 @@
 """Assert the invariants the BIDS validator cannot see.
 
-`validate` proves the tree is well-formed. It does not prove the tree is *correct*: every
-defect found in this dataset so far passed validation silently. So each stage's intended
-outcome gets asserted here, and a fresh rerun fails loudly rather than producing a plausible
-tree with wrong models in it.
+`validate` proves the tree is well-formed, not that it is right -- every defect this dataset
+has produced passed validation silently. One check per class, each asserting a stage's
+intended outcome so a rerun fails loudly instead of handing on a plausible tree:
 
-One check per class of bug actually hit (see docs/SCAN-NOTES.md):
+``events``  onsets inside the acquired scan, so lev1 cannot regress on volumes that
+            were never imaged
+``anat``    at most one T1w and one T2w per subject, i.e. the ``_qa-reject`` marks took
+``trim``    every BOLD stamped ``NumberOfVolumesDiscardedByUser``, matching the shift
+``b0link``  field maps and their BOLDs cross-referenced, or SDCFlows pairs nothing
 
-``events``    onsets inside the acquired scan. An aborted run leaves the behavioural
-              session going, so the CSV describes trials never imaged and lev1 builds
-              regressors for timepoints that do not exist.
-``anat``      at most one T1w and one T2w per subject. The duplicate-anatomical decision
-              lives on Flywheel as ``_qa-reject``; this is how you know it took effect.
-``trim``      every BOLD stamped ``NumberOfVolumesDiscardedByUser``. Untrimmed runs would
-              silently disagree with the -10.43 s event shift.
-``b0link``    every field map carries ``B0FieldIdentifier`` and every BOLD sharing its
-              session carries ``B0FieldSource``, or SDCFlows pairs nothing.
+See docs/SCAN-NOTES.md for which scans each of these is about.
 """
 
 from __future__ import annotations
