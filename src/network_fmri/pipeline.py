@@ -56,6 +56,10 @@ def stages(cohort: str, staging: str, events_bin: str) -> list[dict]:
         dict(name="validate-post", cpus=2, mem="8G", time="04:00:00",
              cmd=nf + ["validate", "--cohort", cohort, "--staging", staging,
                        "--", "--ignoreWarnings"]),
+        # The validator proves the tree is well-formed; this proves it is right. Every
+        # defect found in this dataset so far passed validation silently.
+        dict(name="check", cpus=2, mem="8G", time="02:00:00",
+             cmd=nf + ["check", "--cohort", cohort, "--staging", staging]),
     ]
 
 

@@ -13,6 +13,11 @@ out of a per-subject table in this package and survives a fresh pull.
 Targets are given as ``subject/bids_session/suffix`` (e.g. ``s03/05/T1w``). The BIDS
 session number is resolved through the same chronological map curate uses, so the
 argument matches what you see in the BIDS tree rather than a Flywheel accession.
+
+:data:`REJECTS` is the set applied to the project, so ``qa-reject --apply`` with no
+``--target`` replays every decision made so far. Marking is idempotent, so replaying costs
+nothing; without this list a fresh Flywheel project could not be brought to the same state
+from the repository alone.
 """
 
 from __future__ import annotations
@@ -26,6 +31,21 @@ from network_fmri.fw2bids import sessions
 from network_fmri.fw2bids.acquisitions import NON_FUNC, QA_REJECT
 
 MARKER = "_qa-reject"
+
+# Anatomicals dropped on MRIQC evidence -- which scan won, and why, is in
+# docs/SCAN-NOTES.md. Order is the order applied.
+REJECTS = (
+    "s03/05/T1w",
+    "s19/03/T1w",
+    "s19/03/T2w",
+    "s29/01/T2w",
+    "s1127/01/T1w",
+    "s1258/01/T1w",
+    "s1270/01/T1w",
+    "s1351/08/T1w",
+    "s216/01/T1w",
+    "s1399/02/T2w",
+)
 
 
 def suffix_labels(suffix: str) -> set[str]:
@@ -75,8 +95,9 @@ def main(argv: list[str] | None = None) -> int:
 
     p = argparse.ArgumentParser(prog="network_fmri qa-reject")
     p.add_argument("--project", default="r01network")
-    p.add_argument("--target", nargs="+", required=True,
-                   help="subject/bids_session/suffix, e.g. s03/05/T1w")
+    p.add_argument("--target", nargs="+", default=list(REJECTS),
+                   help="subject/bids_session/suffix, e.g. s03/05/T1w "
+                        "(default: every target in REJECTS)")
     p.add_argument("--rollback", help="write a rollback record here before applying")
     p.add_argument("--apply", action="store_true", help="without this, only print the plan")
     args = p.parse_args(argv)

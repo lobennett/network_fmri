@@ -235,9 +235,11 @@ A scan dropped after QA must not reappear on re-pull, so rejection is recorded *
 `None` for any matching label, so `export` never downloads it. Keyed at the source, not a table,
 because the heuristic can't see the session — a subject-level skip would drop the kept scan too.
 
-Applied so far, each verified by matching the acquisition's NIfTI byte size against the annex key
-of the file deleted from BIDS rather than trusting the session numbering (rollback records:
-`$SCRATCH/qa-reject-t1w.json`, `qa-reject-t2w.json`):
+The set below is `qa_reject.REJECTS`, so `network_fmri qa-reject --apply` with no `--target`
+replays all of it and a fresh Flywheel project can be brought to this state from the repository
+alone. Marking is idempotent. Each was verified by matching the acquisition's NIfTI byte size
+against the annex key of the file deleted from BIDS rather than trusting the session numbering
+(rollback records: `$SCRATCH/qa-reject-t1w.json`, `qa-reject-t2w.json`):
 | Target | Flywheel session | Label |
 |---|---|---|
 | s03 ses-05 T1w | 22734 | `NEW Sag_MPRAGE_T1_qa-reject` |

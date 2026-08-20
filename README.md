@@ -31,7 +31,7 @@ Cohorts are `discovery` (5 subjects), `validation` (41), `excluded` (11). Output
 network_fmri pipeline --cohort discovery --live          # see the plan first with --print
 ```
 
-Submits all 11 stages as dependent Slurm jobs and returns immediately. Slurm is the DAG
+Submits all 12 stages as dependent Slurm jobs and returns immediately. Slurm is the DAG
 engine: each stage carries `--dependency=afterok` on the one before it, so a failure stops the
 rest instead of corrupting the tree, and nothing polls or blocks. Resume after fixing a failure
 with `--from <stage>`; stage names are in the `--print` output.
@@ -48,6 +48,19 @@ brought in for.
 
 The rest of this section documents each stage individually — useful for re-running one, and for
 understanding what the chain does.
+
+### 0. Mark QA-rejected scans (once per Flywheel project)
+
+```bash
+network_fmri qa-reject                 # dry run: prints the plan
+network_fmri qa-reject --apply --rollback $SCRATCH/qa-reject.json
+```
+
+Not part of the chain, because it mutates Flywheel rather than the tree — but it is a
+*precondition* of a correct export, so it comes first. With no `--target` it replays
+`qa_reject.REJECTS`, the ten anatomicals dropped on MRIQC evidence (which scan won, and why, is
+in [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md)). Marking is idempotent, so re-running a
+project already in the right state prints the plan and changes nothing.
 
 ### 1-2. Curate + export, then merge
 
@@ -156,20 +169,34 @@ network-events create --sourcedata sourcedata --bids-dir .   # _events.tsv
 
 `create` applies the −10.43 s onset shift caused by dummy-volume trimming (see
 [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md)) — get it wrong and nothing fails validation, only the
-first-level models. It also truncates a run at the first backward onset step, a clock glitch
-past which behavioural time no longer maps to the scanner, and records the trial cost in a
-sidecar that `qa-motion` later reads.
+first-level models. It also applies two truncations: at the first backward onset step, a clock
+glitch past which behavioural time no longer maps to the scanner; and at the end of the acquired
+scan, since a run aborted at the scanner leaves the behavioural session running and the CSV
+then describes trials that were never imaged. Both trial costs go into a sidecar that
+`qa-motion` later reads.
 
-### 10. Validate again
+### 10-11. Validate, then check
 
 ```bash
 network_fmri validate --cohort discovery -- --ignoreWarnings
+network_fmri check --cohort discovery
 ```
 
-Confirms the tree is still BIDS-compatible after trimming, field-map linking and behavioural
-ingestion.
+`validate` confirms the tree is still BIDS-compatible after trimming, field-map linking and
+behavioural ingestion. `check` confirms it is *right*: every defect found in this dataset so far
+passed validation silently, so each stage's intended outcome is asserted rather than assumed.
 
-### 11. MRIQC / fMRIPrep
+| check | asserts | the bug it catches |
+|---|---|---|
+| `events` | onsets fall inside the acquired scan | aborted run, events describing volumes that don't exist |
+| `anat` | at most one T1w and one T2w per subject | a `_qa-reject` mark that didn't take effect |
+| `trim` | every BOLD stamped `NumberOfVolumesDiscardedByUser` | an untrimmed run against a −10.43 s shift |
+| `b0link` | field maps and their BOLDs carry `B0FieldIdentifier`/`B0FieldSource` | SDCFlows silently pairing nothing |
+
+Run one with `--only events`. Exits non-zero on any problem, so as the chain's last stage it
+fails the rebuild rather than handing on a plausible-looking tree.
+
+### 12. MRIQC / fMRIPrep
 
 Run through a [mechababs](https://github.com/lobennett/mechababs) campaign pointed at
 `<cohort>/bids`, not through this package — BABS owns its own `datalad run` provenance, so
@@ -181,7 +208,7 @@ the only reason to serialise them was choosing between duplicate anatomicals, an
 decision now lives on Flywheel as `_qa-reject` marks (see
 [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md)) rather than something a downstream stage consults.
 
-### 12. Motion exclusions
+### 13. Motion exclusions
 
 ```bash
 network_fmri qa-motion --cohort discovery --dependency <fmriprep-job>
@@ -195,7 +222,7 @@ The full BIDS tree goes through MRIQC and fMRIPrep unfiltered — no bids-filter
 they see. Scans that are simply bad are excluded at the Flywheel source instead
 (`network_fmri qa-reject`); exclusions that need preprocessing evidence happen here.
 
-### 13-15. GLMs
+### 14-16. GLMs
 
 First and second level fits plus cohort outlier QC, from
 [network_glm](https://github.com/lobennett/network_glm) — a pinned dependency, so `uv sync`
@@ -228,7 +255,7 @@ Host modules are loaded only where a run can actually reach them: FreeSurfer for
 for `lev2` volume randomise. Neither tool is bundled anywhere; both are licensed and
 resolved from Sherlock's module system.
 
-### 16. Lev1 outliers, then reports
+### 17. Lev1 outliers, then reports
 
 ```bash
 network_fmri qa-lev1 --cohort discovery --dependency <glm-outliers-job>
@@ -246,6 +273,35 @@ grep -rh 'failed after' $SCRATCH/network_fmri/logs/*/*.err
 
 Resubmit failures with the same `--cohort` plus explicit subjects, so paths stay cohort-scoped:
 `network_fmri submit fw-heudiconv --cohort validation --subject s180 s247 --live`.
+
+## Reproducing the corrected dataset from scratch
+
+Every data decision is either code in this repo, a pinned dependency commit, or a mark on
+Flywheel that `qa-reject` replays — nothing is a hand edit. To rebuild all three cohorts:
+
+```bash
+export UV_PROJECT_ENVIRONMENT="$SCRATCH/venvs/network_fmri"
+uv sync                                   # never `uv pip install` -- it resolves outside the lock
+network_fmri qa-reject --apply             # idempotent; no-ops if the project is already marked
+for c in discovery validation excluded; do
+  network_fmri pipeline --cohort $c --live
+done
+```
+
+The chain ends in `check`, so a cohort that reaches the end has asserted its own correctness.
+`squeue --me | grep nf-` to watch; a `check` failure names the file and the invariant.
+
+Three pieces of state live outside this repo and must be in place first:
+
+| State | Where | Recreate with |
+|---|---|---|
+| `_qa-reject` marks + `BIDS.ignore` | the Flywheel project | `network_fmri qa-reject --apply` |
+| Reconciled behavioural CSVs | `$OAK/.../behavioral_data/canonical` | DataLad dataset, has its own provenance |
+| Dependency versions | `uv.lock` + `[tool.uv.sources]` | `uv sync` |
+
+`curate --live` is the one step that is not reproducible in the strict sense: it mutates a
+shared remote and produces no filesystem output, so re-running re-tags Flywheel rather than
+reproducing a result. Everything downstream of the exported tree is replayable.
 
 ## Design rationale
 
@@ -292,6 +348,7 @@ src/network_fmri/
   prepare/sidecars.py      coerce multi-valued DICOM tags to BIDS strings
   behavior/ingest.py       canonical behavioural data -> sourcedata
   qa/validate.py           BIDS validator, via container
+  qa/check.py              assert each stage's outcome; the validator can't see these
   qa/container.py          pull-and-run Apptainer images, cached
   qa/globalsignal.py       global-signal traces into derivatives/
   glm/submit.py            fan network_glm's levels out over Slurm arrays
