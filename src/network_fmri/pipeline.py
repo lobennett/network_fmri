@@ -49,17 +49,10 @@ def stages(cohort: str, staging: str, events_bin: str) -> list[dict]:
                        "--label", "post-trim"]),
         dict(name="ingest-beh", cpus=2, mem="8G", time="02:00:00",
              cmd=nf + ["ingest-beh", "--cohort", cohort, "--staging", staging]),
-        # network_events owns three steps: events, the truncation QC that writes
-        # trim_list.json, and the behaviour-driven truncation that consumes it. `run`
-        # would also re-migrate out-of-scanner data, which the canonical tree covers.
+        # network_events writes events.tsv, truncating at any backward onset step.
         dict(name="events", cpus=4, mem="16G", time="08:00:00",
              cmd=[events_bin, "create", "--sourcedata", "sourcedata", "--bids-dir", "."],
              cwd=True),
-        dict(name="events-qc", cpus=2, mem="8G", time="04:00:00",
-             cmd=[events_bin, "qc", "--sourcedata", "sourcedata", "--bids-dir", "."],
-             cwd=True),
-        dict(name="events-trim", cpus=4, mem="16G", time="06:00:00",
-             cmd=[events_bin, "trim", "--bids-dir", "."], cwd=True),
         dict(name="validate-post", cpus=2, mem="8G", time="04:00:00",
              cmd=nf + ["validate", "--cohort", cohort, "--staging", staging,
                        "--", "--ignoreWarnings"]),

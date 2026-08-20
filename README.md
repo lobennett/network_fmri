@@ -152,15 +152,13 @@ Then three stages from `network_events`, a pinned dependency so `uv sync` provis
 
 ```bash
 network-events create --sourcedata sourcedata --bids-dir .   # _events.tsv
-network-events qc     --sourcedata sourcedata --bids-dir .   # -> sourcedata/behavioral_qc/trim_list.json
-network-events trim   --bids-dir .                           # -> derivatives/trimmed/
 ```
 
 `create` applies the −10.43 s onset shift caused by dummy-volume trimming (see
 [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md)) — get it wrong and nothing fails validation, only the
-first-level models. `qc` writes the truncation record, and `trim` uses it to truncate runs where
-the task itself ran short. That is a different operation from `network_fmri trim`, which removes
-non-steady-state volumes; this one is driven by the behavioural data.
+first-level models. It also truncates a run at the first backward onset step, a clock glitch
+past which behavioural time no longer maps to the scanner, and records the trial cost in a
+sidecar that `qa-motion` later reads.
 
 ### 10. Validate again
 
@@ -183,7 +181,21 @@ the only reason to serialise them was choosing between duplicate anatomicals, an
 decision now lives on Flywheel as `_qa-reject` marks (see
 [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md)) rather than something a downstream stage consults.
 
-### 12-14. GLMs
+### 12. Motion exclusions
+
+```bash
+network_fmri qa-motion --cohort discovery --dependency <fmriprep-job>
+```
+
+Compiles [network_qa](https://github.com/lobennett/network_qa)'s `motion` and `behavioral`
+generators into a lockfile. FD/DVARS only exist once fMRIPrep has run, which is why this
+cannot happen earlier. The lockfile is what `glm-lev1 --exclusions-file` consumes.
+
+The full BIDS tree goes through MRIQC and fMRIPrep unfiltered — no bids-filter reshapes what
+they see. Scans that are simply bad are excluded at the Flywheel source instead
+(`network_fmri qa-reject`); exclusions that need preprocessing evidence happen here.
+
+### 13-15. GLMs
 
 First and second level fits plus cohort outlier QC, from
 [network_glm](https://github.com/lobennett/network_glm) — a pinned dependency, so `uv sync`
@@ -216,12 +228,14 @@ Host modules are loaded only where a run can actually reach them: FreeSurfer for
 for `lev2` volume randomise. Neither tool is bundled anywhere; both are licensed and
 resolved from Sherlock's module system.
 
-### 15. Exclusions and reports
+### 16. Lev1 outliers, then reports
 
-[network_qa](https://github.com/lobennett/network_qa) compiles the final exclusions from
-the QC produced along the way — MRIQC IQMs, global-signal metrics, the behavioural
-truncation record, and lev1 design diagnostics. It is not a dependency here; install it
-where you run it.
+```bash
+network_fmri qa-lev1 --cohort discovery --dependency <glm-outliers-job>
+```
+
+Adds `network_qa`'s `lev1_outlier` generator, which reads `glm-outliers`' `lev1_outliers.csv`
+and gates what enters the second level.
 
 ### Progress and failures
 

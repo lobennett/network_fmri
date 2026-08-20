@@ -737,7 +737,7 @@ wheels = [
 [[package]]
 name = "network-events"
 version = "0.1.0"
-source = { git = "https://github.com/lobennett/network_events.git?rev=7dcad31#7dcad31ece05378bbc0b16fc924b545a41f84ef8" }
+source = { git = "https://github.com/lobennett/network_events.git?rev=aedfad1#aedfad188a9c4ca11e724e0bfca01dc3068d001b" }
 dependencies = [
     { name = "nibabel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -755,6 +755,7 @@ dependencies = [
     { name = "global-signal-plots", extra = ["plot"], marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "network-events", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "network-glm", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "network-qa", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 
 [package.metadata]
@@ -763,8 +764,9 @@ requires-dist = [
     { name = "datalad-installer", specifier = ">=1.1" },
     { name = "fw-heudiconv", git = "https://github.com/lobennett/fw-heudiconv.git?rev=e7509a4" },
     { name = "global-signal-plots", extras = ["plot"], git = "https://github.com/lobennett/global_signal_plots.git?rev=5d92c33" },
-    { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=7dcad31" },
+    { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=aedfad1" },
     { name = "network-glm", git = "https://github.com/lobennett/network_glm.git?rev=fe74923" },
+    { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=b79e4de" },
 ]
 
 [[package]]
@@ -783,6 +785,16 @@ dependencies = [
     { name = "scipy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "seaborn", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "statsmodels", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+]
+
+[[package]]
+name = "network-qa"
+version = "0.1.0"
+source = { git = "https://github.com/lobennett/network_qa.git?rev=b79e4de#b79e4de89a1ee50c62012f04e18407fde97784b8" }
+dependencies = [
+    { name = "network-events", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "nibabel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "pandas", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 
 [[package]]

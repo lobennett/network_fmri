@@ -29,6 +29,8 @@ _USAGE = """usage:
   network_fmri b0link --cohort C               link field maps to their BOLD runs
   network_fmri ingest-beh --cohort C           copy canonical behavioural data -> sourcedata/
   network_fmri qa-reject --target S/SES/SUFFIX  exclude a QA-failed scan at the source
+  network_fmri qa-motion --cohort C -- ...     motion exclusions after fMRIPrep -> lev1
+  network_fmri qa-lev1 --cohort C -- ...       add lev1 outliers -> lev2
   network_fmri glm-lev1 --cohort C --all -- ...   first-level GLMs, one task per subject x task
   network_fmri glm-lev2 --lev1-dirs D --all -- ...  second level, one task per contrast
   network_fmri glm-outliers --results-dir D -- ...  cohort outlier QC
@@ -96,6 +98,14 @@ def main(argv: list[str] | None = None) -> int:
         return f(rest)
     if verb == "qa-reject":
         from network_fmri.fw2bids.qa_reject import main as f
+
+        return f(rest)
+    if verb == "qa-motion":
+        from network_fmri.qa.exclusions import motion as f
+
+        return f(rest)
+    if verb == "qa-lev1":
+        from network_fmri.qa.exclusions import lev1 as f
 
         return f(rest)
     if verb == "glm-lev1":
