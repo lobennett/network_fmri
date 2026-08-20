@@ -10,10 +10,7 @@ supported-markers = [
 
 [manifest]
 constraints = [{ name = "pillow", specifier = "<12" }]
-overrides = [
-    { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=7dcad31" },
-    { name = "packaging", specifier = ">=26" },
-]
+overrides = [{ name = "packaging", specifier = ">=26" }]
 
 [[package]]
 name = "acres"
@@ -66,17 +63,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/86/b6/ebf4bc6993d8ebd8b15f823954e0b2c351a9ca7a80b318f3dd74ce42d705/bidsschematools-1.2.7.tar.gz", hash = "sha256:fc4bdbbb27ac44cd9a1a296ce76922079bb7b5e42f5d51b3f34e9396b4d77639", size = 1768778, upload-time = "2026-07-20T16:48:36.157Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f9/25/c7c2500f91089061e7d7fdefa04b1a9e008d32c0fde8f799705eb3178024/bidsschematools-1.2.7-py3-none-any.whl", hash = "sha256:4bda6ff33f82259b9dd11acebcccbd3fa1d3eee80a578abf012d4c4e6301346e", size = 194216, upload-time = "2026-07-20T16:48:34.665Z" },
-]
-
-[[package]]
-name = "bold-reliability-movies"
-version = "0.1.3"
-source = { git = "https://github.com/lobennett/bold_reliability_movies.git#12197cd15dc4bf911aae7a50df664418f66dc1d0" }
-dependencies = [
-    { name = "matplotlib", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nibabel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nilearn", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 
 [[package]]
@@ -778,17 +764,15 @@ requires-dist = [
     { name = "fw-heudiconv", git = "https://github.com/lobennett/fw-heudiconv.git?rev=e7509a4" },
     { name = "global-signal-plots", extras = ["plot"], git = "https://github.com/lobennett/global_signal_plots.git?rev=5d92c33" },
     { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=7dcad31" },
-    { name = "network-glm", git = "https://github.com/lobennett/network_glm.git?rev=21ce452" },
+    { name = "network-glm", git = "https://github.com/lobennett/network_glm.git?rev=93451c7" },
 ]
 
 [[package]]
 name = "network-glm"
 version = "0.1.0"
-source = { git = "https://github.com/lobennett/network_glm.git?rev=21ce452#21ce4526951eca84b5017b64b165f0764a52a816" }
+source = { git = "https://github.com/lobennett/network_glm.git?rev=93451c7#93451c757dc5987456e048f691e2b83cdbbd387b" }
 dependencies = [
-    { name = "bold-reliability-movies", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "matplotlib", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "network-qa", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nibabel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nilearn", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -799,16 +783,6 @@ dependencies = [
     { name = "scipy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "seaborn", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "statsmodels", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-]
-
-[[package]]
-name = "network-qa"
-version = "0.1.0"
-source = { git = "https://github.com/lobennett/network_qa.git#494ab9d035810b049ea9dbb200fcf8c34ad04a6b" }
-dependencies = [
-    { name = "network-events", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nibabel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "pandas", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 
 [[package]]

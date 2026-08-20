@@ -14,11 +14,8 @@ dependencies = [
     "fw-heudiconv",
     "global-signal-plots[plot]",
     # Owns the behavioural half: events.tsv, truncation QC, behaviour-driven trimming.
-    # A dependency rather than a sibling venv so `uv sync` provisions the whole chain and
-    # the pipeline calls its console script by name like any other stage.
     "network-events",
-    # Owns the GLMs; this repo owns their submission. Its scientific stack is pinned for
-    # glibc 2.17, which is why it can share this venv at all.
+    # Owns the GLMs; this repo owns their submission.
     "network-glm",
 ]
 
@@ -29,18 +26,10 @@ network_fmri = "network_fmri.cli:main"
 # Pillow 12 ships no wheel for this host (glibc 2.17) and its sdist needs libjpeg
 # headers we do not have. matplotlib pulls it in for the PDF traces.
 constraint-dependencies = ["pillow<12"]
-# network_glm -> network_qa pins an older network_events (3504f71) than we do. That commit
-# is an ancestor of ours and qc.py -- the only module network_qa imports from it
-# (`from network_events.qc import run_qc`) -- is byte-identical between the two, so
-# resolving everything to our pin is safe. Without this uv refuses: two URLs, one package.
-# This pipeline only ever runs on Sherlock's linux x86_64 nodes. Without this uv also
-# solves for win32/macos splits, where it reports conflicts we could never hit.
+# Only ever runs on Sherlock; without this uv solves splits we cannot hit.
 environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
 override-dependencies = [
-    "network-events @ git+https://github.com/lobennett/network_events.git@7dcad31",
-    # flywheel-sdk caps packaging<26, nilearn 0.14 floors it at >=26. packaging is a
-    # version/marker parsing utility; the cap looks defensive rather than a real API
-    # break, so force one version and verify both packages still work.
+    # flywheel-sdk caps packaging<26, nilearn floors it at >=26; verified both work at 26.
     "packaging>=26",
 ]
 
@@ -48,7 +37,7 @@ override-dependencies = [
 fw-heudiconv = { git = "https://github.com/lobennett/fw-heudiconv.git", rev = "e7509a4" }
 global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "5d92c33" }
 network_events = { git = "https://github.com/lobennett/network_events.git", rev = "7dcad31" }
-network_glm = { git = "https://github.com/lobennett/network_glm.git", rev = "21ce452" }
+network_glm = { git = "https://github.com/lobennett/network_glm.git", rev = "93451c7" }
 
 [build-system]
 requires = ["hatchling"]

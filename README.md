@@ -220,8 +220,8 @@ resolved from Sherlock's module system.
 
 [network_qa](https://github.com/lobennett/network_qa) compiles the final exclusions from
 the QC produced along the way — MRIQC IQMs, global-signal metrics, the behavioural
-truncation record, and lev1 design diagnostics. It is a dependency of `network_glm`, so it
-is already installed.
+truncation record, and lev1 design diagnostics. It is not a dependency here; install it
+where you run it.
 
 ### Progress and failures
 
@@ -285,7 +285,7 @@ src/network_fmri/
 
 External packages are pinned dependencies, not assumed installs: a pinned fork of
 fw-heudiconv does the Flywheel work, `global_signal_plots` the traces, `network_events` the
-events/QC/truncation stages, and `network_glm` (with `network_qa`) the models. One
+events/QC/truncation stages, and `network_glm` the models. One
 `uv sync` provisions the whole pipeline.
 
 `fw-heudiconv` loads `heuristic.py` **by path**, which is why `curate.py` and `heuristic.py` must

@@ -1,22 +1,8 @@
 """Submit network_glm's runners as Slurm arrays.
 
-network_glm is a library: it fits models, it does not submit jobs. This module owns the
-three things submission actually needs to know — how to fan a level out into array tasks,
-what resources each level wants, and which host modules it needs — and nothing else.
-
-Modelling options are **passed through untouched** after ``--``, so this module never has
-to learn ``--space``'s effect on masking, what ``--min-runs`` means, or any of the other
-~20 flags the runners accept. Only ``--space`` is parsed here, because it decides both the
-lev2 fan-out and which modules to load.
-
-Host modules, not the container: FSL and FreeSurfer were never baked into network_glm's
-image either — the old sbatch templates module-loaded them on the host. The conditions
-below are narrower than those templates were, and provably so:
-
-* lev1 called ``mri_surf2surf`` only from the surface branch, and only when
-  ``--smoothing-fwhm`` was given; the volumetric branch smooths through nilearn. The old
-  template loaded FreeSurfer on every array task regardless.
-* lev2 needs FSL only for volume randomise, which is what the old template already did.
+Owns the fan-out, the resources and the host modules each level needs. Modelling flags
+pass through after ``--``, so what they mean stays network_glm's business; ``--space`` is
+the exception, since it decides the lev2 fan-out and which modules to load.
 """
 
 from __future__ import annotations
@@ -65,9 +51,7 @@ def _sbatch(name: str, body: str, args: argparse.Namespace, log_dir: Path,
     return out.stdout.strip().split()[-1]
 
 
-# Defaults carried over from the submit layer this replaces: lev1 is memory-hungry and
-# slow, lev2 is permutation-bound but small, outliers is a single quick pass. A single
-# shared default would either starve lev1 or waste an allocation on the other two.
+# Per level: lev1 is memory-hungry and slow, lev2 permutation-bound but small.
 DEFAULTS = {
     "lev1": dict(cpus=1, mem_gb=64, time="2-00:00:00"),
     "lev2": dict(cpus=2, mem_gb=4, time="04:00:00"),
@@ -112,13 +96,12 @@ def lev1(argv: list[str] | None = None) -> int:
     tasks = {"all": get_all_tasks, "base": get_base_tasks,
              "dual": get_dual_tasks}[args.taskset]() if args.taskset else args.tasks
 
-    # sub- prefixed: file discovery normalises either form, but the runner interpolates
-    # subj_id raw into output filenames, so bare ids would produce non-BIDS names.
+    # sub- prefixed: the runner interpolates subj_id raw into output filenames.
     pairs = [f"sub-{s.removeprefix('sub-')} {t}" for s in subjects for t in tasks]
     log_dir = Path(args.log_dir or Path(args.results_dir) / "logs")
     listfile = _write_list(log_dir, "lev1_units.txt", pairs)
 
-    # FreeSurfer only where mri_surf2surf can actually be reached.
+    # mri_surf2surf is only reached from the surface branch, and only when smoothing.
     modules = ""
     if args.space in SURFACE_SPACES and "--smoothing-fwhm" in extra:
         modules = "module load biology freesurfer/8.1.0\n"
@@ -163,7 +146,7 @@ def lev2(argv: list[str] | None = None) -> int:
     log_dir = Path(args.log_dir or Path(args.results_dir) / "logs")
     listfile = _write_list(log_dir, "lev2_contrasts.txt", contrasts)
 
-    # FSL supplies randomise for the volume path; the surface path is self-contained.
+    # randomise is FSL; the surface path is self-contained.
     modules = "" if args.space == "surface" else "module load biology fsl\n"
 
     body = (f'set -euo pipefail\n{modules}'
