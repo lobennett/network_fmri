@@ -758,6 +758,11 @@ dependencies = [
     { name = "network-qa", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "datalad", specifier = ">=1.1" },
@@ -768,6 +773,9 @@ requires-dist = [
     { name = "network-glm", git = "https://github.com/lobennett/network_glm.git?rev=305e1e0" },
     { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=5d7ef4f" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8" }]
 
 [[package]]
 name = "network-glm"

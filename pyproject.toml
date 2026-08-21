@@ -22,6 +22,12 @@ dependencies = [
 [project.scripts]
 network_fmri = "network_fmri.cli:main"
 
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.uv]
 # Pillow 12 ships no wheel for this host (glibc 2.17) and its sdist needs libjpeg
 # headers we do not have. matplotlib pulls it in for the PDF traces.

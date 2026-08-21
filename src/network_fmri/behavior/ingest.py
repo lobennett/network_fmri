@@ -11,6 +11,7 @@ tree, which is being archived.
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
@@ -20,6 +21,11 @@ from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, cohort_dataset, roste
 CANONICAL = Path(
     "/oak/stanford/groups/russpold/data/network_grant/behavioral_data/canonical"
 )
+
+# The canonical dataset's commit at the time these trees were built. A re-run against a
+# different commit silently ingests different behaviour, which changes events and so every
+# downstream exclusion -- so the mismatch is refused rather than reported.
+CANONICAL_COMMIT = "445eba8"
 
 
 def subject_dirs(source: Path, cohort: str) -> list[str]:
@@ -44,11 +50,36 @@ def check_content(source: Path, subjects: list[str]) -> None:
             )
 
 
+def source_commit(source: Path) -> str:
+    """The canonical dataset's HEAD, or "unknown" if it is not a git checkout."""
+    try:
+        out = subprocess.run(["git", "-C", str(source), "rev-parse", "--short=7", "HEAD"],
+                             capture_output=True, text=True, check=True)
+        return out.stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
+def check_commit(source: Path, expected: str) -> str:
+    """Refuse to ingest a different version of the behavioural data than we recorded."""
+    got = source_commit(source)
+    if expected and got != "unknown" and not got.startswith(expected):
+        raise SystemExit(
+            f"{source} is at {got}, expected {expected}.\n"
+            "Behaviour changed underneath the pipeline: re-running would produce different "
+            "events and so different exclusions. Check out the expected commit, or update "
+            "ingest.CANONICAL_COMMIT deliberately and rebuild the events."
+        )
+    return got
+
+
 def record(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="network_fmri ingest-beh")
     p.add_argument("--cohort", required=True, choices=list(COHORTS))
     p.add_argument("--staging", default=DEFAULT_STAGING)
     p.add_argument("--source", default=str(CANONICAL))
+    p.add_argument("--expect-commit", default=CANONICAL_COMMIT,
+                   help="required source commit; empty string disables the check")
     p.add_argument("--out", default="sourcedata")
     args = p.parse_args(argv)
 
@@ -61,6 +92,7 @@ def record(argv: list[str] | None = None) -> int:
         print(f"no canonical behavioural data for {args.cohort} under {source} — nothing to do",
               flush=True)
         return 0
+    commit = check_commit(source, args.expect_commit)
     check_content(source, subjects)
 
     (tree / args.out).mkdir(parents=True, exist_ok=True)
@@ -70,7 +102,7 @@ def record(argv: list[str] | None = None) -> int:
     provenance.run_recorded(
         tree, cmd,
         f"network_fmri@{provenance.code_version()}: ingest behavioural data for "
-        f"{args.cohort} ({len(subjects)} subjects) from {source}",
+        f"{args.cohort} ({len(subjects)} subjects) from {source}@{commit}",
         outputs=[args.out], env=provenance.datalad_env(),
     )
     print(f"ingested {len(subjects)} subjects -> {tree / args.out}", flush=True)
