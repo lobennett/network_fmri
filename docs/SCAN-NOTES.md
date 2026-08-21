@@ -280,7 +280,48 @@ already rejected them, so they cannot reach a model and cost only preprocessing 
 
 ---
 
-## 7. Known gaps
+## 7. Preprocessing flags that are decisions, not defaults
+
+Three fMRIPrep/MRIQC settings were chosen against their defaults. Each is set in the
+mechababs campaign at `code/mechababs/pipelines/`, and each would fail silently if wrong.
+
+**`--dummy-scans 0`** (fMRIPrep). The tree is already trimmed — `trim` removes 7 volumes and
+stamps `NumberOfVolumesDiscardedByUser`, and `network_events` shifted onsets by −10.43 s to
+match — so fMRIPrep must discard nothing further. Explicit rather than left to
+auto-detection, which could vary between runs. The study's earlier
+`fmriprep_25.2.4` derivatives ran on an *untrimmed* tree, which is why their confounds carry
+seven `non_steady_state_outlier` columns and ours should carry none.
+
+**`--no-submm-recon`** (fMRIPrep). Every T1w is 0.5 × 0.5 × 0.8 mm, so the default would run
+FreeSurfer at 0.5 mm isotropic with `-hires -cm`. On this data that is worse and slower: it
+raises topological defects (thinner voxels amplify noise-driven segmentation error over ~8×
+the vertices) and takes 20–40 h against a 24 h wall. The 1 mm conform gives 2–11 holes per
+hemisphere across the five discovery subjects, and the BOLD is 2.8 mm, so surface precision
+below 1 mm buys nothing downstream. Also matches the 25.2.4 derivatives, keeping the two
+sets comparable. Revisit only if an analysis becomes anatomical (thickness, myelin, fine
+parcellation) rather than functional.
+
+**`--fd_thres 0.5`** (MRIQC). `fd_num`/`fd_perc` count frames above *this* threshold, and
+0.5 mm is the study's task-scan motion criterion — so `network_qa` thresholds the IQM
+directly instead of recomputing framewise displacement from fMRIPrep confounds. Motion
+exclusions therefore need no fMRIPrep output and are known before preprocessing.
+`network_qa` reads `provenance.settings.fd_thres` out of each IQM and refuses a mismatch,
+because the same `fd_perc` number means something different at another threshold.
+
+### Output spaces
+`MNI152NLin2009cAsym:res-2 T1w fsnative fsaverage6` plus `--cifti-output 91k`, matching what
+25.2.4 produced. `MNI152NLin6Asym` appears as well — not requested, but `--cifti-output`
+pulls it in for the fsLR path. `network_glm`'s `--mni-template` defaults to 2009cAsym to
+agree with the requested space.
+
+### T2w is invisible to the anat stage for 9 subjects
+Anat units are session-scoped, so a T2w in a different session than the T1w cannot
+contribute to pial refinement (fMRIPrep logs "No T2w images provided - skipping Stage 7").
+This affects 3 of 5 discovery and 6 of 41 validation subjects — and five of those six are
+subjects whose T1w moved sessions because of the `_qa-reject` choice in §3. Better
+anatomical quality was traded for T2w-assisted refinement.
+
+## 8. Known gaps
 
 **No distortion correction for one session.** `sub-s1399/ses-12` has 3 BOLD runs and no field map,
 so fMRIPrep runs it uncorrected — the only such session in either analysed cohort.
