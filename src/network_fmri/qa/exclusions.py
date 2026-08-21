@@ -2,8 +2,9 @@
 
 Two compiles gate the models, each downstream of the step producing its evidence:
 
-* ``qa-motion`` after fMRIPrep — motion and behavioural exclusions, the lockfile
-  ``glm-lev1 --exclusions-file`` consumes.
+* ``qa-motion`` after ``mriqc-iqms`` — motion and behavioural exclusions, the lockfile
+  ``glm-lev1 --exclusions-file`` consumes. Motion comes from MRIQC's IQMs, so this needs
+  no fMRIPrep output and the exclusion set is known before preprocessing.
 * ``qa-lev1`` after ``glm-outliers`` — adds lev1 outliers, gating what enters lev2.
 
 Flags after ``--`` go to ``network-qa compile`` untouched, so what they mean stays that
@@ -37,6 +38,8 @@ def _run(stage: str, argv: list[str] | None) -> int:
     p.add_argument("--cohort", required=True, choices=list(COHORTS))
     p.add_argument("--staging", default=DEFAULT_STAGING)
     p.add_argument("--out", default=None, help="lockfile path; default <bids>/derivatives/qa/")
+    p.add_argument("--mriqc-dir", default=None,
+                   help="MRIQC IQMs; default <bids>/derivatives/mriqc (see mriqc-iqms)")
     p.add_argument("--partition", default="russpold,normal")
     p.add_argument("--cpus", type=int, default=2)
     p.add_argument("--mem-gb", type=int, default=16)
@@ -49,9 +52,10 @@ def _run(stage: str, argv: list[str] | None) -> int:
     out = Path(args.out) if args.out else tree / "derivatives" / "qa" / f"{args.cohort}_{stage}_lock.json"
     log_dir = Path(args.staging) / "logs" / args.cohort
 
+    mriqc = Path(args.mriqc_dir) if args.mriqc_dir else tree / "derivatives" / "mriqc"
     body = (f"set -euo pipefail\n{QA} compile --dataset {args.cohort} "
             f"--generators {' '.join(STAGES[stage])} --bids-dir {tree} --out {out} "
-            f"{' '.join(extra)}")
+            f"--mriqc-dir {mriqc} {' '.join(extra)}")
     cmd = ["sbatch", "-J", f"nf-qa-{stage}-{args.cohort}", "-p", args.partition,
            "-c", str(args.cpus), f"--mem={args.mem_gb}G", "-t", args.time,
            "-o", f"{log_dir}/qa-{stage}-%j.out", "-e", f"{log_dir}/qa-{stage}-%j.err"]
