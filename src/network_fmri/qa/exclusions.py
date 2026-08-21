@@ -48,8 +48,6 @@ def _run(stage: str, argv: list[str] | None) -> int:
     tree = cohort_dataset(args.staging, args.cohort)
     out = Path(args.out) if args.out else tree / "derivatives" / "qa" / f"{args.cohort}_{stage}_lock.json"
     log_dir = Path(args.staging) / "logs" / args.cohort
-    log_dir.mkdir(parents=True, exist_ok=True)
-    out.parent.mkdir(parents=True, exist_ok=True)
 
     body = (f"set -euo pipefail\n{QA} compile --dataset {args.cohort} "
             f"--generators {' '.join(STAGES[stage])} --bids-dir {tree} --out {out} "
@@ -64,6 +62,10 @@ def _run(stage: str, argv: list[str] | None) -> int:
     if args.print_only:
         print(f"  {' '.join(cmd[:-1])}\n  --wrap:\n{body}")
         return 0
+
+    # After the dry-run exit, so --print never touches the filesystem.
+    log_dir.mkdir(parents=True, exist_ok=True)
+    out.parent.mkdir(parents=True, exist_ok=True)
     res = subprocess.run(cmd, capture_output=True, text=True, check=True)
     job = res.stdout.strip().split()[-1]
     print(f"  qa-{stage} {job}  generators={','.join(STAGES[stage])} -> {out}")
