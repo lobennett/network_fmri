@@ -79,20 +79,22 @@ which passed BIDS validation silently. Run one with `--only events`.
 
 ### After the chain
 
-These need fMRIPrep derivatives, so they are not part of `pipeline`. Chain them onto a finished
-job with `--dependency`.
+These run against campaign outputs, so they are not part of `pipeline`. Chain them onto a
+finished job with `--dependency`.
 
 | Stage | What it does |
 |---|---|
-| MRIQC / fMRIPrep | Run via a [mechababs](https://github.com/lobennett/mechababs) campaign pointed at `<cohort>/bids`, not through this package — BABS owns its own `datalad run` provenance. They are independent consumers of the same tree and can run **concurrently**. |
-| `qa-motion` | Compile `network_qa`'s `motion` + `behavioral` generators into the lockfile `glm-lev1 --exclusions-file` reads. FD/DVARS only exist after fMRIPrep. |
+| MRIQC / fMRIPrep | Run via a [mechababs](https://github.com/lobennett/mechababs) campaign pointed at `<cohort>/bids`, not through this package — BABS owns its own `datalad run` provenance. They are independent consumers of the same tree and can run **concurrently**. MRIQC runs with `--fd_thres 0.5` so `fd_perc` is the study's motion criterion (see docs/SCAN-NOTES.md §7). |
+| `mriqc-iqms` | Unpack the campaign's per-session MRIQC zips into `derivatives/mriqc/` — IQM JSONs only. Refuses a set with mixed `fd_thres`. |
+| `qa-motion` | Compile `network_qa`'s `motion` + `behavioral` generators into the lockfile `glm-lev1 --exclusions-file` reads. Motion comes from the MRIQC IQMs, so this needs **only MRIQC**, not fMRIPrep — the exclusion set is known before preprocessing. |
 | `glm-lev1` | First-level fits, one array task per subject × task. |
 | `glm-lev2` | Second level, one array task per contrast, discovered from the lev1 tree. |
 | `glm-outliers` | Cohort outlier QC over the finished lev1 maps. |
 | `qa-lev1` | Add `network_qa`'s `lev1_outlier` generator, gating what enters lev2. |
 
 ```bash
-network_fmri qa-motion --cohort discovery --dependency <fmriprep-job>
+network_fmri mriqc-iqms --cohort discovery          # after the MRIQC cell merges
+network_fmri qa-motion --cohort discovery
 network_fmri glm-lev1 --cohort discovery --base-tasks --results-dir <lev1> -- \
     --bids-dir <bids> --fmriprep-dir <fmriprep> --exclusions-file <lock.json> --residuals
 network_fmri glm-lev2 --lev1-dirs <lev1> --all --results-dir <lev2> -- --num-permutations 5000
@@ -120,7 +122,7 @@ they never re-appear on a fresh pull.
 | `ingest-beh` | no behavioural file exists anywhere | run gets no `events.tsv`, so no model | **8 runs** |
 | `events` | non-monotonic onset truncation | trials after a backward clock jump | varies |
 | `events` | scan-length clip | trials the scanner never imaged | **22 runs** |
-| `qa-motion` | FD/DVARS thresholds | runs excluded from lev1 | lockfile |
+| `qa-motion` | MRIQC IQMs: rest mean FD > 0.2, or >20% of task frames over 0.5 mm | runs excluded from lev1 | lockfile |
 | `qa-lev1` | lev1 outlier statistics | runs excluded from lev2 | lockfile |
 
 `events.tsv` counts: 2111 written, 502 `rest` runs never expect one, and 125 non-rest runs have
@@ -150,6 +152,10 @@ done
 `qa-reject` with no `--target` replays `qa_reject.REJECTS`, the ten anatomicals dropped on MRIQC
 evidence. It is not a pipeline stage because it mutates Flywheel rather than the tree, but it is a
 precondition of a correct export.
+
+Preprocessing and models then follow the [After the chain](#after-the-chain) order: the mechababs
+campaign (MRIQC, fMRIPrep) advances with `mechababs iterate`, and once the MRIQC cell merges,
+`mriqc-iqms` → `qa-motion` → the `glm-*` verbs run from this package.
 
 Three pieces of state live outside this repo:
 
