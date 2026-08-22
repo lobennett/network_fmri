@@ -314,6 +314,16 @@ because the same `fd_perc` number means something different at another threshold
 pulls it in for the fsLR path. `network_glm`'s `--mni-template` defaults to 2009cAsym to
 agree with the requested space.
 
+### fMRIPrep runs subject-level, not session-level
+One job per subject processes all its sessions in a single invocation, so the anatomical
+workflow and FreeSurfer run once per subject and every session's func reuses them
+in-process — 13.6–16.5 h/subject in the proven 25.2.4 run. The anat→full chain was dropped:
+on longitudinal data with one anat-bearing session per subject, babs intersects the job
+universe at session level (5 of 60 sessions), matches input zips on subject **and** session,
+filters anat to the job's session (func-only sessions expose no T1w), and FreeSurfer's
+sessionwise subject naming would re-run recon-all per session anyway (~4,000 node-hours).
+XCP-D chains on fMRIPrep at the **same** subject level, which is why that chain works.
+
 ### T2w is invisible to the anat stage for 9 subjects
 Anat units are session-scoped, so a T2w in a different session than the T1w cannot
 contribute to pial refinement (fMRIPrep logs "No T2w images provided - skipping Stage 7").
