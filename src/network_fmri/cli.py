@@ -26,6 +26,7 @@ _USAGE = """usage:
   network_fmri validate --cohort C [options]   run the BIDS validator on the merged tree
   network_fmri check --cohort C                assert the invariants the validator can't see
   network_fmri mriqc-iqms --cohort C           unpack MRIQC IQMs -> derivatives/mriqc/
+  network_fmri fmriprep-derivs --cohort C      unpack fMRIPrep zips -> derivatives/fmriprep/
   network_fmri global-signal --cohort C --label L   global-signal QA -> derivatives/
   network_fmri trim --cohort C [options]       trim dummy volumes in place
   network_fmri b0link --cohort C               link field maps to their BOLD runs
@@ -136,6 +137,14 @@ def main(argv: list[str] | None = None) -> int:
         return f(rest)
     if verb == "mriqc-iqms-run":
         from network_fmri.qa.mriqc import main as f
+
+        return f(rest)
+    if verb == "fmriprep-derivs":
+        from network_fmri.qa.fmriprep import record as f
+
+        return f(rest)
+    if verb == "fmriprep-derivs-run":
+        from network_fmri.qa.fmriprep import main as f
 
         return f(rest)
 
