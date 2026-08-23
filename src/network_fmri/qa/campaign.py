@@ -18,6 +18,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from network_fmri.cohorts import DEFAULT_STAGING
 from network_fmri.qa.mriqc import CAMPAIGN
 
 GIT_ANNEX = "$SCRATCH/git-annex/usr/bin"
@@ -29,6 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="network_fmri campaign",
                                 epilog="Everything after -- goes to `mechababs`.")
     p.add_argument("--campaign", default=str(CAMPAIGN))
+    p.add_argument("--staging", default=DEFAULT_STAGING)
     p.add_argument("--partition", default="russpold,normal")
     p.add_argument("--time", default="04:00:00")
     p.add_argument("--print", dest="print_only", action="store_true")
@@ -38,7 +40,9 @@ def main(argv: list[str] | None = None) -> int:
 
     body = (f"set -uo pipefail\ncd {args.campaign}\nsource .venv/bin/activate\n"
             f'export PATH="{GIT_ANNEX}:$PATH"\nmechababs {" ".join(extra)}')
-    log = Path(args.campaign) / ".mechababs" / "logs"
+    # Logs live OUTSIDE the campaign: anything untracked inside it leaves the dataset
+    # dirty, and mechababs refuses to iterate on a dirty campaign.
+    log = Path(args.staging) / "logs" / "campaign"
     cmd = ["sbatch", "-J", "nf-campaign", "-p", args.partition, "-c", "4", "--mem=16G",
            "-t", args.time, "-o", f"{log}/campaign-%j.out", "-e", f"{log}/campaign-%j.err",
            "--wrap", body]
