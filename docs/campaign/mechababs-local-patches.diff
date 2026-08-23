@@ -1,0 +1,56 @@
+diff --git a/mechababs/iterate.py b/mechababs/iterate.py
+index 6556f2c..8b4b406 100644
+--- a/mechababs/iterate.py
++++ b/mechababs/iterate.py
+@@ -218,7 +218,13 @@ def _scaffold_context(campaign, cfg, row, short, pipeline_file):
+     venv). The derivative is produced in its final home inside the cloned study; the
+     babs-project root IS the derivative dataset, named by the pipeline's short_name."""
+     ds_id = row["dataset_id"]
+-    processing_level = row.get("processing_level")
++    pipeline_path = campaign / pipeline_file
++    pipeline_cfg = yaml.safe_load(pipeline_path.read_text())
++    # A pipeline may override the dataset's level: fMRIPrep runs subject-level (one
++    # invocation reuses the anatomical across all sessions in-process), while MRIQC
++    # stays session-level. The ledger's level remains the default.
++    processing_level = (pipeline_cfg.get("mechababs", {}).get("processing_level")
++                        or row.get("processing_level"))
+     if not processing_level:
+         sys.exit(f"processing_level not set for {ds_id} — set it in the ledger "
+                  f"(add-dataset derives it; a blank means the metadata fetch failed)")
+@@ -226,8 +232,6 @@ def _scaffold_context(campaign, cfg, row, short, pipeline_file):
+     if not venv_rel:
+         sys.exit(f"{state.CONFIG_FILENAME} has no 'venv' — run `mechababs configure` first")
+     study = campaign / "studies" / f"study-{ds_id}"
+-    pipeline_path = campaign / pipeline_file
+-    pipeline_cfg = yaml.safe_load(pipeline_path.read_text())
+     return _ScaffoldCtx(
+         campaign=campaign, cfg=cfg, short=short, ds_id=ds_id,
+         processing_level=processing_level, study=study,
+diff --git a/merge_config.py b/merge_config.py
+index dd45d19..1954d56 100644
+--- a/merge_config.py
++++ b/merge_config.py
+@@ -27,7 +27,8 @@ def merge_babs_config(pipeline_config, cluster_config, dataset_url, input_origin
+     # Pipeline config (bids_app_args, singularity_args, zip_foldernames, etc.)
+     # Strip 'mechababs' — the mechababs-only namespace (container = babs-init CLI
+     # args; selection = eligibility rule), consumed by mechababs, never babs config.
+-    merged = {k: v for k, v in pipeline_config.items() if k != "mechababs"}
++    merged = {k: v for k, v in pipeline_config.items()
++              if k not in ("mechababs", "cluster_resources_override")}
+ 
+     # Cluster config (cluster_resources, script_preamble, job_compute_space).
+     # array_throttle is mechababs-only: it becomes `babs init --throttle`, a CLI arg,
+@@ -37,6 +38,13 @@ def merge_babs_config(pipeline_config, cluster_config, dataset_url, input_origin
+         if k not in CLUSTER_ONLY:
+             merged[k] = v
+ 
++    # A pipeline may need resources the campaign-wide cluster block cannot express
++    # (e.g. subject-level fMRIPrep needs 2 days where everything else gets 24 h).
++    # `cluster_resources_override` is applied AFTER the cluster block, keys wholesale.
++    override = pipeline_config.get("cluster_resources_override")
++    if override:
++        merged["cluster_resources"] = {**merged.get("cluster_resources", {}), **override}
++
+     # Resolve the venv placeholder in the preamble with the campaign venv abspath
+     # (the mechababs config keeps it relative; the caller resolves against the campaign root).
+     if campaign_venv and "script_preamble" in merged:

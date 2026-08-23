@@ -1,0 +1,84 @@
+# XCP-D 26.0.2, chained on subject-level fMRIPrep output.
+#
+# SUBJECT-level, deliberately matching the upstream: babs chaining works when producer
+# and consumer share a processing level (the zip is matched per subject and the job
+# universe is the subjects holding an fMRIPrep zip). XCP-D is also cheap relative to
+# fMRIPrep (~1-2 h/subject), so per-session fan-out buys nothing.
+#
+# The input key names the fMRIPrep pipeline's stem, which IS the chain signal;
+# origin_url is deliberately absent (mechababs injects the producer's output RIA once
+# it has merged).
+#
+# DECIDE before scaling past discovery (science flags, not plumbing):
+#   --nuisance-regressors  36P below is the conventional default
+#   band-pass              0.01-0.08 default; network_glm defers its CIFTI residual
+#                          filtering to XCP-D (--no-residual-filter), so keep consistent
+#   --fd-thresh            censoring threshold (0.3 below; distinct from MRIQC fd_thres)
+
+mechababs:
+  processing_level: subject
+  selection:
+    require_positive: [t1w_num, bold_num]
+  container:
+    source: /scratch/users/logben/mechababs_campaigns/xcpd-26.0.2-shim
+    name: bids-xcpd
+
+analysis_path: "."
+input_ria_path: ".babs/input_ria"
+output_ria_path: ".babs/output_ria"
+
+bids_app_args:
+  $SUBJECT_SELECTION_FLAG: "--participant-label"
+  -w: ".git/tmp/wkdir"
+  # Flag set mirrors the lab reference (grimsrud pfm_compare run_xcpd.sh), which runs
+  # this exact stack: XCP-D 26.0.2 on fMRIPrep 25.2.5, one subject per job.
+  --mode: "abcd"
+  --input-type: "fmriprep"
+  --despike: ""
+  --fd-thresh: "0.3"
+  --warp-surfaces-native2std: ""
+  --combine-runs: ""
+  --linc-qc: ""
+  --min-time: "150"
+  --min-coverage: "0.5"
+  --band-stop-min: "12"
+  --band-stop-max: "20"
+  --motion-filter-type: "notch"
+  --motion-filter-order: "4"
+  --smoothing: "0"
+  # Ours only: the tree is trimmed and fMRIPrep ran --dummy-scans 0, so be explicit
+  # rather than let auto-detection differ between runs.
+  --dummy-scans: "0"
+  --fs-license-file: "/home/users/logben/license.txt"
+  --notrack: ""
+  --stop-on-first-crash: ""
+  --nprocs: "8"
+  --omp-nthreads: "3"
+  --mem-mb: "180000"
+
+singularity_args:
+  - --containall
+  - --pwd "${PWD}"
+  - -B $JOB_TMP:/tmp
+  - -B /home/groups/russpold/templateflow:/templateflow
+  - --env TEMPLATEFLOW_HOME=/templateflow
+
+input_datasets:
+  fMRIPrep-25.2.5:
+    required_files:
+      - "*fMRIPrep-25.2.5*.zip"
+    is_zipped: true
+    path_in_babs: sourcedata/fMRIPrep-25.2.5
+
+cluster_resources_override:
+  hard_runtime_limit: "48:00:00"
+  customized_text: |
+    #SBATCH --partition=russpold,normal
+    #SBATCH --cpus-per-task=9
+    #SBATCH --mem=192G
+    #SBATCH --nodes=1
+    #SBATCH --ntasks=1
+
+all_results_in_one_zip: true
+zip_foldernames:
+  XCP-D-26.0.2: "26-0-2"

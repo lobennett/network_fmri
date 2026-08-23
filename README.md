@@ -87,6 +87,7 @@ finished job with `--dependency`.
 | MRIQC / fMRIPrep | Run via a [mechababs](https://github.com/lobennett/mechababs) campaign pointed at `<cohort>/bids`, not through this package — BABS owns its own `datalad run` provenance. They are independent consumers of the same tree and can run **concurrently**. MRIQC runs with `--fd_thres 0.5` so `fd_perc` is the study's motion criterion (see docs/SCAN-NOTES.md §7). |
 | `mriqc-iqms` | Unpack the campaign's per-session MRIQC zips into `derivatives/mriqc/` — IQM JSONs only. Refuses a set with mixed `fd_thres`. |
 | XCP-D | Chained on fMRIPrep in the campaign, **subject-level like its producer** — babs chaining requires matched levels, which is exactly why the session-level anat→full chain was dropped (see SCAN-NOTES §7). |
+| `fmriprep-derivs` | Unpack the per-subject fMRIPrep zips into `derivatives/fmriprep/` — the tree `glm-lev1 --fmriprep-dir` points at. |
 | `qa-motion` | Compile `network_qa`'s `motion` + `behavioral` generators into the lockfile `glm-lev1 --exclusions-file` reads. Motion comes from the MRIQC IQMs, so this needs **only MRIQC**, not fMRIPrep — the exclusion set is known before preprocessing. |
 | `glm-lev1` | First-level fits, one array task per subject × task. |
 | `glm-lev2` | Second level, one array task per contrast, discovered from the lev1 tree. |
@@ -96,6 +97,7 @@ finished job with `--dependency`.
 ```bash
 network_fmri mriqc-iqms --cohort discovery          # after the MRIQC cell merges
 network_fmri qa-motion --cohort discovery
+network_fmri fmriprep-derivs --cohort discovery    # after the fMRIPrep cell merges
 network_fmri glm-lev1 --cohort discovery --base-tasks --results-dir <lev1> -- \
     --bids-dir <bids> --fmriprep-dir <fmriprep> --exclusions-file <lock.json> --residuals
 network_fmri glm-lev2 --lev1-dirs <lev1> --all --results-dir <lev2> -- --num-permutations 5000

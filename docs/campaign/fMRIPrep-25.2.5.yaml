@@ -1,0 +1,79 @@
+# fMRIPrep 25.2.5, SUBJECT-level: one job per subject processes all its sessions in a
+# single invocation, so the anatomical workflow and FreeSurfer run once per subject and
+# every session's func reuses them in-process.
+#
+# This replaces the anat->full chain, which cannot work on longitudinal data with one
+# anat-bearing session per subject: babs intersects the job universe at session level
+# (5 of 60 sessions), matches input zips on subject AND session, and filters anat to the
+# job's session (func-only sessions expose no T1w). Worse, FreeSurfer subjects are named
+# sessionwise (sub-X_ses-Y), so a chained session job would re-run recon-all anyway.
+# Subject-level is also what produced the study's existing fmriprep_25.2.4 derivatives:
+# 5/5 subjects clean at 13.6-16.5 h each.
+
+mechababs:
+  # Overrides the dataset's session-level default (mechababs per-pipeline override).
+  processing_level: subject
+  selection:
+    # Subject-level TSV: every subject with an anatomical and functional data.
+    require_positive: [t1w_num, bold_num]
+  container:
+    source: /scratch/users/logben/mechababs_campaigns/fmriprep-25.2.5-shim
+    name: bids-fmriprep
+
+analysis_path: "."
+input_ria_path: ".babs/input_ria"
+output_ria_path: ".babs/output_ria"
+
+bids_app_args:
+  $SUBJECT_SELECTION_FLAG: "--participant-label"
+  -w: ".git/tmp/wkdir"
+  # The tree is already trimmed (NumberOfVolumesDiscardedByUser stamped) and event
+  # onsets shifted to match, so fMRIPrep must discard nothing further.
+  --dummy-scans: "0"
+  # Every T1w is 0.5x0.5x0.8 mm; default hires recon raises defects on this data and
+  # takes 20-40 h. 1 mm conform gives 2-11 holes/hemisphere and matches 25.2.4.
+  --no-submm-recon: ""
+  # Matches the study's existing derivatives; 6Asym also appears via --cifti-output.
+  --output-spaces: "MNI152NLin2009cAsym:res-2 T1w fsnative fsaverage6"
+  --cifti-output: "91k"
+  --me-output-echos: ""
+  --use-syn-sdc: "warn"
+  # Pins ANTs/FreeSurfer RNGs so a re-run reproduces this one.
+  --random-seed: "12345"
+  --skull-strip-fixed-seed: ""
+  --skull-strip-t1w: "force"
+  --notrack: ""
+  --md-only-boilerplate: ""
+  # Already validated by `network_fmri validate` (rc=0).
+  --skip-bids-validation: ""
+  --stop-on-first-crash: ""
+  # HOST path: babs rewrites it and adds the bind itself -- do not bind it again.
+  --fs-license-file: "/home/users/logben/license.txt"
+  --nprocs: "8"
+  --omp-nthreads: "2"
+  --mem-mb: "45000"
+
+singularity_args:
+  - --containall
+  # --pwd is load-bearing: without it --containall drops CWD to a tmpfs $HOME and the
+  # relative -w overflows it. (upstream #55)
+  - --pwd "${PWD}"
+  - -B $JOB_TMP:/tmp
+  - -B /home/groups/russpold/templateflow:/templateflow
+  - --env TEMPLATEFLOW_HOME=/templateflow
+
+# Applied AFTER clusters/sherlock.yaml (mechababs cluster_resources_override): a whole
+# subject (~12 sessions + recon-all) ran 13.6-16.5 h in 25.2.4, so 2 days covers the
+# tail; everything else in the campaign keeps the cluster-wide 24 h.
+cluster_resources_override:
+  hard_runtime_limit: "48:00:00"
+  customized_text: |
+    #SBATCH --partition=russpold,normal
+    #SBATCH --cpus-per-task=8
+    #SBATCH --mem=48G
+    #SBATCH --nodes=1
+    #SBATCH --ntasks=1
+
+all_results_in_one_zip: true
+zip_foldernames:
+  fMRIPrep-25.2.5: "25-2-5"
