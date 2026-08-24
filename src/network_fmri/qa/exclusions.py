@@ -22,6 +22,7 @@ from pathlib import Path
 from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, cohort_dataset
 
 QA = str(Path(sys.executable).parent / "network-qa")
+DATALAD = str(Path(sys.executable).parent / "datalad")
 
 STAGES = {
     "motion": ("motion", "behavioral"),
@@ -53,9 +54,15 @@ def _run(stage: str, argv: list[str] | None) -> int:
     log_dir = Path(args.staging) / "logs" / args.cohort
 
     mriqc = Path(args.mriqc_dir) if args.mriqc_dir else tree / "derivatives" / "mriqc"
+    # `datalad save` the lockfile: it is a tracked artefact the models consume, and an
+    # untracked one leaves the cohort dataset dirty, which blocks every later
+    # `datalad run` stage (fmriprep-derivs, mriqc-iqms).
     body = (f"set -euo pipefail\n{QA} compile --dataset {args.cohort} "
             f"--generators {' '.join(STAGES[stage])} --bids-dir {tree} --out {out} "
-            f"--mriqc-dir {mriqc} {' '.join(extra)}")
+            f"--mriqc-dir {mriqc} {' '.join(extra)}\n"
+            f"export PATH=\"$SCRATCH/git-annex/usr/bin:$PATH\"\n"
+            f"{DATALAD} save -d {tree} -m "
+            f"'network_qa exclusions lockfile: {args.cohort} {stage}' {out}")
     cmd = ["sbatch", "-J", f"nf-qa-{stage}-{args.cohort}", "-p", args.partition,
            "-c", str(args.cpus), f"--mem={args.mem_gb}G", "-t", args.time,
            "-o", f"{log_dir}/qa-{stage}-%j.out", "-e", f"{log_dir}/qa-{stage}-%j.err"]

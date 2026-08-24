@@ -84,6 +84,7 @@ finished job with `--dependency`.
 
 | Stage | What it does |
 |---|---|
+| `shim` | Build a pipeline's container shim and vendor it into the campaign. babs clones a shim dataset rather than taking a path to a `.sif`, so each pipeline needs one **before** its first `iterate`. Idempotent, and it checks the `datalad.containers.<name>` registration rather than the directory — a shim holding the image but missing that key clones fine and then fails with a far less obvious "container not found". |
 | MRIQC / fMRIPrep | Run via a [mechababs](https://github.com/lobennett/mechababs) campaign pointed at `<cohort>/bids` — driven with `network_fmri campaign -- iterate`, which sources the campaign's own pinned venv (mechababs is deliberately NOT a dependency: the campaign vendors its own mechababs+babs and refuses any other install). Config snapshot + recreation notes: [docs/campaign/](docs/campaign/) — BABS owns its own `datalad run` provenance. They are independent consumers of the same tree and can run **concurrently**. MRIQC runs with `--fd_thres 0.5` so `fd_perc` is the study's motion criterion (see docs/SCAN-NOTES.md §7). |
 | `mriqc-iqms` | Unpack the campaign's per-session MRIQC zips into `derivatives/mriqc/` — IQM JSONs only. Refuses a set with mixed `fd_thres`. |
 | XCP-D | Chained on fMRIPrep in the campaign, **subject-level like its producer** — babs chaining requires matched levels, which is exactly why the session-level anat→full chain was dropped (see SCAN-NOTES §7). |
@@ -95,6 +96,9 @@ finished job with `--dependency`.
 | `qa-lev1` | Add `network_qa`'s `lev1_outlier` generator, gating what enters lev2. |
 
 ```bash
+# Once per pipeline, before its first iterate. --dest must match the yaml's container.source.
+network_fmri shim --name bids-xcpd --dest $SCRATCH/mechababs_campaigns/xcpd-26.0.2-shim \
+    --image /oak/stanford/groups/russpold/shared/containers/xcp_d-26.0.2.sif
 network_fmri campaign -- iterate --dry-run          # what the campaign would do next
 network_fmri campaign -- iterate --batch 2          # advance N cells (batch discipline!)
 network_fmri campaign -- status                     # per-job table

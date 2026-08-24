@@ -28,6 +28,7 @@ _USAGE = """usage:
   network_fmri mriqc-iqms --cohort C           unpack MRIQC IQMs -> derivatives/mriqc/
   network_fmri fmriprep-derivs --cohort C      unpack fMRIPrep zips -> derivatives/fmriprep/
   network_fmri campaign -- <mechababs args>    drive the campaign (iterate, status) via sbatch
+  network_fmri shim --name --image --dest      build a pipeline's container shim, vendor it
   network_fmri global-signal --cohort C --label L   global-signal QA -> derivatives/
   network_fmri trim --cohort C [options]       trim dummy volumes in place
   network_fmri b0link --cohort C               link field maps to their BOLD runs
@@ -150,6 +151,10 @@ def main(argv: list[str] | None = None) -> int:
         return f(rest)
     if verb == "campaign":
         from network_fmri.qa.campaign import main as f
+
+        return f(rest)
+    if verb == "shim":
+        from network_fmri.qa.shim import main as f
 
         return f(rest)
 
