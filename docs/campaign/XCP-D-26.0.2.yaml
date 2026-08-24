@@ -17,6 +17,10 @@
 
 mechababs:
   processing_level: subject
+  # XCP-D reads fMRIPrep derivatives, not raw BIDS, and babs passes input_datasets[0]
+  # as the positional input dir — so the chained input has to lead. Without this the
+  # app is handed sourcedata/raw and finds nothing to post-process.
+  primary_input: fMRIPrep-25.2.5
   selection:
     require_positive: [t1w_num, bold_num]
   container:

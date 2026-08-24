@@ -1,5 +1,5 @@
 diff --git a/mechababs/iterate.py b/mechababs/iterate.py
-index 6556f2c..8b4b406 100644
+index 29e5dfb..8b4b406 100644
 --- a/mechababs/iterate.py
 +++ b/mechababs/iterate.py
 @@ -218,7 +218,13 @@ def _scaffold_context(campaign, cfg, row, short, pipeline_file):
@@ -26,11 +26,23 @@ index 6556f2c..8b4b406 100644
      return _ScaffoldCtx(
          campaign=campaign, cfg=cfg, short=short, ds_id=ds_id,
          processing_level=processing_level, study=study,
+@@ -343,6 +347,11 @@ def _babs_init(ctx, inclusion, babs_config, *, dry_run):
+                  "--processing-level", ctx.processing_level, "--queue", "slurm"]
+     if inclusion is not None:
+         babs_init += ["--list-sub-file", str(inclusion.relative_to(ctx.campaign))]
++    # babs bakes this into the generated `--array=1-N%<throttle>`, so the cap travels
++    # with the project instead of needing `scontrol` after every submit.
++    throttle = yaml.safe_load(ctx.cluster_path.read_text()).get("array_throttle")
++    if throttle:
++        babs_init += ["--throttle", str(throttle)]
+     datalad_duct(babs_init, dataset=ctx.campaign,
+                  message=f"scaffold {ctx.ds_id}/{ctx.short}: babs init",
+                  log_prefix=f".duct-logs/{ctx.ds_id}/{ctx.short}/babs-init_{{datetime}}-{{pid}}_",
 diff --git a/merge_config.py b/merge_config.py
-index dd45d19..1954d56 100644
+index ba78534..e9713cb 100644
 --- a/merge_config.py
 +++ b/merge_config.py
-@@ -27,7 +27,8 @@ def merge_babs_config(pipeline_config, cluster_config, dataset_url, input_origin
+@@ -27,11 +27,23 @@ def merge_babs_config(pipeline_config, cluster_config, dataset_url, input_origin
      # Pipeline config (bids_app_args, singularity_args, zip_foldernames, etc.)
      # Strip 'mechababs' — the mechababs-only namespace (container = babs-init CLI
      # args; selection = eligibility rule), consumed by mechababs, never babs config.
@@ -38,19 +50,71 @@ index dd45d19..1954d56 100644
 +    merged = {k: v for k, v in pipeline_config.items()
 +              if k not in ("mechababs", "cluster_resources_override")}
  
-     # Cluster config (cluster_resources, script_preamble, job_compute_space).
-     # array_throttle is mechababs-only: it becomes `babs init --throttle`, a CLI arg,
-@@ -37,6 +38,13 @@ def merge_babs_config(pipeline_config, cluster_config, dataset_url, input_origin
-         if k not in CLUSTER_ONLY:
-             merged[k] = v
- 
+-    # Cluster config (cluster_resources, script_preamble, job_compute_space)
++    # Cluster config (cluster_resources, script_preamble, job_compute_space).
++    # array_throttle is mechababs-only: it becomes `babs init --throttle`, a CLI arg,
++    # so leaking it into the babs config would leave an unknown key there.
++    CLUSTER_ONLY = {"array_throttle"}
+     for k, v in cluster_config.items():
+-        merged[k] = v
++        if k not in CLUSTER_ONLY:
++            merged[k] = v
++
 +    # A pipeline may need resources the campaign-wide cluster block cannot express
 +    # (e.g. subject-level fMRIPrep needs 2 days where everything else gets 24 h).
 +    # `cluster_resources_override` is applied AFTER the cluster block, keys wholesale.
 +    override = pipeline_config.get("cluster_resources_override")
 +    if override:
 +        merged["cluster_resources"] = {**merged.get("cluster_resources", {}), **override}
-+
+ 
      # Resolve the venv placeholder in the preamble with the campaign venv abspath
      # (the mechababs config keeps it relative; the caller resolves against the campaign root).
-     if campaign_venv and "script_preamble" in merged:
+@@ -40,22 +52,36 @@ def merge_babs_config(pipeline_config, cluster_config, dataset_url, input_origin
+             "{{MECHABABS_VENV}}", campaign_venv)
+ 
+     # Preserve any input_datasets already declared in the pipeline YAML
+-    # (e.g. chained-pipeline anat-input for fmriprep-full). Always add
+-    # or overwrite the BIDS entry from --dataset-url, and force BIDS
+-    # to be FIRST in the dict — babs uses input_datasets[0] as the
+-    # bids_dir positional arg to the BIDS app
+-    # (generate_bidsapp_runscript.py:244 on add-containers-run-v2).
++    # (e.g. the chained fMRIPrep input for XCP-D). Always add or overwrite the BIDS
++    # entry from --dataset-url.
++    #
++    # ORDER MATTERS: babs passes input_datasets[0] as the BIDS app's positional input
++    # dir (generate_bidsapp_runscript.py, "The input dataset is always the first one in
++    # the list"). Raw BIDS is right for MRIQC and fMRIPrep, but a pipeline that consumes
++    # a predecessor's output needs THAT first — XCP-D handed sourcedata/raw would read
++    # the raw tree and find no derivatives. `mechababs.primary_input` names which entry
++    # leads; it defaults to BIDS so existing pipelines are unaffected.
+     yaml_input_datasets = merged.get("input_datasets") or {}
+-    input_datasets = {
+-        "BIDS": {
+-            "is_zipped": False,
+-            "origin_url": dataset_url,
+-            "path_in_babs": "sourcedata/raw",
+-        }
++    bids_entry = {
++        "is_zipped": False,
++        "origin_url": dataset_url,
++        "path_in_babs": "sourcedata/raw",
+     }
++    primary = (pipeline_config.get("mechababs") or {}).get("primary_input", "BIDS")
++    if primary != "BIDS" and primary not in yaml_input_datasets:
++        sys.exit(f"merge_config: mechababs.primary_input {primary!r} is not one of the "
++                 f"declared input_datasets ({sorted(yaml_input_datasets)})")
++
++    input_datasets = {}
++    if primary == "BIDS":
++        input_datasets["BIDS"] = bids_entry
++    else:
++        input_datasets[primary] = yaml_input_datasets[primary]
+     for k, v in yaml_input_datasets.items():
+-        if k != "BIDS":
++        if k not in input_datasets:
+             input_datasets[k] = v
++    if "BIDS" not in input_datasets:
++        input_datasets["BIDS"] = bids_entry
+ 
+     # Chained-input origin_urls: a downstream YAML declares the upstream stage's
+     # output as an input but leaves origin_url out — the upstream RIA doesn't

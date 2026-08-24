@@ -8,13 +8,26 @@ there, then refresh these. They are duplicated here because the campaign lives o
 - `MRIQC-24.0.2.yaml`, `fMRIPrep-25.2.5.yaml`, `XCP-D-26.0.2.yaml` — pipeline configs
   (flag decisions documented inline; see also ../SCAN-NOTES.md §7)
 - `sherlock.yaml` — cluster config incl. `array_throttle: 12`
-- `mechababs-local-patches.diff` — our two patches to the vendored mechababs:
-  per-pipeline `processing_level`, and `cluster_resources_override` applied after the
-  cluster block (and stripped from the babs config)
+- `mechababs-local-patches.diff` — our patches to the vendored mechababs:
+  per-pipeline `processing_level`; `cluster_resources_override` applied after the cluster
+  block (and stripped from the babs config); and `primary_input`, below
+
+## `primary_input`, and why XCP-D needs it
+
+babs passes `input_datasets[0]` as the BIDS app's positional input directory — its own
+comment is "The input dataset is always the first one in the list". merge_config used to
+force the raw-BIDS entry first unconditionally, which is right for MRIQC and fMRIPrep but
+wrong for anything consuming a predecessor's output: XCP-D was handed `sourcedata/raw` and
+would have post-processed the raw tree. `mechababs.primary_input` names the entry that
+leads, defaulting to `BIDS`, so only XCP-D sets it. Verify after scaffolding — the
+positional in `<project>/code/bids-xcpd_zip.sh` must be
+`sourcedata/fMRIPrep-25.2.5/fMRIPrep-25.2.5` (babs resolves a zipped input to
+`path_in_babs/<name>`, matching the zip's own top folder).
 
 To recreate the campaign from nothing: mechababs `bootstrap.sh` + `configure` with these
 pipelines/cluster, `add-dataset` per cohort against `$SCRATCH/network_fmri/<cohort>/bids`,
-apply the patches, build the container shims from
-`/home/groups/russpold/singularity_images/{mriqc_24.0.2,fmriprep_25.2.5,xcpd_26.0.2}.sif`.
+apply the patches, then `network_fmri shim` once per pipeline (babs clones a shim dataset,
+not a `.sif` path — a missing one fails `babs init` with "Failed to clone from any
+candidate source URL").
 CAUTION: `configure` REWRITES the ledger — never run it on a campaign with in-flight cells.
 Failed cells: `iterate` only reports them; retry with `babs submit <project>`.
