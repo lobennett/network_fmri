@@ -771,7 +771,7 @@ requires-dist = [
     { name = "global-signal-plots", extras = ["plot"], git = "https://github.com/lobennett/global_signal_plots.git?rev=5d92c33" },
     { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=6b9a8b8" },
     { name = "network-glm", git = "https://github.com/lobennett/network_glm.git?rev=832bab8" },
-    { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=42a5366" },
+    { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=39a4a06" },
 ]
 
 [package.metadata.requires-dev]
@@ -798,7 +798,7 @@ dependencies = [
 [[package]]
 name = "network-qa"
 version = "0.1.0"
-source = { git = "https://github.com/lobennett/network_qa.git?rev=42a5366#42a53661c00d094b3e0b3d8edc632b746a8d3614" }
+source = { git = "https://github.com/lobennett/network_qa.git?rev=39a4a06#39a4a064bb3e75ebfb0938de47654f944237f152" }
 dependencies = [
     { name = "network-events", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nibabel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
