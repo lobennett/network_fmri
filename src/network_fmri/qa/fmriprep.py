@@ -62,7 +62,8 @@ def main(argv: list[str] | None = None) -> int:
         # fMRIPrep layout (sub-*/, sourcedata/freesurfer, dataset_description.json).
         subprocess.run(["rsync", "-a", f"{inner}/", f"{out}/"], check=True)
         subprocess.run(["rm", "-rf", str(inner)], check=True)
-    n = len(list(out.glob("sub-*")))
+    # Directories only: the tree also holds one sub-*_*.html report per session.
+    n = len([p for p in out.glob("sub-*") if p.is_dir()])
     print(f"[fmriprep-derivs] {n} subjects -> {out}", flush=True)
 
     if not args.keep_zips:
