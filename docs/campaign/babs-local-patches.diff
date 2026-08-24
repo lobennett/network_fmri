@@ -1,0 +1,59 @@
+diff --git a/babs/container.py b/babs/container.py
+index 8eebfc7..7bc1fd3 100644
+--- a/babs/container.py
++++ b/babs/container.py
+@@ -140,6 +140,7 @@ class Container:
+             bids_app_args=self.config.get('bids_app_args', None),
+             singularity_args=self.config.get('singularity_args', []),
+             templateflow_home=templateflow_home,
++            pre_app_commands=self.config.get('pre_app_commands', []),
+         )
+ 
+         with open(bash_path, 'w') as f:
+diff --git a/babs/generate_bidsapp_runscript.py b/babs/generate_bidsapp_runscript.py
+index a24db5f..2daaf7c 100644
+--- a/babs/generate_bidsapp_runscript.py
++++ b/babs/generate_bidsapp_runscript.py
+@@ -18,6 +18,7 @@ def generate_bidsapp_runscript(
+     bids_app_args=None,
+     singularity_args=None,
+     templateflow_home=None,
++    pre_app_commands=None,
+ ):
+     """
+     Generate a bash script that runs the BIDS App singularity image.
+@@ -34,6 +35,9 @@ def generate_bidsapp_runscript(
+         list of arguments to be passed to the singularity image
+     templateflow_home: str
+         path to the templateflow home directory on local disk
++    pre_app_commands: list of str
++        shell commands run after the inputs are unzipped and before the app, for
++        reshaping an input tree the app will not accept as-is
+     output_directory: str
+         path to the output directory
+ 
+@@ -99,6 +103,7 @@ def generate_bidsapp_runscript(
+         PATH_FS_LICENSE_IN_CONTAINER=PATH_FS_LICENSE_IN_CONTAINER,
+         container_path_relToAnalysis=relative_container_path,
+         bids_app_input_dir=bids_app_input_dir,
++        pre_app_commands=pre_app_commands or [],
+         bids_app_output_dir=bids_app_output_dir,
+         bids_app_args=bids_app_args,
+         cmd_zip=cmd_zip,
+diff --git a/babs/templates/bidsapp_run.sh.jinja2 b/babs/templates/bidsapp_run.sh.jinja2
+index d79dd5a..26b7d75 100644
+--- a/babs/templates/bidsapp_run.sh.jinja2
++++ b/babs/templates/bidsapp_run.sh.jinja2
+@@ -38,6 +38,12 @@ sed -i "s/ses-//g" "${filterfile}"
+ {% if cmd_unzip_inputds %}
+ {{ cmd_unzip_inputds }}
+ {% endif %}
++{% if pre_app_commands %}
++# pre_app_commands from the container config: reshape the unzipped inputs before the app
++{% for pre_app_command in pre_app_commands %}
++{{ pre_app_command }}
++{% endfor %}
++{% endif %}
+ mkdir -p "${PWD}/.git/tmp/wkdir"
+ {% if templateflow_home_on_disk %}
+ mkdir -p {{ templateflow_home_on_disk }}

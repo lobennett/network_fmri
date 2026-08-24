@@ -31,6 +31,28 @@ analysis_path: "."
 input_ria_path: ".babs/input_ria"
 output_ria_path: ".babs/output_ria"
 
+# XCP-D counts a session as anatomical if it holds a T1w OR a T2w, and refuses any tree
+# that is neither one-anat-per-func-session nor one-anat-for-all (parser.py:1080). This
+# study acquires the T2w in a different session from the T1w for 9 of 46 subjects, so
+# fMRIPrep emits a T2w-only anat/ there — a phantom second anatomical session, and the
+# run dies before doing any work.
+#
+# Dropping those anat/ dirs from XCP-D's copy of the input costs nothing: fMRIPrep has
+# already used the T2w to refine the surfaces, and those surfaces are what XCP-D reads.
+# It leaves exactly one anatomical session, so XCP-D takes the one-to-all path and
+# processes every functional session against the T1w session's anatomy. Verified on
+# sub-s03: workflow built as sub_s03_ses_13_ses_010203...12_wf.
+#
+# --bids-filter-file cannot do this: the filter-to-session-list path in parser.py is
+# commented out, and a .bidsignore does not hide the files from the layout query either
+# (both tested). Editing the unzipped input is the only lever.
+pre_app_commands:
+  - |
+    for anat in sourcedata/fMRIPrep-25.2.5/fMRIPrep-25.2.5/sub-*/ses-*/anat; do
+        [ -d "$anat" ] || continue
+        ls "$anat"/*_T1w.nii.gz >/dev/null 2>&1 || { echo "pruning T2w-only anat: $anat"; rm -rf "$anat"; }
+    done
+
 bids_app_args:
   $SUBJECT_SELECTION_FLAG: "--participant-label"
   -w: ".git/tmp/wkdir"
