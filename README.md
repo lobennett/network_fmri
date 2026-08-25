@@ -8,6 +8,10 @@ does the Flywheel work; this repo owns the heuristic, session numbering, job sub
 exclusion gates. `network_events`, `network_glm` and `network_qa` are pinned dependencies, so one
 `uv sync` provisions everything and the same venv runs every stage.
 
+Picking this up cold — or as an agent — start with
+[docs/AGENT-ONBOARDING.md](docs/AGENT-ONBOARDING.md): canonical paths, the environment, and
+the failures already diagnosed (with the approaches ruled out, so you don't retry them).
+
 As built: **57 subjects, 590 sessions, 2738 BOLD acquisitions, 2111 `events.tsv`.** Cohorts are
 `discovery` (5 subjects), `validation` (41), `excluded` (11). Output lands in
 `$SCRATCH/network_fmri/<cohort>/`.
