@@ -69,8 +69,15 @@ def main(argv: list[str] | None = None) -> int:
     if not args.keep_zips:
         # Only after the unpack succeeded, so a failure never costs the fetch. The drop
         # is in the campaign dataset, not this one -- a cache eviction, not an output.
-        r = subprocess.run(["datalad", "drop", "-d", str(src), *[str(z) for z in zips]],
-                           capture_output=True, text=True)
+        #
+        # The zips live in a RIA, so verifying the remaining copy needs
+        # git-annex-remote-ora; without it on PATH git-annex reports the confusing
+        # "external special remote protocol error ... <EOF>". It ships in this venv.
+        bindir = str(Path(sys.executable).parent)
+        env = {**os.environ, "PATH": f"{bindir}{os.pathsep}{os.environ.get('PATH', '')}"}
+        r = subprocess.run([f"{bindir}/datalad", "drop", "-d", str(src),
+                            *[str(z) for z in zips]],
+                           capture_output=True, text=True, env=env)
         if r.returncode:
             print(f"[fmriprep-derivs] zips left in place ({src}): {r.stderr.strip()}",
                   flush=True)

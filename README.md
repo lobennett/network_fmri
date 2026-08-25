@@ -88,7 +88,7 @@ finished job with `--dependency`.
 | MRIQC / fMRIPrep | Run via a [mechababs](https://github.com/lobennett/mechababs) campaign pointed at `<cohort>/bids` — driven with `network_fmri campaign -- iterate`, which sources the campaign's own pinned venv (mechababs is deliberately NOT a dependency: the campaign vendors its own mechababs+babs and refuses any other install). Config snapshot + recreation notes: [docs/campaign/](docs/campaign/) — BABS owns its own `datalad run` provenance. They are independent consumers of the same tree and can run **concurrently**. MRIQC runs with `--fd_thres 0.5` so `fd_perc` is the study's motion criterion (see docs/SCAN-NOTES.md §7). |
 | `mriqc-iqms` | Unpack the campaign's per-session MRIQC zips into `derivatives/mriqc/` — IQM JSONs only. Refuses a set with mixed `fd_thres`. |
 | XCP-D | Chained on fMRIPrep in the campaign, **subject-level like its producer** — babs chaining requires matched levels, which is exactly why the session-level anat→full chain was dropped (see SCAN-NOTES §7). |
-| `fmriprep-derivs` | Unpack the per-subject fMRIPrep zips into `derivatives/fmriprep/` — the tree `glm-lev1 --fmriprep-dir` points at. |
+| `fmriprep-derivs` | Unpack the per-subject fMRIPrep zips into `derivatives/fmriprep/` — the tree `glm-lev1 --fmriprep-dir` points at. Then drops the fetched zips (`--keep-zips` to opt out): the output RIA already holds a copy, so keeping both costs ~200 GB/subject for nothing. **This is the most expensive stage in the chain** — fMRIPrep output is ~230 GB/subject unpacked, and annexing it dominates the runtime. Discovery's 5 subjects took 4 h to extract and 5 h to annex, peaking just over 32 GB RSS; give validation's 41 subjects `--mem=128G -t 48:00:00`. |
 | `qa-motion` | Compile `network_qa`'s `motion` + `behavioral` generators into the lockfile `glm-lev1 --exclusions-file` reads. Motion comes from the MRIQC IQMs, so this needs **only MRIQC**, not fMRIPrep — the exclusion set is known before preprocessing. |
 | `glm-lev1` | First-level fits, one array task per subject × task. |
 | `glm-lev2` | Second level, one array task per contrast, discovered from the lev1 tree. |
@@ -104,7 +104,10 @@ network_fmri campaign -- iterate --batch 2          # advance N cells (batch dis
 network_fmri campaign -- status                     # per-job table
 network_fmri mriqc-iqms --cohort discovery          # after the MRIQC cell merges
 network_fmri qa-motion --cohort discovery
-network_fmri fmriprep-derivs --cohort discovery    # after the fMRIPrep cell merges
+# after the fMRIPrep cell merges. Runs in the foreground, so wrap it in a job -- and give
+# it real memory: the annex of the unpacked tree is what needs it, not the extraction.
+sbatch -p russpold,normal -c 8 --mem=128G -t 48:00:00 \
+    --wrap "network_fmri fmriprep-derivs --cohort discovery"
 network_fmri glm-lev1 --cohort discovery --base-tasks --results-dir <lev1> -- \
     --bids-dir <bids> --fmriprep-dir <fmriprep> --exclusions-file <lock.json> --residuals
 network_fmri glm-lev2 --lev1-dirs <lev1> --all --results-dir <lev2> -- --num-permutations 5000
