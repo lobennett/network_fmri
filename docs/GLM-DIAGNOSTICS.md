@@ -113,6 +113,9 @@ uv run --frozen python docs/plot_rt_brains.py \
     <RTDur-dir> <noRT-dir> <output.png>
 ```
 
+The brain-map command writes one eight-task RTDur-versus-noRT page per paired subject in
+both light and dark themes, using the output stem pattern
+`<output>_bytask_<subject>_<theme>`. It also retains the all-subject flanker comparison.
 The design, label, and reliability scripts currently encode discovery paths and example
 subjects internally. Read their constants before running them.
 
