@@ -97,16 +97,10 @@ MRIQC builds, so a loose glob will match the wrong decade.
 
 ## 3. Before you trust any test run
 
-**The venv drifts from `pyproject.toml`.** As of the last update the installed commits did
-not match the pins in either direction:
-
-| Package | Pinned | Installed |
-|---|---|---|
-| `network_qa` | `39a4a06` | `42a5366` (newer) |
-| `network_glm` | `0c313c9` | `832bab8` (older) |
-
-A green test suite against a stale install means nothing — this has produced a false
-"400 passed" before. Check, then sync:
+**The venv drifts from `pyproject.toml`.** It has been out of sync in *both* directions at
+once — one package newer than its pin, another older. A green test suite against a stale
+install means nothing; this has already produced a false "400 passed". Check first, then
+sync:
 
 ```bash
 python - <<'EOF'
@@ -192,6 +186,42 @@ misleading**. Always check `git log` in the cohort tree before re-running a fail
 Cost: ~230 GB/subject unpacked; discovery's 5 took 4 h to extract and 5 h to annex. Give
 validation `--mem=128G -t 48:00:00`.
 
+### The whole model tail was wired wrong
+`glm-outliers`, `qa-lev1` and `glm-lev2` had never run, and two of them *could not* have:
+each failed to pass a required input path to the `network_glm` / `network_qa` subprocess it
+drives (`--lev1-dir`, `--lev1-outliers-csv`, `--level1-dirs`). Discovering the contrasts in
+the wrapper does not tell the subprocess where the maps are. If you add a verb that shells
+out to a sibling package, run it once for real — `--print` will not catch this.
+
+### randomise silently produced no corrected inference
+FSL's parser rejects a space-separated `--seed 0` ("Missing non-optional argument!") and
+exits 1; `--seed=0` works. The permutation/TFCE pass therefore never ran. It was invisible
+because the generated script issues several `randomise` calls and sets no errexit, so bash
+returned the *last* call's status, `check=True` never fired, and all 44 discovery contrasts
+reported "✓ FSL randomise completed successfully" with only `uncorrected_tstat1.nii.gz` on
+disk. Fixed in network_glm, which now runs `bash -e` and asserts a `*corrp*` map exists
+before claiming success. Available FSL modules: 5.0.10 (the `ml biology fsl` default),
+6.0.4, 6.0.6.2, 6.0.7.10.
+
+### VIF exclusions that removed everything
+`qa-lev1` with stock thresholds excluded **all 40** discovery subject × task cells, on
+`strict_vif` for `task-baseline` (VIF 59) and `response_time` (VIF 23). Both are high by
+construction — RT is collinear with the task regressors it derives from, and task-baseline
+sums every condition — so this was a property of the design, not data quality. network_qa
+now skips those two contrasts by default (`--vif-ignore-contrasts`), which takes discovery
+to 49 exclusions over 15 cells. They remain in `lev1_outliers.csv` as evidence, the same
+split as `dvars_std`. The `go` regressor still flags at VIF 21–35 in stop/go designs — an
+open question rather than a settled one.
+
+### A fourth exclusion mechanism you may not expect
+`network_glm` has its own *run-level* QA, separate from `qa-motion` (MRIQC IQMs) and
+`qa-lev1` (lev1 outliers): `QA FAIL: High junk percentage: >30%` skips a run before the GLM
+is fit. In discovery this hit goNogo in 4 of 5 subjects at 30.6–33.3%, just over threshold.
+The cell still fits the remaining runs and writes fixed effects, but **exits nonzero** — so
+a partial success is indistinguishable from a real failure, which matters because the DAG
+uses `--dependency=afterok`. Check `Analysis complete: N/M runs successful` before
+concluding a cell failed.
+
 ### RIA drops failing cryptically
 `external special remote protocol error, unexpectedly received "<EOF>"` means
 `git-annex-remote-ora` is not on PATH. It ships in the venv bin.
@@ -252,13 +282,21 @@ Update this section as work lands.
 | fMRIPrep | merged 5/5 | **held** pending canaries |
 | `fmriprep-derivs` | done, zips dropped | not run |
 | XCP-D | scaffolded; 1-subject canary (sub-s03) in flight, past all three bugs — no errors, one-to-all grouping confirmed | not scaffolded |
-| `glm-lev1` | canary | — |
-| `glm-outliers` → `qa-lev1` → `glm-lev2` | never run | — |
+| `glm-lev1` | done, 40 cells (36 clean, 4 goNogo partial) | not run |
+| `glm-outliers` | done, 1052 rows scored | not run |
+| `qa-lev1` | done, 49 exclusions over 15 cells | not run |
+| `glm-lev2` | done, 44 contrasts with corrected TFCE maps | not run |
+
+The chain is verified end to end on discovery. Caveat: lev1 ran with the **default
+`--confounds-mode full`**, which is still an open decision (below) — that run tests the
+machinery, not a chosen configuration, and will need redoing once the arm is picked.
 
 Verified interop, so do not re-test blind: `network_glm`'s `FileFinder` resolves
 `space-MNI152NLin2009cAsym_res-2_desc-preproc_bold.nii.gz` (matches real output), and its
 `load_exclusions` reads `network_qa`'s `{"_meta", "exclusions"}` lockfile correctly (the
 flat set is what gates runs; `exclusions_by_type` groups them under `'exclusions'`).
+Exclusions demonstrably bite: `Skipping excluded run: ses-11/run-1`, after which the cell
+is tagged `_desc-belowMinRuns` when fewer than `min_runs=2` survive.
 
 ### Open decisions (science, not plumbing)
 - confounds-mode arm(s) for the NSI experiment (`full` / `no-motion` / `no-cosine` / `task-only`)
