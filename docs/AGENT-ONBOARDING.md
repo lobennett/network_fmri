@@ -353,6 +353,21 @@ evidence, in this order — do not re-derive:
   swallowing the first CSV column, not a real defect. Read the raw header.)
 - **z maps are well calibrated.** Core (|z|<2) sd is 0.91–1.01 against a null of 1.0.
 
+**Design matrices were then triple-checked and are correct.** Do not re-verify:
+
+- Each saved design column is *exactly* the SPM-HRF convolution of that run's own events on
+  that run's frame times — rebuilt independently, r = **1.000**. Convolution, TR,
+  slice-timing reference and onsets are all right.
+- **Run/session pairing is right.** Cross-matching every design against every session's
+  events, the diagonal wins decisively (1.000 vs 0.08–0.52 off-diagonal). No scrambling.
+- **The contrasted conditions are distinct**: corr(congruent, incongruent) = −0.23 to −0.42
+  (the mild negative two mutually exclusive event types should show), with balanced counts
+  (67–74 trials each per run, ~350 per subject) and matched sd. Contrast VIF 1.08–1.14.
+- **Labels validated independently, from behaviour, not imaging**: flanker conflict
+  +37.4 ms; cuedTS ordered stay/stay 660 < stay/switch 714 < switch/switch 740 ms; nBack
+  load +87.9 ms. goNogo's 50% `trial_type == "unknown"` is 1260 `test_fixation` rows, not
+  mislabelled trials (only 20 real trials, 1.6%, are unlabelled).
+
 Two real causes, in order of how much they matter:
 
 1. **lev1 runs unsmoothed** (`--smoothing-fwhm` defaults to None and nothing passes it).
@@ -368,6 +383,13 @@ Two real causes, in order of how much they matter:
 
 The suprathreshold fraction at |z| > 2.3 is therefore mostly a global offset plus fat
 tails, not focal activation: chance alone gives 2.14%, and flanker sits at 3.3%.
+
+**Still unchecked, the best remaining lead:** `task-baseline` reproduces at only r = 0.24
+unsmoothed (0.49 at 8 mm), which is lowish for a sustained contrast. If you want to keep
+digging, look at tSNR of the preprocessed BOLD and whether the multi-echo optimal
+combination is doing its job — that sits upstream of the GLM and would depress everything.
+Also note nBack accuracy is 1.000 at both loads (ceiling), so that task has no error
+variance.
 
 ### Open decisions (science, not plumbing)
 - confounds-mode arm(s) for the NSI experiment (`full` / `no-motion` / `no-cosine` / `task-only`)
