@@ -1,44 +1,104 @@
 # Contributing
 
-Shared conventions for the `network_*` repos (`network_fmri`, `network_events`, `network_glm`,
-`network_qa`). This file is identical in each.
+This repository orchestrates a production research pipeline on Sherlock. Keep changes small,
+preserve unrelated work, and verify the exact environment that will run on the cluster.
 
-## Setup
+## Before you edit
+
+1. Read [README.md](README.md) and
+   [docs/AGENT-ONBOARDING.md](docs/AGENT-ONBOARDING.md).
+2. Read [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md) before changing curation, timing,
+   exclusions, preprocessing flags, or model inputs.
+3. Run `git status --short`; the canonical checkout may contain unrelated local work.
+4. Confirm that `network_fmri` imports from `~/noslop/network_fmri`, not the stale
+   `~/network_fmri` checkout.
+
+## Environment
+
+Run setup and tests on a Sherlock compute node (`sh_dev` or Slurm), not a login node:
 
 ```bash
-uv sync
-uv run pytest -q
+ml load devel gcc/12.4.0
+export UV_PROJECT_ENVIRONMENT="$SCRATCH/venvs/network_fmri_dev"
+export UV_CACHE_DIR="$SCRATCH/.uv"
+uv sync --frozen
 ```
 
-On Sherlock, run both on a compute node (`sh_dev` or `sbatch`), never the login node.
+Use `uv sync`, never `uv pip install`: the latter can resolve outside `uv.lock`.
+The GCC module is required because the host's default libstdc++ is too old for current
+NumPy wheels.
 
-Two things that will waste your time otherwise:
+Before trusting tests, confirm that installed sibling packages match the immutable pins:
 
-- **`uv run pytest`, not bare `pytest`.** Bare pytest can import an installed wheel from a venv
-  instead of your working tree, so you end up testing the old code and debugging a fix that is
-  already correct.
-- **`ml load devel gcc/12.4.0` first.** CentOS 7's libstdc++ is too old for current numpy wheels,
-  which fail at import with `CXXABI_1.3.9 not found`.
+```bash
+uv run --frozen python - <<'PY'
+import json
+import tomllib
+from importlib.metadata import distribution
+from pathlib import Path
 
-Use `uv sync`, never `uv pip install` — the latter resolves outside the lock and will silently
-drift a pinned dependency.
+pins = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["uv"]["sources"]
+for name in ("network_events", "network_glm", "network_qa"):
+    direct = distribution(name)._path / "direct_url.json"
+    got = json.loads(direct.read_text())["vcs_info"]["commit_id"]
+    want = pins[name]["rev"]
+    print(f"{name}: {got[:8]} (pin {want})")
+    assert got.startswith(want)
+PY
+```
 
-## How the repos fit together
+## Verification
 
-`network_fmri` is the launcher and pins the other three at immutable commits in
-`[tool.uv.sources]`, so one `uv sync` provisions everything and every stage runs in the same venv.
-A change to a dependency therefore needs three steps:
+Use the working tree through `uv`; bare `pytest` may import an older installed wheel.
 
-1. commit and push it there;
-2. bump the `rev` in every repo that pins it (`network_qa` also pins `network_events`);
-3. `uv lock && uv sync` in `network_fmri`.
+```bash
+uv run --frozen pytest -q
+ruff check src tests
+git diff --check
+uv run --frozen network_fmri pipeline --cohort discovery --print --no-extensions
+```
 
-Pins are commit SHAs, not branches, so a rebuild is reproducible.
+When Ruff is available, format-check files you changed rather than reformatting unrelated
+legacy files:
 
-## Changes
+```bash
+ruff format --check path/to/changed.py tests/test_changed.py
+```
 
-Keep them small and test-first. Anything that changes what lands in a BIDS tree, an
-`events.tsv`, or an exclusion lockfile should come with a test — these failures are silent, they
-produce no error and no visible artefact, only wrong models.
+Tests should cover behavior and failure modes. Any change affecting a BIDS tree,
+`events.tsv`, exclusion lockfile, model fan-out, dependency edge, or provenance record
+needs a focused regression test because many failures otherwise produce plausible outputs.
 
-Commands stay pure and idempotent so an operator can wrap them in `datalad run`.
+## Package boundaries
+
+`network_fmri` owns orchestration, Slurm submission, and DataLad recording. Scientific
+implementations live in pinned sibling packages:
+
+- `network_events`: events and behavioral timing;
+- `network_qa`: exclusion decisions;
+- `network_glm`: first- and second-level models.
+
+For a sibling-package change:
+
+1. commit and push the change in that repository;
+2. update its `rev` under `[tool.uv.sources]`;
+3. run `uv lock`, then `uv sync --frozen`;
+4. verify installed revisions and run the full suite.
+
+Do not broaden the pipeline into a general workflow engine. New cohort-level integrations
+use the bounded Slurm stage contract in [docs/EXTENDING.md](docs/EXTENDING.md).
+
+## Documentation and commits
+
+Update the focused document in the same commit as the behavior:
+
+- commands and outputs: `README.md`;
+- setup, paths, operations, and failures: `docs/AGENT-ONBOARDING.md`;
+- scientific or exclusion decisions: `docs/SCAN-NOTES.md`;
+- first-level diagnostic evidence: `docs/GLM-DIAGNOSTICS.md`;
+- campaign config and patches: `docs/campaign/`;
+- extension API: `docs/EXTENDING.md`.
+
+Before committing, review the complete diff, confirm the worktree contains no unrelated
+files, and record what was tested. Commands should remain idempotent where practical so
+operators can resume safely and wrap data-writing work in `datalad run`.

@@ -1,55 +1,95 @@
-# Campaign snapshot
+# Preprocessing campaign
 
-Reference copies of the mechababs campaign's study-specific config. The LIVE copies are in
-the campaign dataset at `$SCRATCH/mechababs_campaigns/r01network/code/mechababs/` — edit
-there, then refresh these. They are duplicated here because the campaign lives on
-90-day-purge scratch and these files are the only record of the preprocessing half.
+This directory is the durable snapshot of the study-specific mechababs/BABS configuration
+for MRIQC, fMRIPrep, and XCP-D. The live campaign is a DataLad dataset on purgeable scratch:
 
-- `MRIQC-24.0.2.yaml`, `fMRIPrep-25.2.5.yaml`, `XCP-D-26.0.2.yaml` — pipeline configs
-  (flag decisions documented inline; see also ../SCAN-NOTES.md §7)
-- `sherlock.yaml` — cluster config incl. `array_throttle: 12`
-- `mechababs-local-patches.diff` — our patches to the vendored mechababs:
-  per-pipeline `processing_level`; `cluster_resources_override` applied after the cluster
-  block (and stripped from the babs config); and `primary_input`, below
-- `babs-local-patches.diff` — one patch to the vendored babs: a `pre_app_commands` config
-  key, whose commands run after the input unzip and before the app. XCP-D needs it (below);
-  nothing else uses it.
+```text
+$SCRATCH/mechababs_campaigns/r01network
+```
 
-## `primary_input`, and why XCP-D needs it
+Edit live configuration under `<campaign>/code/mechababs/`, then refresh this snapshot in
+the same commit. Do not treat these copies as the running campaign.
 
-babs passes `input_datasets[0]` as the BIDS app's positional input directory — its own
-comment is "The input dataset is always the first one in the list". merge_config used to
-force the raw-BIDS entry first unconditionally, which is right for MRIQC and fMRIPrep but
-wrong for anything consuming a predecessor's output: XCP-D was handed `sourcedata/raw` and
-would have post-processed the raw tree. `mechababs.primary_input` names the entry that
-leads, defaulting to `BIDS`, so only XCP-D sets it. Verify after scaffolding — the
-positional in `<project>/code/bids-xcpd_zip.sh` must be
-`sourcedata/fMRIPrep-25.2.5/fMRIPrep-25.2.5` (babs resolves a zipped input to
-`path_in_babs/<name>`, matching the zip's own top folder).
+## Snapshot contents
 
-## The T2w-only anat session, and why XCP-D needs pruning
+| File | Purpose |
+|---|---|
+| `MRIQC-24.0.2.yaml` | MRIQC arguments, including `--fd_thres 0.5` |
+| `fMRIPrep-25.2.5.yaml` | Subject-level fMRIPrep arguments and output spaces |
+| `XCP-D-26.0.2.yaml` | Subject-level XCP-D and its pre-app input cleanup |
+| `sherlock.yaml` | Cluster resources and `array_throttle: 12` |
+| `mechababs-local-patches.diff` | Processing level, resource override, and primary-input support |
+| `babs-local-patches.diff` | `pre_app_commands` support |
 
-XCP-D counts a session as anatomical if it holds a T1w **or** a T2w, and accepts only two
-shapes: one anatomical session per functional session, or one serving all of them
-(`parser.py:1080`). This study acquires the T2w in a different session from the T1w for 9
-of 46 subjects — 5 of those because of which duplicate T1w `qa-reject` kept — so fMRIPrep
-writes a T2w-only `anat/` there. XCP-D reads that as a second anatomical session and dies
-before doing any work: *"Found 11 functional sessions that do not have anatomical data"*.
+The scientific reasons for `--dummy-scans 0`, `--no-submm-recon`, output spaces, and
+MRIQC's framewise-displacement threshold are in
+[../SCAN-NOTES.md](../SCAN-NOTES.md#preprocessing-decisions).
 
-The XCP-D yaml's `pre_app_commands` drops any `anat/` holding no T1w from XCP-D's unzipped
-copy of the input. That costs nothing scientifically: fMRIPrep has already used the T2w to
-refine the surfaces, and the surfaces are what XCP-D consumes. One anatomical session
-remains, so XCP-D takes the one-to-all path.
+## Operate safely
 
-Two other approaches were tested and do **not** work: `--bids-filter-file` (the
-filter-to-session-list path in `parser.py` is commented out) and a `.bidsignore` (does not
-hide the files from the layout query). `--session-id` cannot help either — excluding the
-T2w session would also drop its functional runs.
+```bash
+uv run --frozen network_fmri campaign -- iterate --dry-run   # always inspect first
+uv run --frozen network_fmri campaign -- iterate --batch 1   # advance one cell
+uv run --frozen network_fmri campaign -- status              # submit a status query
+```
 
-To recreate the campaign from nothing: mechababs `bootstrap.sh` + `configure` with these
-pipelines/cluster, `add-dataset` per cohort against `$SCRATCH/network_fmri/<cohort>/bids`,
-apply the patches, then `network_fmri shim` once per pipeline (babs clones a shim dataset,
-not a `.sif` path — a missing one fails `babs init` with "Failed to clone from any
-candidate source URL").
-CAUTION: `configure` REWRITES the ledger — never run it on a campaign with in-flight cells.
-Failed cells: `iterate` only reports them; retry with `babs submit <project>`.
+Important constraints:
+
+- `mechababs configure` rewrites the ledger. Never run it while cells are in flight.
+- One `iterate` tick can advance a cell in every cohort; keep batches small.
+- A failed `iterate` action reports the failure but does not resubmit it. From the
+  campaign's pinned environment, use `babs submit <project> --count 1` as a canary.
+- Pipeline arguments are baked into the BABS job script at initialization. Changing them
+  requires retiring and scaffolding a new derivative attempt.
+- Retired attempts under `derivative-attempts/` are records, not resumable projects:
+  BABS stores absolute RIA paths.
+- Keep the campaign clean. Untracked logs or unsaved subdataset pointers block iteration.
+- Scaffolding can take 15 minutes to two hours on Lustre; slow does not imply hung.
+
+## Why XCP-D needs local adaptations
+
+### Select fMRIPrep as the primary input
+
+BABS passes `input_datasets[0]` as the application's positional input. Raw BIDS must lead
+for MRIQC and fMRIPrep, but XCP-D must receive the unpacked fMRIPrep derivative.
+`mechababs.primary_input` selects that entry; only the XCP-D config overrides the
+`BIDS` default.
+
+After scaffolding, verify that the positional input in
+`<project>/code/bids-xcpd_zip.sh` is:
+
+```text
+sourcedata/fMRIPrep-25.2.5/fMRIPrep-25.2.5
+```
+
+### Remove T2w-only anatomical directories from XCP-D's copy
+
+Nine analyzed subjects have T1w and T2w images in different sessions. fMRIPrep can write a
+T2w-only `anat/` directory, but XCP-D interprets it as a second anatomical session and
+rejects the subject before processing.
+
+The XCP-D config uses `pre_app_commands` to remove anatomical directories containing no
+T1w from its temporary unzipped input. XCP-D consumes the retained fMRIPrep surfaces; it
+does not need the isolated T2w derivative that triggers its session-layout error.
+
+Alternatives already ruled out:
+
+- `--bids-filter-file`: XCP-D's filter-to-session-list path is inactive;
+- `.bidsignore`: it does not hide the files from the layout query;
+- `--session-id`: it would also remove functional runs from that session.
+
+## Recreate the campaign
+
+On a compute node:
+
+1. run the campaign's mechababs `bootstrap.sh`;
+2. configure the campaign from the three pipeline YAMLs and `sherlock.yaml`;
+3. add each cohort dataset from `$SCRATCH/network_fmri/<cohort>/bids`;
+4. apply both vendored patch files;
+5. build and vendor one container shim per pipeline with `network_fmri shim`;
+6. inspect generated job scripts and run `iterate --dry-run`;
+7. save the campaign dataset and its subdataset pointers.
+
+A BABS container source is a shim DataLad dataset, not a direct `.sif` path. Missing or
+unregistered shims fail initialization; the `network_fmri shim` command validates the
+registration and vendors the subdataset.

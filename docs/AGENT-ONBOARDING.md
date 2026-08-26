@@ -1,97 +1,109 @@
-# Agent onboarding
+# Onboarding and operations
 
-Read this before touching anything. It is the context that is *not* recoverable from the
-code: which checkout is real, which paths are load-bearing, and which plausible-looking
-approaches have already been tried and failed.
+This guide gets a new contributor from a Sherlock login to a trustworthy development
+environment and explains how to operate the pipeline safely. Read [the README](../README.md)
+first for the pipeline itself and [SCAN-NOTES.md](SCAN-NOTES.md) for scientific decisions.
 
-For what the pipeline *does* — stages, exclusion points, which scans are dropped where —
-read [../README.md](../README.md) then [SCAN-NOTES.md](SCAN-NOTES.md). This file is about
-working *on* it.
+Live job and cohort status does not belong in this document. Query Slurm, campaign records,
+and DataLad history as described in [Checking live state](#checking-live-state).
 
-**Keep this file current.** Every change to the pipeline, the campaign config, or the
-vendored patches must land here in the same commit. See [Maintaining this file](#maintaining-this-file).
+## Five-minute orientation
 
----
+1. Work on Sherlock; the package intentionally supports one execution backend: Slurm.
+2. Confirm the checkout and branch before editing: `pwd`, `git status --short`, and
+   `git branch -vv`.
+3. Use the pinned environment. A green test run against stale sibling packages is not
+   evidence.
+4. Print a pipeline plan before submission.
+5. Treat campaign datasets and execution records as provenance, not disposable output.
 
-## 1. What this is
+`network_fmri` owns curation, orchestration, Slurm submission, and DataLad provenance.
+Scientific computation belongs to the pinned sibling packages:
 
-`network_fmri` orchestrates Flywheel → BIDS → derivatives → models for the r01network
-study on Sherlock. It owns *curation and submission*; the science lives in four sibling
-packages it pins by commit. Preprocessing (MRIQC, fMRIPrep, XCP-D) runs through a
-[mechababs](https://github.com/lobennett/mechababs) campaign that wraps
-[BABS](https://github.com/PennLINC/babs), which wraps DataLad.
-
-The built-in cohort chain is declared in a typed registry: each stage owns its Slurm
-resources, argv, ordering, and logical input/output artifacts. Installed packages may
-add a bounded cohort-level Slurm stage through the
-`network_fmri.pipeline_stages` entry-point group; Slurm remains the only backend and
-the Flywheel export remains the only custom array stage. Every submission writes an
-incremental JSON execution record under the cohort log directory. See
-[EXTENDING.md](EXTENDING.md) for the contract and acceptance rules.
-
-Two cohorts: **discovery** (5 subjects) and **validation** (41). Plus `excluded`.
-
-Layers, outermost first — a bug is almost always in the layer you did not suspect:
-
-```
-network_fmri  (this repo)      verbs, Slurm submission, DataLad provenance
-  mechababs   (vendored)       campaign ledger, per-cell scaffold/submit/merge
-    babs      (vendored)       generates the job script, owns the RIA + zip protocol
-      datalad / git-annex      content addressing, RIA stores
-        singularity            MRIQC / fMRIPrep / XCP-D containers
-```
-
-## 2. Paths that matter
-
-### Repo checkouts
-
-| Package | Canonical path | Notes |
-|---|---|---|
-| `network_fmri` | `~/noslop/network_fmri` | **this repo**; the editable install resolves here |
-| `network_events` | `~/noslop/network_events` | events.tsv, truncation QC, behaviour-driven trimming |
-| `network_qa` | `~/network_qa` | exclusion decisions → lockfile |
-| `network_glm` | `~/network_glm` | lev1/lev2 GLMs |
-
-> **Trap: stale duplicate checkouts exist.** `~/network_fmri` and `$SCRATCH/network_events`
-> are *old* copies — editing them changes nothing. Confirm before you edit:
-> ```bash
-> python -c "import network_fmri, pathlib; print(pathlib.Path(network_fmri.__file__).parent)"
-> ```
-> Note `network_qa` and `network_glm` are in `~`, not `~/noslop`. There is no single parent
-> directory holding all four.
-
-### Data and campaign
-
-| What | Path |
+| Package | Responsibility |
 |---|---|
-| Cohort BIDS trees (DataLad datasets) | `$SCRATCH/network_fmri/<cohort>/bids` |
-| Job logs | `$SCRATCH/network_fmri/logs/<cohort>/`, `.../logs/campaign/` |
-| Campaign | `$SCRATCH/mechababs_campaigns/r01network` |
-| Vendored mechababs / babs | `<campaign>/code/mechababs`, `<campaign>/code/babs` |
-| Container shims | `<campaign>/code/<name>-shim`, built from `$SCRATCH/mechababs_campaigns/<name>-shim` |
-| babs projects | `<campaign>/studies/study-<cohort>/derivatives/<Pipeline>` |
-| Retired attempts (archive, **not** resumable) | `<campaign>/derivative-attempts/` |
-| Ledger | `<campaign>/desc-mechababs_datasets.tsv` |
+| `network_events` | event files, truncation QC, and behavior-driven trimming |
+| `network_qa` | motion and first-level exclusion decisions |
+| `network_glm` | first- and second-level GLMs |
+| `network_fmri` | cohort workflow, preprocessing campaign, and handoffs |
 
-### Environment
+Preprocessing has additional layers:
+
+```text
+network_fmri
+└── mechababs campaign
+    └── BABS
+        └── DataLad / git-annex
+            └── Singularity containers
+```
+
+Diagnose failures at the layer that owns the failed action. For example, a RIA transfer is
+not a GLM problem, and a container report failure is not a Slurm submission problem.
+
+## First-time setup
+
+Use a compute node for environment creation and wheel builds:
 
 ```bash
+sh_dev
+ml load devel gcc/12.4.0
 export UV_PROJECT_ENVIRONMENT=$SCRATCH/venvs/network_fmri_dev
 export UV_CACHE_DIR=$SCRATCH/.uv
-export PATH="$SCRATCH/git-annex/usr/bin:$PATH"          # git-annex
-# git-annex-remote-ora ships in the venv bin — needed for ANY RIA read/drop
-# p7zip: /share/software/user/open/p7zip/16.02/bin
+export PATH="$SCRATCH/git-annex/usr/bin:$PATH"
+cd ~/noslop/network_fmri
+uv sync --frozen
 ```
+
+Python is constrained to 3.13. Loading GCC 12.4.0 is required on this CentOS 7 host;
+otherwise NumPy may fail with `CXXABI_1.3.9 not found`. Use `uv sync --frozen`, never an
+ad hoc `uv pip install`, so the installed sibling commits match `uv.lock`.
+
+Verify what Python will actually import:
+
+```bash
+uv run --frozen python -c \
+  "import pathlib, network_fmri; print(pathlib.Path(network_fmri.__file__).resolve())"
+uv run --frozen network_fmri --help
+uv run --frozen pytest -q
+```
+
+The complete dependency-pin check and contributor test sequence are in
+[CONTRIBUTING.md](../CONTRIBUTING.md).
+
+### Checkouts
+
+Several stale duplicates exist. These are the current working locations; still verify the
+installed source and Git SHA rather than trusting a path:
+
+| Package | Working checkout |
+|---|---|
+| `network_fmri` | `~/noslop/network_fmri` |
+| `network_events` | `~/noslop/network_events` |
+| `network_qa` | `~/network_qa` |
+| `network_glm` | `/oak/stanford/groups/russpold/users/logben/network_glm` |
+
+In particular, `~/network_glm`, `~/network_fmri`, and `$SCRATCH/network_events` are
+duplicates. The dependency revisions in `pyproject.toml` and `uv.lock` are authoritative
+for reproducible runs.
+
+### Data, campaign, and containers
 
 | Resource | Path |
 |---|---|
-| FreeSurfer license | `~/license.txt` — **not** `/home/groups/russpold/license.txt`, which is the jsPsych MIT license |
-| Containers | split across two dirs, inconsistently named — see below |
+| Cohort BIDS datasets | `$SCRATCH/network_fmri/<cohort>/bids` |
+| Cohort and campaign logs | `$SCRATCH/network_fmri/logs/<cohort>/`, `.../logs/campaign/` |
+| Campaign | `$SCRATCH/mechababs_campaigns/r01network` |
+| Campaign ledger | `<campaign>/desc-mechababs_datasets.tsv` |
+| BABS projects | `<campaign>/studies/study-<cohort>/derivatives/<Pipeline>` |
+| Retired attempts | `<campaign>/derivative-attempts/` |
 | TemplateFlow | `/home/groups/russpold/templateflow` |
-| Lab reference for XCP-D flags | `/oak/stanford/groups/russpold/users/grimsrud/projects/pfm_compare/code/fmriprep_xcpd/xcpd/` |
+| FreeSurfer license | `~/license.txt` |
+| p7zip | `/share/software/user/open/p7zip/16.02/bin` |
 
-The three images the campaign uses are **not** in one place, and the naming alternates
-between `_` and `-`. Do not guess a path; these are the verified ones:
+Do not use `/home/groups/russpold/license.txt`; it is the jsPsych MIT license, not a
+FreeSurfer license.
+
+The verified container images are:
 
 | Pipeline | Image |
 |---|---|
@@ -99,345 +111,148 @@ between `_` and `-`. Do not guess a path; these are the verified ones:
 | fMRIPrep 25.2.5 | `/oak/stanford/groups/russpold/shared/containers/fmriprep-25.2.5.sif` |
 | XCP-D 26.0.2 | `/oak/stanford/groups/russpold/shared/containers/xcp_d-26.0.2.sif` |
 
-The shims already hold these; the paths matter only when rebuilding one with
-`network_fmri shim`. `/oak/.../shared/containers/` also holds ~60 historical fMRIPrep and
-MRIQC builds, so a loose glob will match the wrong decade.
+The campaign uses DataLad container shims, not the image paths directly. See
+[campaign/README.md](campaign/README.md) before rebuilding or modifying a campaign cell.
 
-## 3. Before you trust any test run
+## Running the workflow
 
-**The venv drifts from `pyproject.toml`.** It has been out of sync in *both* directions at
-once — one package newer than its pin, another older. A green test suite against a stale
-install means nothing; this has already produced a false "400 passed". Check first, then
-sync:
+Print the cohort DAG and resolved commands first:
 
 ```bash
-python - <<'EOF'
-import json, pathlib, importlib.metadata as md
-for p in ("network_events", "network_qa", "network_glm"):
-    d = md.distribution(p)._path / "direct_url.json"
-    print(p, json.loads(d.read_text())["vcs_info"]["commit_id"][:8])
-EOF
-uv sync --frozen     # never `uv pip install`
+uv run --frozen network_fmri pipeline --cohort discovery --print
 ```
 
-`uv sync` needs a compute node (`sh_dev`) — it builds wheels. And `ml load devel gcc/12.4.0`
-first, or numpy import fails with `CXXABI_1.3.9 not found` (host glibc is 2.17 / CentOS 7,
-so `manylinux_2_28` wheels are unusable; only `manylinux2014` == `manylinux_2_17` works).
-
-## 4. Sherlock rules that bite
-
-Read `/etc/claude-code/CLAUDE.md` — it is authoritative. The ones that have actually cost
-time here:
-
-- **Nothing heavy on the login node.** Every verb that touches data submits a job; some
-  (`fmriprep-derivs`, `campaign`) run in the *foreground* and must be wrapped in `sbatch`
-  yourself.
-- **`datalad save -r` on the campaign times out** from the login node — it walks every
-  derivative subdataset. Commit the specific subdataset with plain `git`, then the parent
-  pointer, or do the save in a job.
-- **A dirty dataset blocks everything downstream.** `datalad run` refuses to start, and
-  mechababs refuses to `iterate`. Editing a vendored patch dirties the campaign; so did
-  `qa-motion` writing an unsaved lockfile (fixed).
-- **`$SCRATCH` is purged after 90 days of no *content* writes.** `touch` does not count.
-- **Lustre flakes.** `Cannot send after transport endpoint shutdown` / `OSError [Errno 5]`
-  clustered on one chassis is infrastructure, not your bug. Retry.
-
-## 5. Errors already diagnosed — do not re-derive these
-
-Ordered roughly by how much time they cost.
-
-### fMRIPrep license failure (×10 jobs)
-`/home/groups/russpold/license.txt` is the **jsPsych MIT license**, found by a `find` and
-assumed to be FreeSurfer's. Use `~/license.txt`. Verify with
-`check_valid_fs_license() -> True` before submitting a fleet.
-
-### Submillimetre recon burning the wall clock
-All T1w are 0.5×0.5×0.8 mm, so fMRIPrep defaulted to `-hires -cm` at 0.5 mm iso against a
-24 h wall. `--no-submm-recon` is required. Verified it does not degrade surfaces: hole
-counts match 25.2.4 (s19 reproduced exactly, 16/11).
-
-### The session-level anat→full fMRIPrep chain (abandoned)
-Broke three ways on longitudinal one-anat-session data, and would have re-run `recon-all`
-per session. Also `+full` selection required `anat` in-session, which matched 4 of 61
-discovery sessions. **fMRIPrep is subject-level.** BABS chaining requires producer and
-consumer to share a processing level — which is why XCP-D is subject-level too.
-
-### XCP-D, three separate failures
-1. **`babs init` cannot clone the container.** babs clones a *shim dataset*, not a `.sif`
-   path. Worse, a shim can hold the image with no `datalad.containers.<name>` registration
-   — that clones fine and fails later with a much vaguer error. `network_fmri shim` guards
-   on the registration, not the directory.
-2. **Wrong positional input.** babs passes `input_datasets[0]` as the app's input dir
-   ("The input dataset is always the first one in the list"), and merge_config forced raw
-   BIDS first unconditionally. XCP-D was handed `sourcedata/raw` instead of the fMRIPrep
-   derivatives it unzips one line earlier. Fixed by `mechababs.primary_input`, which
-   defaults to `BIDS` so MRIQC/fMRIPrep are unchanged.
-3. **Phantom anatomical session.** XCP-D counts a session as anatomical if it holds a T1w
-   **or** T2w, and accepts only one-anat-per-func-session or one-anat-for-all
-   (`parser.py:1080`). This study has the T2w in a different session from the T1w for 9 of
-   46 subjects, so fMRIPrep writes a T2w-only `anat/` that reads as a second anatomical
-   session. Fixed by `pre_app_commands` pruning anat dirs with no T1w.
-   **Already ruled out:** `--bids-filter-file` (the filter→session path is commented out
-   in XCP-D), `.bidsignore` (does not hide files from the layout query) — both tested
-   empirically — and `--session-id`, which would drop the T2w session's functional runs.
-
-Plus `--abcc-qc n`: the ABCC executive summary cannot build in this container at all (the
-brainsprite node dies on `_warn() got an unexpected keyword argument 'skip_file_prefixes'`,
-then `generate_reports` raises `KeyError: 'task'`), and `--stop-on-first-crash` turns
-either into a failed subject. Surface processing is unaffected — it is gated on
-`process_surfaces OR abcc_qc` and `--warp-surfaces-native2std` sets the former.
-
-### `fmriprep-derivs` OOM that was not a failure
-Reported `OUT_OF_MEMORY` at 32 GB after 9 h — but the OOM hit datalad's post-run check
-*after* the save had committed, so the result was intact and the **exit status was
-misleading**. Always check `git log` in the cohort tree before re-running a failed stage.
-Cost: ~230 GB/subject unpacked; discovery's 5 took 4 h to extract and 5 h to annex. Give
-validation `--mem=128G -t 48:00:00`.
-
-### The whole model tail was wired wrong
-`glm-outliers`, `qa-lev1` and `glm-lev2` had never run, and two of them *could not* have:
-each failed to pass a required input path to the `network_glm` / `network_qa` subprocess it
-drives (`--lev1-dir`, `--lev1-outliers-csv`, `--level1-dirs`). Discovering the contrasts in
-the wrapper does not tell the subprocess where the maps are. If you add a verb that shells
-out to a sibling package, run it once for real — `--print` will not catch this.
-
-### randomise silently produced no corrected inference
-FSL's parser rejects a space-separated `--seed 0` ("Missing non-optional argument!") and
-exits 1; `--seed=0` works. The permutation/TFCE pass therefore never ran. It was invisible
-because the generated script issues several `randomise` calls and sets no errexit, so bash
-returned the *last* call's status, `check=True` never fired, and all 44 discovery contrasts
-reported "✓ FSL randomise completed successfully" with only `uncorrected_tstat1.nii.gz` on
-disk. Fixed in network_glm, which now runs `bash -e` and asserts a `*corrp*` map exists
-before claiming success. Available FSL modules: 5.0.10 (the `ml biology fsl` default),
-6.0.4, 6.0.6.2, 6.0.7.10.
-
-### VIF exclusions that removed everything
-`qa-lev1` with stock thresholds excluded **all 40** discovery subject × task cells, on
-`strict_vif` for `task-baseline` (VIF 59) and `response_time` (VIF 23). Both are high by
-construction — RT is collinear with the task regressors it derives from, and task-baseline
-sums every condition — so this was a property of the design, not data quality. network_qa
-now skips those two contrasts by default (`--vif-ignore-contrasts`), which takes discovery
-to 49 exclusions over 15 cells. They remain in `lev1_outliers.csv` as evidence, the same
-split as `dvars_std`. The `go` regressor still flags at VIF 21–35 in stop/go designs — an
-open question rather than a settled one.
-
-### lev1's default memory blocks its own scheduling
-`glm-lev1` defaults to `--mem-gb 64`, but peak RSS across 40 discovery cells was **17.9 GB**.
-The oversized request left a 40-task array fully pending on `(Resources)` for 20+ minutes;
-resubmitting at `--mem-gb 32` scheduled immediately. Right-size before large fan-outs.
-
-### A fourth exclusion mechanism you may not expect
-`network_glm` has its own *run-level* QA, separate from `qa-motion` (MRIQC IQMs) and
-`qa-lev1` (lev1 outliers): `QA FAIL: High junk percentage: >30%` skips a run before the GLM
-is fit. In discovery this hit goNogo in 4 of 5 subjects at 30.6–33.3%, just over threshold.
-The cell still fits the remaining runs and writes fixed effects, but **exits nonzero** — so
-a partial success is indistinguishable from a real failure, which matters because the DAG
-uses `--dependency=afterok`. Check `Analysis complete: N/M runs successful` before
-concluding a cell failed.
-
-### RIA drops failing cryptically
-`external special remote protocol error, unexpectedly received "<EOF>"` means
-`git-annex-remote-ora` is not on PATH. It ships in the venv bin.
-
-### DVARS (measured, then removed)
-The study's old *proportion of std_dvars > 1.5* criterion is not implemented: MRIQC
-publishes mean `dvars_std`, not a proportion. A mean-based substitute was measured on both
-cohorts and excluded **nothing** FD had not already caught. `dvars_std` is still recorded
-as evidence. Do not reintroduce without per-frame data.
-
-### Silent-failure bugs worth remembering as a *class*
-- `network_qa/behavioral.py` imported a deleted module; the `ImportError` branch fired
-  every run, blamed pandas, and silently produced 0 accuracy/RT exclusions.
-- `array_throttle` leaked into the babs config as an unknown key.
-- My own preflight script gave false negatives twice — heredoc `$f` escaping, then a regex
-  that only matched hyphens.
-
-Pattern: **verify the thing that decides the outcome, and say what your check does not
-cover.** A passing check on the wrong artefact is worse than no check.
-
-## 6. The campaign: how to operate it safely
+Submit only after checking cohort, paths, resources, and exclusions:
 
 ```bash
-network_fmri campaign -- iterate --dry-run     # ALWAYS first — shows every cell it would advance
-network_fmri campaign -- iterate --batch 1     # advance ONE cell
-network_fmri campaign -- status
+uv run --frozen network_fmri pipeline --cohort discovery --live
 ```
 
-- **`mechababs configure` REWRITES the ledger.** Never run it on a campaign with in-flight
-  cells. Prior additions were done by hand instead.
-- **`iterate` advances one transition per cell per tick**, across *all* cohorts. One tick
-  will happily scaffold validation's 41-subject fMRIPrep. Use `--batch`.
-- **`iterate`'s `fail` action only reports.** Retry with
-  `babs submit <project> [--count N | --select sub-XX]`. `--count 1` is the canary idiom.
-- **`retire-derivative`** moves a cell to `derivative-attempts/` and resets its ledger
-  cell. The archive is **not resumable** — babs bakes absolute RIA paths at init.
-- **Flags are baked into the job script at `babs init`.** Changing `bids_app_args` means
-  retire + re-scaffold, not just resubmit.
-- Scaffolding takes 15 min–2 h depending on Lustre contention. Not hung.
+Each submitted stage writes an incremental JSON execution record in the cohort log
+directory. The built-in registry owns stage order, resources, and artifact handoffs.
+Use [EXTENDING.md](EXTENDING.md) only when a genuinely new cohort-level Slurm stage is
+needed.
 
-### The vendored patches
+Operate the preprocessing campaign in small, observable steps:
 
-Both `code/mechababs` and `code/babs` carry local patches, snapshotted in
-[campaign/](campaign/) as `mechababs-local-patches.diff` and `babs-local-patches.diff`.
-Currently: per-pipeline `processing_level`; `cluster_resources_override`;
-`primary_input`; and babs's `pre_app_commands`. **Refresh the snapshot whenever you patch
-either** — a stale diff has already shipped once.
+```bash
+uv run --frozen network_fmri campaign -- iterate --dry-run
+uv run --frozen network_fmri campaign -- iterate --batch 1
+uv run --frozen network_fmri campaign -- status
+```
 
-## 7. Where the pipeline actually is
+The `campaign` wrapper submits its work through Slurm. A campaign iteration advances one
+transition per selected cell, potentially across cohorts, so always dry-run and use a
+small batch first. `mechababs configure` rewrites the ledger; never run it while cells are
+in flight. Changing baked BIDS-app arguments requires retiring and re-scaffolding that
+derivative, not merely resubmitting it.
 
-Update this section as work lands.
+Some DataLad record operations, including `mriqc-iqms` and `fmriprep-derivs`, perform their
+work in the foreground. Run them in an allocation or submit an enclosing Slurm job; do not
+do heavy data work on the login node. Use each command's `--help` and `--print` behavior to
+confirm whether a verb submits work or performs it directly.
 
-| Stage | discovery (5) | validation (41) |
-|---|---|---|
-| Curation, 12 stages through `check` | done | done |
-| MRIQC | merged | merged (497/497) |
-| `qa-motion` lockfile | 2 exclusions (both behavioural) | 18 (13 rest) |
-| fMRIPrep | merged 5/5 | **held** pending canaries |
-| `fmriprep-derivs` | done, zips dropped | not run |
-| XCP-D | scaffolded; 1-subject canary (sub-s03) in flight, past all three bugs — no errors, one-to-all grouping confirmed | not scaffolded |
-| `glm-lev1` | done, 40 cells (36 clean, 4 goNogo partial) | not run |
-| `glm-outliers` | done, 1052 rows scored | not run |
-| `qa-lev1` | done, 49 exclusions over 15 cells | not run |
-| `glm-lev2` | done, 44 contrasts with corrected TFCE maps | not run |
+## Checking live state
 
-The chain is verified end to end on discovery. Caveat: lev1 ran with the **default
-`--confounds-mode full`**, which is still an open decision (below) — that run tests the
-machinery, not a chosen configuration, and will need redoing once the arm is picked.
+Use the system of record instead of a copied status table:
 
-Verified interop, so do not re-test blind: `network_glm`'s `FileFinder` resolves
-`space-MNI152NLin2009cAsym_res-2_desc-preproc_bold.nii.gz` (matches real output), and its
-`load_exclusions` reads `network_qa`'s `{"_meta", "exclusions"}` lockfile correctly (the
-flat set is what gates runs; `exclusions_by_type` groups them under `'exclusions'`).
-Exclusions demonstrably bite: `Skipping excluded run: ses-11/run-1`, after which the cell
-is tagged `_desc-belowMinRuns` when fewer than `min_runs=2` survive.
+```bash
+squeue --me
+uv run --frozen network_fmri campaign -- status
+find "$SCRATCH/network_fmri/logs" -name '*.json' -o -name 'slurm-*.out'
+git -C "$SCRATCH/network_fmri/discovery/bids" log --oneline -5
+```
 
-### The RT arm, and what it changes
-`network_glm` has a `--rt-model {RTDur,noRT}` switch (the `rtmodel-` entity in every output
-filename records which produced a map, so both arms share a tree safely). `noRT` drops the
-per-task `response_time` regressor and every contrast referencing it.
+For a failed stage, check all of the following before rerunning:
 
-Measured on discovery, paired within subject, as the fraction of in-mask voxels past |z|
-in the lev1 fixed-effects maps:
+1. Slurm state and resource use (`sacct -j <jobid> -X --format=...`).
+2. The Slurm log and the pipeline execution record.
+3. Expected output files and the relevant DataLad commit.
+4. Partial-success summaries such as `Analysis complete: N/M runs successful`.
+5. The campaign ledger or BABS project status, when preprocessing is involved.
 
-| Contrast | mean Δ at \|z\|>2.3 | consistent? |
-|---|---|---|
-| flanker `incongruent-congruent` | **+0.22 pp** | 4/5, direction not stable |
-| flanker `task-baseline` | +2.85 pp | 4/5 |
-| stopSignal `task-baseline` | +3.19 pp | 4/5 |
-| nBack `task-baseline` | **+15.24 pp** | 5/5 |
-| cuedTS `task-baseline` | **+13.84 pp** | 5/5 |
+An OOM can occur after DataLad commits a valid result. Conversely, a wrapper can exit zero
+after a nested shell command silently failed. Verify the decisive artifact.
 
-So the RT regressor is soaking up *task-versus-baseline* variance, not condition-difference
-variance: dropping it barely moves a differential contrast but inflates main-effect maps
-substantially, and most in nBack and cuedTS. Treat main-effect sparsity as arm-dependent
-and differential contrasts as roughly arm-invariant. `sub-s19` reverses sign on flanker and
-stopSignal, so it is worth a look independently.
+## Known failure modes
 
-Trees: `$SCRATCH/network_fmri/discovery/{lev1,lev1_noRT}`; comparison script at
-`$SCRATCH/compare_rt_arms.py` (on purge-prone scratch — move it if it matters).
+| Symptom | Cause and response |
+|---|---|
+| NumPy reports `CXXABI_1.3.9` | Load `devel` and `gcc/12.4.0`, then resync the frozen environment. |
+| FreeSurfer rejects the license | Use `~/license.txt`; the similarly named group file is unrelated. |
+| fMRIPrep exceeds its wall time | Keep `--no-submm-recon`; 0.5 mm reconstruction was too expensive and did not improve tested surfaces. |
+| XCP-D receives raw BIDS | Preserve campaign `primary_input`; XCP-D must receive fMRIPrep derivatives first. |
+| XCP-D sees a phantom anatomical session | Preserve `pre_app_commands` that remove T2w-only `anat/` directories. Filters and `.bidsignore` did not fix XCP-D's query. |
+| A lev1 array stays pending on resources | The 64 GB default exceeded discovery's observed 17.9 GB peak. A 32 GB request scheduled that run; right-size future fan-outs from measured RSS. |
+| XCP-D report crashes | `--abcc-qc n` is intentional for this container; surface processing remains enabled. |
+| `fmriprep-derivs` reports OOM | Check the DataLad commit and files before rerunning. Use 128 GB and 48 hours for validation. |
+| A model-tail command lacks input | Pass lev1 directories explicitly. Contrast discovery does not tell a sibling process where its maps live. |
+| FSL claims success without corrected maps | Require `*corrp*` output. The fixed GLM code uses `bash -e` and `--seed=0`. |
+| VIF excludes nearly everything | `task-baseline` and `response_time` are ignored by default because their construction is collinear; inspect the recorded evidence. |
+| A GLM cell exits nonzero but has maps | Run-level junk QA may skip only some runs. Inspect the successful-run count and minimum-runs tag. |
+| RIA reports unexpected EOF | Put the venv's `git-annex-remote-ora` on `PATH`. |
+| DataLad refuses to run | Clean and save the exact dataset or subdataset first; do not recursively save the whole campaign on a login node. |
+| Lustre reports transport or I/O errors | Check whether failures cluster on a node/chassis, then retry as infrastructure permits. |
 
-### Why the first-level maps look sparse/speckled (investigated; not a bug)
-Asked whether sparse main-contrast maps meant broken inputs or models. Ruled out, with
-evidence, in this order — do not re-derive:
+The old proportion-of-frames DVARS rule is not implemented because MRIQC exposes mean
+`dvars_std`, not that proportion. A measured mean-based substitute excluded nothing
+beyond FD; `dvars_std` remains recorded evidence. Do not silently reinterpret the rule.
 
-- **Inputs and alignment are sound.** `task-baseline` reproduces across runs in every
-  subject/task (pairwise r +0.09 to +0.29). A misaligned or mis-registered input would kill
-  that too. Events sit at 0.58–329.9 s inside a 350 s scan, in the *trimmed* timeline.
-- **No double-trim.** `adjust_for_dummy_scans` defaults False and the runner passes
-  `dummy_scans=0` for both BOLD and confounds, deliberately, because the tree is
-  pre-trimmed and fMRIPrep ran `--dummy-scans 0`. The task YAML's `dummy_scans: 7` is not
-  applied twice.
-- **No missing regressors.** Every condition column is present; only genuinely empty ones
-  (`omission`, `rt_fast`, `break_with_performance_feedback`) are dropped as zero-variance.
-  (A first pass appeared to show `congruent` and `go` missing — that was `index_col=0`
-  swallowing the first CSV column, not a real defect. Read the raw header.)
-- **z maps are well calibrated.** Core (|z|<2) sd is 0.91–1.01 against a null of 1.0.
+`network_glm` also has run-level junk QA (`>30%`) independent of motion and lev1 exclusion
+steps. A subject-task cell can therefore produce fixed effects from surviving runs yet
+return nonzero. Downstream `afterok` dependencies make that distinction operationally
+important.
 
-**Design matrices were then triple-checked and are correct.** Do not re-verify:
+## Campaign-specific cautions
 
-- Each saved design column is *exactly* the SPM-HRF convolution of that run's own events on
-  that run's frame times — rebuilt independently, r = **1.000**. Convolution, TR,
-  slice-timing reference and onsets are all right.
-- **Run/session pairing is right.** Cross-matching every design against every session's
-  events, the diagonal wins decisively (1.000 vs 0.08–0.52 off-diagonal). No scrambling.
-- **The contrasted conditions are distinct**: corr(congruent, incongruent) = −0.23 to −0.42
-  (the mild negative two mutually exclusive event types should show), with balanced counts
-  (67–74 trials each per run, ~350 per subject) and matched sd. Contrast VIF 1.08–1.14.
-- **Labels validated independently, from behaviour, not imaging**: flanker conflict
-  +37.4 ms; cuedTS ordered stay/stay 660 < stay/switch 714 < switch/switch 740 ms; nBack
-  load +87.9 ms. goNogo's 50% `trial_type == "unknown"` is 1260 `test_fixation` rows, not
-  mislabelled trials (only 20 real trials, 1.6%, are unlabelled).
+The campaign vendors patched mechababs and BABS checkouts. Their patch snapshots live in
+[docs/campaign](campaign/). Refresh the snapshots whenever those checkouts change.
+Current local behavior includes per-pipeline processing levels, resource overrides,
+`primary_input`, and `pre_app_commands`.
 
-Two real causes, in order of how much they matter:
+A campaign cell that is retired is archived under `derivative-attempts/` and is not
+resumable because BABS embeds absolute RIA paths. Flags are baked into generated job
+scripts at initialization. Scaffolding can take 15 minutes to two hours under Lustre load.
 
-1. **lev1 runs unsmoothed** (`--smoothing-fwhm` defaults to None and nothing passes it).
-   That is what produces the salt-and-pepper glass brains, and it costs real reliability
-   wherever signal exists — smoothing the per-run z maps raises pairwise r from 0.243 to
-   0.485 (flanker task-baseline, 8 mm), 0.131 to 0.257 (nBack twoBack-oneBack), 0.032 to
-   0.167 (cuedTS task_switch_cost).
-2. **Difference contrasts have ~zero single-subject reliability.** flanker
-   `incongruent-congruent` is r = −0.003 across runs, and smoothing does **not** rescue it
-   (+0.003 at 8 mm) — there is no spatially extended effect being masked. This is the
-   reliability paradox: a difference contrast subtracts the reliable shared response and
-   keeps the noise. Judge these at the group level, not per subject.
+## Scientific choices still requiring a decision
 
-The suprathreshold fraction at |z| > 2.3 is therefore mostly a global offset plus fat
-tails, not focal activation: chance alone gives 2.14%, and flanker sits at 3.3%.
+These are analysis decisions, not pipeline defects:
 
-**Still unchecked, the best remaining lead:** `task-baseline` reproduces at only r = 0.24
-unsmoothed (0.49 at 8 mm), which is lowish for a sustained contrast. If you want to keep
-digging, look at tSNR of the preprocessed BOLD and whether the multi-echo optimal
-combination is doing its job — that sits upstream of the GLM and would depress everything.
-Also note nBack accuracy is 1.000 at both loads (ceiling), so that task has no error
-variance.
+- which confound arm to use (`full`, `no-motion`, `no-cosine`, or `task-only`);
+- the final second-level contrasts and permutation count;
+- whether and how to restore accuracy, RT, and omission QC after clipping;
+- whether to run XCP-D on task-GLM residuals for the task-connectivity arm; and
+- whether to retain multi-echo outputs, currently about one third of fMRIPrep storage;
+- which response-time arm to use for headline analyses; and
+- which first-level smoothing kernel to use (the completed discovery run used none).
 
-### Open decisions (science, not plumbing)
-- confounds-mode arm(s) for the NSI experiment (`full` / `no-motion` / `no-cosine` / `task-only`)
-- lev2 contrast set and permutation count
-- accuracy / RT / omission QC never reinstated after `network_events.qc` was removed;
-  recovered code at `~/docs/reference/network_events_qc_removed.py`, must run *post*-clip
-- a second XCP-D pass on task-GLM residuals (NSI task-FC arm), downstream of lev1
-- `--me-output-echos` is kept by explicit decision: 33% of fMRIPrep output (76 GB/subject)
-  that nothing downstream reads
-- which RT arm the headline analyses use (see above); both exist for discovery
-- the lev1 smoothing kernel: currently none, which measurably costs reliability (above)
+The evidence behind the last two choices is in [GLM-DIAGNOSTICS.md](GLM-DIAGNOSTICS.md).
 
-### Capacity
-`$SCRATCH` is 100 TB. Validation fMRIPrep is ~230 GB/subject unpacked; with echoes kept
-that lands around 85/100 TB once it unpacks. `fmriprep-derivs` drops the fetched zips after
-unpacking (`--keep-zips` to opt out) because the output RIA already holds a copy — that was
-worth ~950 GB on discovery alone.
+Do not present the completed discovery engineering run as the selected scientific model
+until these choices are resolved.
 
-## 8. TODO: a bootstrap document
+## Storage and retention
 
-**Not written yet.** Write `docs/BOOTSTRAP.md` that takes a fresh agent or a fresh machine
-from nothing to a working environment, so this file can stop describing setup and just
-describe *decisions*. It should cover:
+An unpacked fMRIPrep subject is about 230 GB. Validation can approach 85 TB of the 100 TB
+scratch allocation when echoes are retained. `fmriprep-derivs` drops fetched zip files
+after extraction unless `--keep-zips` is set; the output RIA remains the durable copy.
+Sherlock scratch is subject to purge based on content writes, and `touch` does not reset
+that policy.
 
-1. Clone all four packages to their canonical paths (§2), and warn about the stale
-   duplicates that already exist on this host.
-2. `ml load devel gcc/12.4.0`, set `UV_PROJECT_ENVIRONMENT` / `UV_CACHE_DIR`, `uv sync
-   --frozen` on a compute node, then *verify installed commits against the pins* (§3).
-3. Provision git-annex to `$SCRATCH/git-annex`, and check `git-annex-remote-ora` is on PATH.
-4. Recreate the campaign: mechababs `bootstrap.sh` + `configure`, `add-dataset` per cohort,
-   apply both patch diffs, then `network_fmri shim` once per pipeline. See
-   [campaign/README.md](campaign/README.md).
-5. Verify: `uv run pytest -q` in each repo, `network_fmri pipeline --cohort discovery
-   --print`, `network_fmri campaign -- iterate --dry-run`.
+## Maintaining the documentation
 
-Ideally it is a script plus prose, not prose alone — the shim build was lost precisely
-because it lived only in a comment.
+Update the document that owns the fact:
 
-## Maintaining this file
+| Change | Update |
+|---|---|
+| user workflow, stage summary, or common command | `README.md` |
+| environment, paths, operations, or diagnosed failures | this guide |
+| scientific, acquisition, exclusion, or preprocessing decision | `SCAN-NOTES.md` |
+| response-time arm, map sparsity, design checks, or reliability evidence | `GLM-DIAGNOSTICS.md` |
+| extension contract | `EXTENDING.md` |
+| campaign patch or reconstruction detail | `campaign/README.md` and patch snapshots |
+| contributor checks or dependency workflow | `CONTRIBUTING.md` |
 
-This document is only worth reading if it is true. When you change the pipeline:
-
-- **Config or vendored patch** → update §6 and refresh the diffs in `docs/campaign/`.
-- **New failure diagnosed** → add it to §5, including the approaches you *ruled out* and
-  how you tested them. That is the expensive half and the part nobody can reconstruct.
-- **A stage runs or a cohort advances** → update the table in §7.
-- **Paths, pins, or env change** → §2 and §3.
-- **Something here turns out wrong** → delete it. A confidently stale line costs more than
-  a missing one.
-
-Keep it in the same commit as the change.
+Keep documentation in the same commit as the behavior it describes. Replace stale live
+status with a query, record ruled-out approaches for expensive diagnoses, and remove facts
+that are no longer true.

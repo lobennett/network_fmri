@@ -1,35 +1,37 @@
 # Extending the cohort pipeline
 
-The extension boundary is intentionally narrow: network_fmri owns orchestration,
-Slurm is the only execution backend, and an extension contributes one or more typed
-cohort stages. A package does not patch the CLI, submission loop, or scientific code
-in this repository.
+Use this interface when an installed package needs one cohort-level job at a precise point
+in the Flywheel-to-BIDS chain. The boundary is intentionally narrow:
 
-Use an extension when a package needs to run at a defined point in the Flywheel to
-BIDS chain. MRIQC, fMRIPrep, and XCP-D remain campaign consumers outside this chain;
-the registry is not intended to replace mechababs or become a general workflow
-engine.
+- Slurm is the only backend;
+- an extension contributes typed stages, not a new executor;
+- each stage is one cohort-level job;
+- the built-in Flywheel export is the only custom array stage.
+
+MRIQC, fMRIPrep, XCP-D, and packages with their own DAG remain external campaign
+consumers. They should expose a small handoff stage only if the cohort pipeline must gate
+on them.
 
 ## Stage contract
 
-A stage declares:
+A `StageSpec` declares:
 
-- an immutable name and description;
-- one argv-style command, not a shell fragment;
-- CPU, memory, and wall-time requests for one Slurm job;
-- logical input and output artifacts, with locations;
-- after and before ordering constraints;
-- an optional working directory.
+| Field | Purpose |
+|---|---|
+| `name`, `description` | Stable identity and readable intent |
+| `resources` | CPU, memory, and wall time for one Slurm job |
+| `command` | Argument vector; do not provide a shell fragment |
+| `inputs`, `outputs` | Logical artifacts and resolved locations |
+| `after`, `before` | Placement in the dependency graph |
+| `working_directory` | Optional execution directory |
 
-The planner validates unique names, references, artifact producers, ordering, and
-cycles before any sbatch call. The before constraint makes a new stage gate the named
-downstream stage; use it with after to occupy an exact boundary. Every extension must
-declare at least one of those anchors, so an unconstrained job cannot enter a plan.
+Every extension must declare `after` or `before`. Use both to occupy an exact boundary.
+The planner rejects duplicate names, missing stages or producers, inconsistent artifacts,
+cycles, and unsequenced in-place writes before the first `sbatch` call.
 
-For example, a package that modifies the trimmed BIDS tree before field-map linking
-can expose:
+Example: transform the trimmed BIDS tree after trimming and before field-map linking.
 
-~~~python
+```python
 from network_fmri.registry import SlurmResources, StageSpec, TRIMMED
 
 
@@ -54,71 +56,65 @@ def network_fmri_stages():
             before=("b0link",),
         ),
     )
-~~~
+```
 
-Using the same artifact as input and output explicitly declares an in-place
-transformation. It is accepted only when the earlier producer is an ancestor of the
-new stage; undeclared or parallel overwrites fail validation. A read-only QC stage
-should instead declare its report as a new ArtifactSpec output.
+Using the same artifact as input and output explicitly declares a sequenced in-place
+transformation. A read-only QC stage should instead produce a separate `ArtifactSpec`
+report.
 
-The command and artifact templates may use:
+## Template fields
 
-| Field | Meaning |
+Commands, artifact locations, and working directories may use:
+
+| Template | Value |
 |---|---|
-| {cohort} | cohort name |
-| {staging} | staging root |
-| {bids_dir} | merged cohort BIDS directory |
-| {network_fmri} | absolute path to this environment's launcher |
-| {events_bin} | absolute path to network-events |
-| {project} | Flywheel project |
-| {partition} | selected Slurm partition expression |
-| {throttle} | export array throttle |
-| {live_flag} | --live during live export, otherwise omitted |
+| `{cohort}` | Cohort name |
+| `{staging}` | Staging root |
+| `{bids_dir}` | Merged cohort BIDS directory |
+| `{network_fmri}` | Launcher in the active environment |
+| `{events_bin}` | `network-events` launcher |
+| `{project}` | Flywheel project |
+| `{partition}` | Slurm partition expression |
+| `{throttle}` | Export-array throttle |
+| `{live_flag}` | `--live` for live export, otherwise omitted |
 
-An unknown template field is a planning error.
+Unknown template fields fail planning.
 
-## Package registration
+## Register the provider
 
-Register the provider function in the package's pyproject.toml:
+Declare the provider in the package's `pyproject.toml`:
 
-~~~toml
+```toml
 [project.entry-points."network_fmri.pipeline_stages"]
 package_prepare = "package_name.network_fmri:network_fmri_stages"
-~~~
+```
 
-The entry point may provide one StageSpec, a StageExtension, an iterable of
-StageSpec, or a zero-argument function returning one of those. Providers load in
-entry-point-name order, but stage order comes only from dependency constraints.
-Collisions and invalid providers stop planning with an actionable error.
+The entry point may return one `StageSpec`, a `StageExtension`, an iterable of
+`StageSpec`, or a zero-argument function returning one of those. Providers load in
+entry-point-name order; dependency constraints determine stage order.
 
-The package must be installed in the same pinned environment. For a production
-integration, pin its immutable revision under [tool.uv.sources], regenerate uv.lock,
-and add contract tests here or in a small integration adapter. Run:
+Install the package at an immutable revision in the same locked environment, then inspect
+the resolved plan:
 
-~~~bash
-network_fmri pipeline --cohort discovery --print
-~~~
+```bash
+uv run --frozen network_fmri pipeline --cohort discovery --print
+uv run --frozen network_fmri pipeline --cohort discovery --print --no-extensions
+```
 
-to validate and inspect all installed extensions without submitting. Use
---no-extensions to reproduce the built-in chain while diagnosing an extension.
+The first command validates installed extensions; the second isolates the built-in chain
+for diagnosis. Add focused tests for stage placement, artifacts, rendered arguments,
+resources, and failure modes.
 
-Extension stages are single cohort-level Slurm jobs. The built-in Flywheel export is
-the only registry stage with custom array submission; packages needing a larger DAG
-should remain separately orchestrated and expose a bounded handoff stage rather than
-expanding this API.
+## Provenance
 
-## Execution records
+A submission writes an atomic `pipeline-plan-*.json` under the cohort log directory.
+It records the code revision and dirty state, subjects, parameters, providers, resources,
+commands, dependencies, artifacts, and Slurm job IDs. Partial submission failures remain
+recorded.
 
-Every live pipeline submission writes an atomic JSON record named
-pipeline-plan-UTC.json under the cohort log directory. It captures:
+To inspect the same schema without submitting:
 
-- full code revision and dirty state;
-- subjects and operator parameters;
-- resolved commands, working directories, and Slurm resources;
-- providers, dependencies, and assigned job IDs;
-- logical input/output artifact contracts;
-- resolved stage commands, standard sbatch argv, and the export-array launcher argv;
-- partial progress and the exception if submission fails.
-
-Passing --print --plan-json PATH writes the same schema with dry-run status. Printing
-without --plan-json has no filesystem side effects.
+```bash
+uv run --frozen network_fmri pipeline --cohort discovery --print \
+    --plan-json /tmp/discovery-plan.json
+```
