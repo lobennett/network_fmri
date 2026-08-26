@@ -73,10 +73,13 @@ maps improved pairwise spatial reliability where reproducible signal existed:
 | nBack `twoBack-oneBack` | 0.131 | 0.257 |
 | cuedTS `task_switch_cost` | 0.032 | 0.167 |
 
-This motivates evaluating a prespecified smoothing kernel; post-hoc smoothing is not a
-substitute for rerunning the model. Flanker `incongruent-congruent` remains near zero
-(`r = −0.003` unsmoothed, `+0.003` at 8 mm), so smoothing does not reveal a stable
-single-subject spatial difference effect.
+**Decision: the first level stays unsmoothed.** The reliability gain above is real, but it
+is a gain in voxelwise spatial agreement, not evidence of recovered effects — flanker
+`incongruent-congruent` stays at zero (`r = −0.003` unsmoothed, `+0.003` at 8 mm), so
+smoothing reveals no stable single-subject difference effect. Smoothing, if wanted, belongs
+at the group level or in the surface/parcellated analyses, where it does not commit the
+first level to a kernel. Revisit only with a prespecified justification, and note that
+post-hoc smoothing of Z maps is not a substitute for rerunning the model.
 
 Under a standard normal null, `|z| > 2.3` occurs in about 2.14% of voxels. Flanker's 3.3%
 suprathreshold fraction is therefore mostly a global offset and heavier tails, not by
@@ -130,7 +133,6 @@ do. Measured with `tsnr_check.py`.
 ## Remaining questions
 
 - Choose the response-time arm for headline analyses.
-- Choose and justify `--smoothing-fwhm` before the final cohort run.
 - Treat `--combine-runs` with care: XCP-D writes both `task-*_desc-denoised` and
   `task-*_run-*_desc-denoised`. With one run per task per session the combined file
   duplicates the per-run one, ~7.5 GB per subject.
