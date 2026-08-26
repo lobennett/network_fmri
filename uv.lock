@@ -770,8 +770,8 @@ requires-dist = [
     { name = "fw-heudiconv", git = "https://github.com/lobennett/fw-heudiconv.git?rev=e7509a4" },
     { name = "global-signal-plots", extras = ["plot"], git = "https://github.com/lobennett/global_signal_plots.git?rev=5d92c33" },
     { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=6b9a8b8" },
-    { name = "network-glm", git = "https://github.com/lobennett/network_glm.git?rev=0c313c9" },
-    { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=39a4a06" },
+    { name = "network-glm", git = "https://github.com/lobennett/network_glm.git?rev=2fda3de" },
+    { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=76d9fb1" },
 ]
 
 [package.metadata.requires-dev]
@@ -780,7 +780,7 @@ dev = [{ name = "pytest", specifier = ">=8" }]
 [[package]]
 name = "network-glm"
 version = "0.1.0"
-source = { git = "https://github.com/lobennett/network_glm.git?rev=0c313c9#0c313c93e7438f5e6eb96981c5ee64d2ca32f17e" }
+source = { git = "https://github.com/lobennett/network_glm.git?rev=2fda3de#2fda3de40b6ce4fb5a072c43b6569d1f1229bcad" }
 dependencies = [
     { name = "matplotlib", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nibabel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -798,7 +798,7 @@ dependencies = [
 [[package]]
 name = "network-qa"
 version = "0.1.0"
-source = { git = "https://github.com/lobennett/network_qa.git?rev=39a4a06#39a4a064bb3e75ebfb0938de47654f944237f152" }
+source = { git = "https://github.com/lobennett/network_qa.git?rev=76d9fb1#76d9fb186840d4e9cb13d2d16c23aa4c01044570" }
 dependencies = [
     { name = "network-events", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nibabel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },

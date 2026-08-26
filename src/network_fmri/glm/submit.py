@@ -149,9 +149,13 @@ def lev2(argv: list[str] | None = None) -> int:
     # randomise is FSL; the surface path is self-contained.
     modules = "" if args.space == "surface" else "module load biology fsl\n"
 
+    # --level1-dirs, not --lev1-dirs: network_glm spells it out, and it is required —
+    # discovering the contrasts here does not tell the subprocess where the maps are.
+    lev1 = " ".join(str(d) for d in args.lev1_dirs)
     body = (f'set -euo pipefail\n{modules}'
             f'CONTRAST="$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {listfile})"\n'
-            f'{GLM} lev2 --contrast "$CONTRAST" --output-dir {args.results_dir} '
+            f'{GLM} lev2 --contrast "$CONTRAST" --level1-dirs {lev1} '
+            f'--output-dir {args.results_dir} '
             f'--space {args.space} {" ".join(extra)}')
     job = _sbatch("glm-lev2", body, args, log_dir, len(contrasts))
     print(f"  glm-lev2 {job}  ({len(contrasts)} contrasts)")
@@ -163,14 +167,19 @@ def outliers(argv: list[str] | None = None) -> int:
     own, extra = _split_passthrough(list(sys.argv[1:] if argv is None else argv))
     p = argparse.ArgumentParser(prog="network_fmri glm-outliers",
                                 epilog="Flags after -- go to `network-glm cohort-outliers`.")
-    p.add_argument("--results-dir", required=True)
+    # Same split as glm-lev2: the lev1 tree is an input, not where results land.
+    p.add_argument("--lev1-dirs", nargs="+", required=True)
+    p.add_argument("--results-dir", default=None,
+                   help="where lev1_outliers.csv lands (default: <first lev1 dir>/cohort_qa)")
     _common(p, "outliers")
     args = p.parse_args(own)
 
-    log_dir = Path(args.log_dir or Path(args.results_dir) / "logs")
+    out = Path(args.results_dir or Path(args.lev1_dirs[0]) / "cohort_qa")
+    log_dir = Path(args.log_dir or out / "logs")
     log_dir.mkdir(parents=True, exist_ok=True)
+    lev1 = " ".join(f"--lev1-dir {d}" for d in args.lev1_dirs)
     body = (f'set -euo pipefail\n'
-            f'{GLM} cohort-outliers --output-dir {args.results_dir} {" ".join(extra)}')
+            f'{GLM} cohort-outliers {lev1} --output-dir {out} {" ".join(extra)}')
     job = _sbatch("glm-outliers", body, args, log_dir, None)
     print(f"  glm-outliers {job}")
     return 0

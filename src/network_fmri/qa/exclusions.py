@@ -41,6 +41,14 @@ def _run(stage: str, argv: list[str] | None) -> int:
     p.add_argument("--out", default=None, help="lockfile path; default <bids>/derivatives/qa/")
     p.add_argument("--mriqc-dir", default=None,
                    help="MRIQC IQMs; default <bids>/derivatives/mriqc (see mriqc-iqms)")
+    if stage == "lev1":
+        # The lev1_outlier generator refuses to run without this, so wire it here rather
+        # than leaving it to a passthrough nobody remembers.
+        p.add_argument("--lev1-dir", default=None,
+                       help="lev1 results tree; the outliers csv is taken from "
+                            "<lev1-dir>/cohort_qa (see glm-outliers)")
+        p.add_argument("--lev1-outliers-csv", default=None,
+                       help="explicit path, overriding --lev1-dir")
     p.add_argument("--partition", default="russpold,normal")
     p.add_argument("--cpus", type=int, default=2)
     p.add_argument("--mem-gb", type=int, default=16)
@@ -54,12 +62,23 @@ def _run(stage: str, argv: list[str] | None) -> int:
     log_dir = Path(args.staging) / "logs" / args.cohort
 
     mriqc = Path(args.mriqc_dir) if args.mriqc_dir else tree / "derivatives" / "mriqc"
+
+    extra_args = ""
+    if stage == "lev1":
+        csv = args.lev1_outliers_csv or (
+            f"{Path(args.lev1_dir) / 'cohort_qa' / 'lev1_outliers.csv'}" if args.lev1_dir else None)
+        if not csv:
+            raise SystemExit("qa-lev1 needs --lev1-dir (or --lev1-outliers-csv): the "
+                             "lev1_outlier generator has no default location for it")
+        if not Path(csv).is_file():
+            raise SystemExit(f"no lev1 outliers csv at {csv} — run glm-outliers first")
+        extra_args = f" --lev1-outliers-csv {csv}"
     # `datalad save` the lockfile: it is a tracked artefact the models consume, and an
     # untracked one leaves the cohort dataset dirty, which blocks every later
     # `datalad run` stage (fmriprep-derivs, mriqc-iqms).
     body = (f"set -euo pipefail\n{QA} compile --dataset {args.cohort} "
             f"--generators {' '.join(STAGES[stage])} --bids-dir {tree} --out {out} "
-            f"--mriqc-dir {mriqc} {' '.join(extra)}\n"
+            f"--mriqc-dir {mriqc}{extra_args} {' '.join(extra)}\n"
             f"export PATH=\"$SCRATCH/git-annex/usr/bin:$PATH\"\n"
             f"{DATALAD} save -d {tree} -m "
             f"'network_qa exclusions lockfile: {args.cohort} {stage}' {out}")
