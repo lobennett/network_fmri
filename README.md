@@ -1,7 +1,9 @@
 # network_fmri
 
 Flywheel → BIDS for the r01network study, then the QA gates and models that run off it. One
-command per cohort, Slurm as the DAG engine, DataLad provenance on every writing step.
+command per cohort, Slurm as the DAG engine, DataLad provenance on every writing step. A typed
+stage registry is the integration boundary: commands, resources, dependencies, and artifacts
+are inspectable without changing the tested scientific implementations.
 
 Wraps a pinned fork of [fw-heudiconv](https://github.com/lobennett/fw-heudiconv) (`e7509a4`) that
 does the Flywheel work; this repo owns the heuristic, session numbering, job submission and the
@@ -37,14 +39,21 @@ resolves outside the lock. Flywheel credentials come from `~/.config/flywheel/us
 network_fmri pipeline --cohort discovery --print    # the plan, no submission
 network_fmri pipeline --cohort discovery --live     # submit all 12 stages
 network_fmri pipeline --cohort discovery --from trim --live   # resume after a fix
+network_fmri pipeline --cohort discovery --print --plan-json /tmp/discovery-plan.json
 ```
 
 Each stage carries `--dependency=afterok` on the one before, so a failure stops the rest instead
 of corrupting the tree, and the call returns immediately without polling. The chain ends in
 `check`, so a cohort that reaches the end has asserted its own correctness.
 
-Not Make or Snakemake: the chain is a straight line per cohort, and Slurm already provides both
-the dependency graph and the array fan-out those tools would be brought in for.
+Every submission also writes an atomic JSON execution record under the cohort log directory. It
+records the code revision and dirty state, subjects, parameters, resolved commands, Slurm
+resources and job IDs, dependencies, providers, and logical input/output artifacts. The record
+is updated after each submission, so a partial submission remains auditable. Printing has no
+filesystem side effects unless a plan JSON path is requested.
+
+Not Make or Snakemake: the built-in chain is a straight line per cohort, and Slurm already
+provides both the dependency graph and the array fan-out those tools would be brought in for.
 
 ```bash
 squeue --me | grep nf-                                    # progress
@@ -53,8 +62,13 @@ grep -rh 'failed after' $SCRATCH/network_fmri/logs/*/*.err # failures
 
 ## Stages
 
-Every stage is also a standalone verb (`network_fmri <stage> --cohort C`), which is how you
-intervene at one point without re-running the rest.
+The authoritative registry validates the whole plan before the first submission. An installed
+package can add a bounded cohort-level Slurm stage through a Python entry point; see
+[Extending the cohort pipeline](docs/EXTENDING.md).
+
+Every built-in stage is also a standalone verb
+(`network_fmri <stage> --cohort C`), which is how you intervene at one point without
+re-running the rest.
 
 | | Stage | What it does |
 |---|---|---|
@@ -188,6 +202,14 @@ result. Everything downstream of the exported tree replays.
 
 ## Design notes
 
+**The registry is the extension boundary.** CLI routes and cohort stages are declared once rather
+than duplicated between help text, dispatch, and submission. A stage contract declares argv,
+Slurm resources, ordering, working directory, and logical artifacts. Extensions may gate a
+precise boundary with after plus before, including a sequenced in-place artifact transformation;
+collisions, cycles, missing producers and unsafe parallel writes fail before submission. Slurm
+remains the only backend, and the custom Flywheel array remains built in rather than becoming a
+generic executor API.
+
 **Curate and export are separate** because `curate` is a remote write — it puts BIDS naming into
 each file's `info.BIDS` on the Flywheel server — and `export` then downloads what it tagged.
 Without `--live` names are computed and nothing is written.
@@ -220,7 +242,8 @@ git-annex via `datalad-installer`.
 ```
 src/network_fmri/
   cli.py                   verb dispatch only
-  pipeline.py              the 12-stage chain, as dependent Slurm jobs
+  registry.py              typed CLI, stage, artifact, resource and extension contracts
+  pipeline.py              validate, record and submit registry plans to Slurm
   cohorts.py               rosters, staging paths
   provenance.py            git-annex provisioning, datalad run
   fw2bids/sessions.py      chronological numbering, aliases, session overrides

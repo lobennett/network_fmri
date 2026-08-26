@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, roster
+from network_fmri.cohorts import COHORTS, roster
 
 GLM = str(Path(sys.executable).parent / "network-glm")
 SURFACE_SPACES = ("surface", "fsaverage6", "fsLR")

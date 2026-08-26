@@ -21,6 +21,14 @@ packages it pins by commit. Preprocessing (MRIQC, fMRIPrep, XCP-D) runs through 
 [mechababs](https://github.com/lobennett/mechababs) campaign that wraps
 [BABS](https://github.com/PennLINC/babs), which wraps DataLad.
 
+The built-in cohort chain is declared in a typed registry: each stage owns its Slurm
+resources, argv, ordering, and logical input/output artifacts. Installed packages may
+add a bounded cohort-level Slurm stage through the
+`network_fmri.pipeline_stages` entry-point group; Slurm remains the only backend and
+the Flywheel export remains the only custom array stage. Every submission writes an
+incremental JSON execution record under the cohort log directory. See
+[EXTENDING.md](EXTENDING.md) for the contract and acceptance rules.
+
 Two cohorts: **discovery** (5 subjects) and **validation** (41). Plus `excluded`.
 
 Layers, outermost first — a bug is almost always in the layer you did not suspect:

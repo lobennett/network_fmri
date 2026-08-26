@@ -6,7 +6,7 @@ scans exist and what they are called, and nothing downstream would fail.
 
 import pytest
 
-from network_fmri.fw2bids.acquisitions import NON_FUNC, TASKS, map_acquisition
+from network_fmri.fw2bids.acquisitions import NON_FUNC, map_acquisition
 from network_fmri.fw2bids.qa_reject import MARKER, REJECTS, suffix_labels
 from network_fmri.fw2bids.sessions import SUBJECT_ALIASES, normalize, timeline
 

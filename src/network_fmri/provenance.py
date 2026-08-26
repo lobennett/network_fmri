@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import sys
+from functools import cache
 from pathlib import Path
 
 INSTALL_METHOD = "datalad/git-annex:release"
@@ -43,7 +44,11 @@ def ensure_git_annex(root: Path) -> Path:
     rc = subprocess.run(
         [
             str(Path(sys.executable).parent / "datalad-installer"),
-            "git-annex", "-m", INSTALL_METHOD, "--install-dir", str(staging),
+            "git-annex",
+            "-m",
+            INSTALL_METHOD,
+            "--install-dir",
+            str(staging),
         ],
         env=env,
     ).returncode
@@ -61,15 +66,51 @@ def ensure_git_annex(root: Path) -> Path:
 def code_version() -> str:
     """Short commit of this package's repo, for run records."""
     repo = Path(__file__).resolve().parents[2]
-    out = subprocess.run(["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
-                         capture_output=True, text=True)
+    out = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
+        capture_output=True,
+        text=True,
+    )
     return out.stdout.strip() or "unknown"
+
+
+@cache
+def code_revision() -> str:
+    """Full commit of this package's repository."""
+    repo = Path(__file__).resolve().parents[2]
+    out = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "rev-parse",
+            "HEAD",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    return out.stdout.strip() or "unknown"
+
+
+@cache
+def code_is_dirty() -> bool:
+    """Whether the worktree differs from the recorded code revision."""
+    repo = Path(__file__).resolve().parents[2]
+    out = subprocess.run(
+        ["git", "-C", str(repo), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+    )
+    return bool(out.stdout.strip())
 
 
 def subject_commit(dataset_path: Path) -> str:
     """Short commit of a per-subject dataset, for the merge record."""
-    out = subprocess.run(["git", "-C", str(dataset_path), "rev-parse", "--short", "HEAD"],
-                         capture_output=True, text=True)
+    out = subprocess.run(
+        ["git", "-C", str(dataset_path), "rev-parse", "--short", "HEAD"],
+        capture_output=True,
+        text=True,
+    )
     return out.stdout.strip() or "unknown"
 
 
@@ -94,8 +135,9 @@ def ensure_dataset(path: Path, env: dict) -> None:
     datalad(["create", "--force", "-c", "text2git", str(path)], env)
 
 
-def run_recorded(dataset: Path, cmd: list[str], message: str, outputs: list[str],
-                 env: dict) -> None:
+def run_recorded(
+    dataset: Path, cmd: list[str], message: str, outputs: list[str], env: dict
+) -> None:
     """``datalad run`` the command inside ``dataset``, recording it in the history."""
     args = ["run", "-d", str(dataset), "-m", message]
     for out in outputs:
@@ -104,4 +146,6 @@ def run_recorded(dataset: Path, cmd: list[str], message: str, outputs: list[str]
 
 
 if __name__ == "__main__":
-    raise SystemExit("network_fmri.provenance provides plumbing; use the network_fmri CLI")
+    raise SystemExit(
+        "network_fmri.provenance provides plumbing; use the network_fmri CLI"
+    )
