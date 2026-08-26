@@ -336,6 +336,39 @@ stopSignal, so it is worth a look independently.
 Trees: `$SCRATCH/network_fmri/discovery/{lev1,lev1_noRT}`; comparison script at
 `$SCRATCH/compare_rt_arms.py` (on purge-prone scratch — move it if it matters).
 
+### Why the first-level maps look sparse/speckled (investigated; not a bug)
+Asked whether sparse main-contrast maps meant broken inputs or models. Ruled out, with
+evidence, in this order — do not re-derive:
+
+- **Inputs and alignment are sound.** `task-baseline` reproduces across runs in every
+  subject/task (pairwise r +0.09 to +0.29). A misaligned or mis-registered input would kill
+  that too. Events sit at 0.58–329.9 s inside a 350 s scan, in the *trimmed* timeline.
+- **No double-trim.** `adjust_for_dummy_scans` defaults False and the runner passes
+  `dummy_scans=0` for both BOLD and confounds, deliberately, because the tree is
+  pre-trimmed and fMRIPrep ran `--dummy-scans 0`. The task YAML's `dummy_scans: 7` is not
+  applied twice.
+- **No missing regressors.** Every condition column is present; only genuinely empty ones
+  (`omission`, `rt_fast`, `break_with_performance_feedback`) are dropped as zero-variance.
+  (A first pass appeared to show `congruent` and `go` missing — that was `index_col=0`
+  swallowing the first CSV column, not a real defect. Read the raw header.)
+- **z maps are well calibrated.** Core (|z|<2) sd is 0.91–1.01 against a null of 1.0.
+
+Two real causes, in order of how much they matter:
+
+1. **lev1 runs unsmoothed** (`--smoothing-fwhm` defaults to None and nothing passes it).
+   That is what produces the salt-and-pepper glass brains, and it costs real reliability
+   wherever signal exists — smoothing the per-run z maps raises pairwise r from 0.243 to
+   0.485 (flanker task-baseline, 8 mm), 0.131 to 0.257 (nBack twoBack-oneBack), 0.032 to
+   0.167 (cuedTS task_switch_cost).
+2. **Difference contrasts have ~zero single-subject reliability.** flanker
+   `incongruent-congruent` is r = −0.003 across runs, and smoothing does **not** rescue it
+   (+0.003 at 8 mm) — there is no spatially extended effect being masked. This is the
+   reliability paradox: a difference contrast subtracts the reliable shared response and
+   keeps the noise. Judge these at the group level, not per subject.
+
+The suprathreshold fraction at |z| > 2.3 is therefore mostly a global offset plus fat
+tails, not focal activation: chance alone gives 2.14%, and flanker sits at 3.3%.
+
 ### Open decisions (science, not plumbing)
 - confounds-mode arm(s) for the NSI experiment (`full` / `no-motion` / `no-cosine` / `task-only`)
 - lev2 contrast set and permutation count
@@ -345,6 +378,7 @@ Trees: `$SCRATCH/network_fmri/discovery/{lev1,lev1_noRT}`; comparison script at
 - `--me-output-echos` is kept by explicit decision: 33% of fMRIPrep output (76 GB/subject)
   that nothing downstream reads
 - which RT arm the headline analyses use (see above); both exist for discovery
+- the lev1 smoothing kernel: currently none, which measurably costs reliability (above)
 
 ### Capacity
 `$SCRATCH` is 100 TB. Validation fMRIPrep is ~230 GB/subject unpacked; with echoes kept
