@@ -221,6 +221,11 @@ to 49 exclusions over 15 cells. They remain in `lev1_outliers.csv` as evidence, 
 split as `dvars_std`. The `go` regressor still flags at VIF 21–35 in stop/go designs — an
 open question rather than a settled one.
 
+### lev1's default memory blocks its own scheduling
+`glm-lev1` defaults to `--mem-gb 64`, but peak RSS across 40 discovery cells was **17.9 GB**.
+The oversized request left a 40-task array fully pending on `(Resources)` for 20+ minutes;
+resubmitting at `--mem-gb 32` scheduled immediately. Right-size before large fan-outs.
+
 ### A fourth exclusion mechanism you may not expect
 `network_glm` has its own *run-level* QA, separate from `qa-motion` (MRIQC IQMs) and
 `qa-lev1` (lev1 outliers): `QA FAIL: High junk percentage: >30%` skips a run before the GLM
@@ -306,6 +311,31 @@ flat set is what gates runs; `exclusions_by_type` groups them under `'exclusions
 Exclusions demonstrably bite: `Skipping excluded run: ses-11/run-1`, after which the cell
 is tagged `_desc-belowMinRuns` when fewer than `min_runs=2` survive.
 
+### The RT arm, and what it changes
+`network_glm` has a `--rt-model {RTDur,noRT}` switch (the `rtmodel-` entity in every output
+filename records which produced a map, so both arms share a tree safely). `noRT` drops the
+per-task `response_time` regressor and every contrast referencing it.
+
+Measured on discovery, paired within subject, as the fraction of in-mask voxels past |z|
+in the lev1 fixed-effects maps:
+
+| Contrast | mean Δ at \|z\|>2.3 | consistent? |
+|---|---|---|
+| flanker `incongruent-congruent` | **+0.22 pp** | 4/5, direction not stable |
+| flanker `task-baseline` | +2.85 pp | 4/5 |
+| stopSignal `task-baseline` | +3.19 pp | 4/5 |
+| nBack `task-baseline` | **+15.24 pp** | 5/5 |
+| cuedTS `task-baseline` | **+13.84 pp** | 5/5 |
+
+So the RT regressor is soaking up *task-versus-baseline* variance, not condition-difference
+variance: dropping it barely moves a differential contrast but inflates main-effect maps
+substantially, and most in nBack and cuedTS. Treat main-effect sparsity as arm-dependent
+and differential contrasts as roughly arm-invariant. `sub-s19` reverses sign on flanker and
+stopSignal, so it is worth a look independently.
+
+Trees: `$SCRATCH/network_fmri/discovery/{lev1,lev1_noRT}`; comparison script at
+`$SCRATCH/compare_rt_arms.py` (on purge-prone scratch — move it if it matters).
+
 ### Open decisions (science, not plumbing)
 - confounds-mode arm(s) for the NSI experiment (`full` / `no-motion` / `no-cosine` / `task-only`)
 - lev2 contrast set and permutation count
@@ -314,6 +344,7 @@ is tagged `_desc-belowMinRuns` when fewer than `min_runs=2` survive.
 - a second XCP-D pass on task-GLM residuals (NSI task-FC arm), downstream of lev1
 - `--me-output-echos` is kept by explicit decision: 33% of fMRIPrep output (76 GB/subject)
   that nothing downstream reads
+- which RT arm the headline analyses use (see above); both exist for discovery
 
 ### Capacity
 `$SCRATCH` is 100 TB. Validation fMRIPrep is ~230 GB/subject unpacked; with echoes kept
