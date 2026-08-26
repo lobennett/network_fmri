@@ -113,10 +113,25 @@ uv run --frozen python docs/plot_rt_brains.py \
 The design, label, and reliability scripts currently encode discovery paths and example
 subjects internally. Read their constants before running them.
 
+## Upstream signal quality (checked; not the cause)
+
+tSNR of the preprocessed BOLD is healthy and multi-echo optimal combination is working, so
+modest task-baseline reliability is not an upstream data-quality problem:
+
+| | median tSNR |
+|---|---|
+| optimally combined (flanker / nBack) | **64.0 / 53.0** |
+| best single echo (echo-1) | 40.8 / 33.7 |
+| echo-2 / echo-3 | 12.5 / 5.5 / 10.9 / 5.1 |
+
+The combination beats the best single echo by ~57%, which is what optimal combination should
+do. Measured with `tsnr_check.py`.
+
 ## Remaining questions
 
 - Choose the response-time arm for headline analyses.
 - Choose and justify `--smoothing-fwhm` before the final cohort run.
-- Check preprocessed BOLD tSNR and multi-echo optimal combination; low upstream signal
-  quality remains the best untested explanation for modest task-baseline reliability.
+- Treat `--combine-runs` with care: XCP-D writes both `task-*_desc-denoised` and
+  `task-*_run-*_desc-denoised`. With one run per task per session the combined file
+  duplicates the per-run one, ~7.5 GB per subject.
 - Treat nBack accuracy cautiously: both checked loads were at ceiling (`1.000`).
