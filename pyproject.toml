@@ -43,7 +43,7 @@ override-dependencies = [
 fw-heudiconv = { git = "https://github.com/lobennett/fw-heudiconv.git", rev = "e7509a4" }
 global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "5d92c33" }
 network_events = { git = "https://github.com/lobennett/network_events.git", rev = "6b9a8b8" }
-network_glm = { git = "https://github.com/lobennett/network_glm.git", rev = "e61a86a" }
+network_glm = { git = "https://github.com/lobennett/network_glm.git", rev = "dfb9105" }
 network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "76d9fb1" }
 
 [build-system]
