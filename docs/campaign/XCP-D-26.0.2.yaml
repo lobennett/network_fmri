@@ -24,7 +24,8 @@ mechababs:
   selection:
     require_positive: [t1w_num, bold_num]
   container:
-    source: /scratch/users/logben/mechababs_campaigns/xcpd-26.0.2-shim
+    # Resolved relative to the campaign root by mechababs.
+    source: ../xcpd-26.0.2-shim
     name: bids-xcpd
 
 analysis_path: "."
@@ -75,7 +76,8 @@ bids_app_args:
   # Ours only: the tree is trimmed and fMRIPrep ran --dummy-scans 0, so be explicit
   # rather than let auto-detection differ between runs.
   --dummy-scans: "0"
-  --fs-license-file: "/home/users/logben/license.txt"
+  # BABS writes this into a double-quoted shell bind, so HOME expands per operator.
+  --fs-license-file: "${HOME}/license.txt"
   --notrack: ""
   --stop-on-first-crash: ""
   --nprocs: "8"

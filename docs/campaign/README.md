@@ -7,6 +7,9 @@ for MRIQC, fMRIPrep, and XCP-D. The live campaign is a DataLad dataset on purgea
 $SCRATCH/mechababs_campaigns/r01network
 ```
 
+Campaign commands use `$NETWORK_FMRI_CAMPAIGN` when set, otherwise the path above;
+`--campaign` overrides either value for one invocation.
+
 Edit live configuration under `<campaign>/code/mechababs/`, then refresh this snapshot in
 the same commit. Do not treat these copies as the running campaign.
 
@@ -90,6 +93,10 @@ On a compute node:
 6. inspect generated job scripts and run `iterate --dry-run`;
 7. save the campaign dataset and its subdataset pointers.
 
-A BABS container source is a shim DataLad dataset, not a direct `.sif` path. Missing or
-unregistered shims fail initialization; the `network_fmri shim` command validates the
-registration and vendors the subdataset.
+A BABS container source is a shim DataLad dataset, not a direct `.sif` path. The
+checked-in pipeline configs refer to shim datasets relative to the campaign root; create
+them as siblings of the campaign or adjust those site-local paths. Missing or unregistered
+shims fail initialization; the `network_fmri shim` command validates the registration and
+vendors the subdataset. The FreeSurfer configs use `${HOME}/license.txt`; BABS may warn
+while scaffolding because it checks the unexpanded string, but the generated shell bind
+expands `HOME` when the job runs.

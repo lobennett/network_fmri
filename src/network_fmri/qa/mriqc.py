@@ -23,7 +23,16 @@ from pathlib import Path
 from network_fmri import provenance
 from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, cohort_dataset
 
-CAMPAIGN = Path("/scratch/users/logben/mechababs_campaigns/r01network")
+def default_campaign(environ=os.environ) -> Path:
+    """Resolve the campaign without embedding an operator's account path."""
+
+    if configured := environ.get("NETWORK_FMRI_CAMPAIGN"):
+        return Path(configured)
+    base = Path(environ.get("SCRATCH", Path.home()))
+    return base / "mechababs_campaigns" / "r01network"
+
+
+CAMPAIGN = default_campaign()
 PIPELINE = "MRIQC-24.0.2"
 # p7zip is not on the default PATH here; BABS's own zip step adds the same bindir.
 SEVENZIP_BIN = Path("/share/software/user/open/p7zip/16.02/bin")

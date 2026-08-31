@@ -17,7 +17,8 @@ mechababs:
     # Subject-level TSV: every subject with an anatomical and functional data.
     require_positive: [t1w_num, bold_num]
   container:
-    source: /scratch/users/logben/mechababs_campaigns/fmriprep-25.2.5-shim
+    # Resolved relative to the campaign root by mechababs.
+    source: ../fmriprep-25.2.5-shim
     name: bids-fmriprep
 
 analysis_path: "."
@@ -48,7 +49,8 @@ bids_app_args:
   --skip-bids-validation: ""
   --stop-on-first-crash: ""
   # HOST path: babs rewrites it and adds the bind itself -- do not bind it again.
-  --fs-license-file: "/home/users/logben/license.txt"
+  # BABS writes this into a double-quoted shell bind, so HOME expands per operator.
+  --fs-license-file: "${HOME}/license.txt"
   --nprocs: "8"
   --omp-nthreads: "2"
   --mem-mb: "45000"

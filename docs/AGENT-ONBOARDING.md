@@ -50,7 +50,7 @@ ml load devel gcc/12.4.0
 export UV_PROJECT_ENVIRONMENT=$SCRATCH/venvs/network_fmri_dev
 export UV_CACHE_DIR=$SCRATCH/.uv
 export PATH="$SCRATCH/git-annex/usr/bin:$PATH"
-cd ~/noslop/network_fmri
+cd /path/to/network_fmri
 uv sync --frozen
 ```
 
@@ -72,19 +72,10 @@ The complete dependency-pin check and contributor test sequence are in
 
 ### Checkouts
 
-Several stale duplicates exist. These are the current working locations; still verify the
-installed source and Git SHA rather than trusting a path:
-
-| Package | Working checkout |
-|---|---|
-| `network_fmri` | `~/noslop/network_fmri` |
-| `network_events` | `~/noslop/network_events` |
-| `network_qa` | `~/network_qa` |
-| `network_glm` | `/oak/stanford/groups/russpold/users/logben/network_glm` |
-
-In particular, `~/network_glm`, `~/network_fmri`, and `$SCRATCH/network_events` are
-duplicates. The dependency revisions in `pyproject.toml` and `uv.lock` are authoritative
-for reproducible runs.
+Checkout locations are operator-specific and must not be treated as configuration. From
+the intended repository root, verify `git rev-parse --show-toplevel`, `git branch -vv`,
+and the imported `network_fmri.__file__`. The dependency revisions in `pyproject.toml`
+and `uv.lock`—not nearby sibling directories—are authoritative for reproducible runs.
 
 ### Data, campaign, and containers
 
@@ -97,7 +88,7 @@ for reproducible runs.
 | BABS projects | `<campaign>/studies/study-<cohort>/derivatives/<Pipeline>` |
 | Retired attempts | `<campaign>/derivative-attempts/` |
 | TemplateFlow | `/home/groups/russpold/templateflow` |
-| FreeSurfer license | `~/license.txt` |
+| FreeSurfer license | `${HOME}/license.txt` (override in site configuration if needed) |
 | p7zip | `/share/software/user/open/p7zip/16.02/bin` |
 
 Do not use `/home/groups/russpold/license.txt`; it is the jsPsych MIT license, not a

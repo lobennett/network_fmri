@@ -18,8 +18,8 @@ Use the focused references when relevant:
 
 - This host is Sherlock. `/etc/claude-code/CLAUDE.md` is authoritative. Run heavy work
   through Slurm, and verify modules, partitions, and storage rather than guessing.
-- The canonical checkout is `~/noslop/network_fmri`; `~/network_fmri` is stale.
-  Confirm imports before editing or testing.
+- Do not assume a checkout location. Confirm the repository root, branch, worktree,
+  and imported `network_fmri.__file__` before editing or testing.
 - Inspect `git status` first and preserve unrelated changes.
 - Use a scratch venv, `uv sync --frozen`, and `uv run --frozen pytest`. Verify installed sibling
   package commits against `pyproject.toml` before trusting a green suite.

@@ -39,7 +39,8 @@ mechababs:
     # code/<basename>; babs reads the image at the hardcoded
     # <ds>/.datalad/environments/bids-mriqc/image (babs#383 still OPEN → shim
     # required either way). Build once with mriqc-24.0.2-local-shim.sh.
-    source: /scratch/users/logben/mechababs_campaigns/mriqc-24.0.2-shim
+    # Resolved relative to the campaign root by mechababs.
+    source: ../mriqc-24.0.2-shim
     name: bids-mriqc
 
 # BIDS-study layout (babs#369): the babs project root IS the analysis dataset and

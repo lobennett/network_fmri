@@ -9,9 +9,9 @@ preserve unrelated work, and verify the exact environment that will run on the c
    [docs/AGENT-ONBOARDING.md](docs/AGENT-ONBOARDING.md).
 2. Read [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md) before changing curation, timing,
    exclusions, preprocessing flags, or model inputs.
-3. Run `git status --short`; the canonical checkout may contain unrelated local work.
-4. Confirm that `network_fmri` imports from `~/noslop/network_fmri`, not the stale
-   `~/network_fmri` checkout.
+3. Run `git status --short`; the checkout may contain unrelated local work.
+4. Confirm that `network_fmri` imports from the checkout you intend to edit:
+   `uv run --frozen python -c "import network_fmri; print(network_fmri.__file__)"`.
 
 ## Environment
 
