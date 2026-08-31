@@ -297,6 +297,47 @@ today and needs no centring capability. Note that no mean-centring or orthogonal
 exists in the regressor path (`_resolve_column_or_constant` returns raw column values), so a
 *parametric* RT modulator would require new code; that is not the direction chosen.
 
+## Flanker: hypotheses tested and falsified
+
+Beyond the design/label/tSNR/alignment checks above, two further mechanisms were measured
+and ruled out. Do not re-derive them.
+
+**Design efficiency is fine — better for the difference than the sum.** VIF is a *relative*
+measure and cannot see an efficiency loss baked into X. Measuring absolutely
+(`SE = sqrt(c'(X'X)^-1 c)`): flanker `SE(incongruent-congruent)` is 0.58-0.62 against
+`SE(task-baseline)` 1.27-1.45 — a ratio of 0.40-0.46, i.e. the difference is the
+*better*-estimated contrast. Trials alternate ~50% of the time (randomly interleaved, not
+periodic) at a 2.0 s ISI with ~143 trials per run. The design is not fighting the contrast.
+
+**The confounds are not absorbing it.** The nuisance block (24 motion + cosines + spikes)
+explains only R^2 = 0.24-0.28 of flanker's difference regressor. For contrast, nBack's
+difference regressor is 84-88% absorbed, with a single motion column correlating at 0.79 —
+and nBack is the contrast that works.
+
+**A correction to the reliability framing above.** Flanker's five "runs" are five separate
+*sessions*, weeks apart, not runs within a session. Published run-to-run reliability figures
+are overwhelmingly within-session; across sessions, repositioning, registration and
+physiological state all add variance. `r ~ 0` across sessions is therefore weaker evidence
+of a problem than `r ~ 0` across runs would be, and the benchmark used earlier was too
+strict.
+
+**What remains.** No mechanical explanation survives. Two substantive possibilities:
+
+1. *The effect is real but below detection here.* +37 ms behaviourally is a modest conflict
+   effect, and n = 5 unsmoothed single-subject maps are far below the power at which the
+   literature's dACC findings were established. The validation cohort is the first properly
+   powered test.
+2. *The conflict effect is time-on-task, and RTDur removes it by design.* This is Mumford's
+   actual thesis. Incongruent trials are slower, so the RTDur regressor's boxcars are longer
+   on exactly those trials and it absorbs the RT-explained part of the contrast. If flanker
+   conflict activation here is largely time-on-task, RTDur removing it is correct behaviour,
+   not a defect.
+
+Possibility 2 is directly testable with the three arms, and they make opposite predictions:
+`RTDur` removes RT-driven conflict, `noRT` leaves it unmodelled in the conditions, and
+`RTepoch` models it *as* condition duration and should show it most strongly. Flanker-only
+across all three is ~15 cells.
+
 ## Remaining questions
 
 - Choose the response-time arm for headline analyses.
