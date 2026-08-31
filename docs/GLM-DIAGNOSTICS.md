@@ -190,18 +190,37 @@ a separate look; it costs sensitivity everywhere.
 Reviewed `task_config/loader.py`, `lev1/processing/{design,events,glm,confounds,contrasts,
 quality_control}.py`, and all 19 task YAMLs.
 
-### Defect 1 — RT is a duplicate boxcar, not a modulator (severe, study-wide)
+### The RT regressor: intended everywhere except the inhibition tasks
 
-Covered above. The collinearity takes two forms, and the second is worse:
+**Correction.** An earlier revision of this document called the RT regressor a study-wide
+defect. That was wrong. `amplitude: 1, duration: response_time` is the RTDur specification
+from Mumford, Bissett, Jones, Shim, Rios & Poldrack (2023), *Nature Human Behaviour*
+8(2):349-360, https://doi.org/10.1038/s41562-023-01760-0 — modelling RT is deliberate,
+because ignoring it confounds intensity differences with duration differences. Its high
+correlation with the summed conditions is the mechanism by which time-on-task variance is
+absorbed, not a bug.
 
-| design | mechanism | what breaks |
-|---|---|---|
-| balanced (flanker, cuedTS, nBack, spatialTS, shapeMatching, directedForgetting) | RT duplicates the *sum* of conditions (`r = 0.95–0.96`) | `task-baseline`, `response_time`; differences spared (VIF ≈ 1.1) |
-| one dominant condition (goNogo, stopSignal) | RT duplicates `go` *directly* (`r = 0.965 / 0.963`, `go` ≈ 96% of trials) | the `go` beta and **every contrast containing it**, including the main contrasts `nogo_success-go` (VIF 11.5) and `stop_success-go` |
+Two consequences follow, and only the second is a defect.
 
-So goNogo and stopSignal main contrasts are affected; flanker's is not.
+**`task-baseline` is not interpretable under RTDur.** The RT regressor absorbs the mean
+task response, so `task-baseline` VIF is 13.7-59.5 and its sign inverts (flanker left motor
+is -1.42, 0/5 subjects positive, with RT; +1.90, 5/5, without). Differential contrasts are
+unaffected (VIF ~1.1) and remain the interpretable ones. `network_qa`'s
+`DEFAULT_VIF_IGNORE = ("task-baseline", "response_time")` is therefore correct — but for
+this reason, not the "high by construction" wording recorded earlier.
 
-### Defect 2 — epoch and event regressors averaged together in `task-baseline`
+**Defect: the inhibition tasks still carry the RT regressor.** In `goNogo` and `stopSignal`
+the RT regressor's subset is `... and trial_type == 'go'` — the *identical event set* as the
+`go` regressor, differing only in duration. Measured `r(go, response_time) = 0.965` and
+`0.963`. Every main contrast in those tasks is defined against `go`
+(`nogo_success-go`, `stop_success-go`, `stop_failure-go`), so unlike the balanced tasks the
+damage lands on the contrasts of interest: `nogo_success-go` VIF 11.5. `stopSignalWFlanker`
+and `stopSignalWDirectedForgetting` carry it too, over all correct test trials.
+
+RT should be omitted from the inhibition tasks. No HRF derivative is used, on the same
+authors' advice.
+
+### Defect:  epoch and event regressors averaged together in `task-baseline`
 
 `directedForgetting`, `directedForgettingWFlanker` and `stopSignalWDirectedForgetting`
 average `memory_and_cue` (`duration: duration`, a multi-second epoch) with `duration: 1`
@@ -209,7 +228,7 @@ condition regressors. Convolved amplitude scales with duration, so the nominal e
 weights do not produce an equal average. directedForgetting has the second-highest
 `task-baseline` VIF (33.8).
 
-### Defect 3 — the VIF alarm exists and is silenced
+### Defect: the VIF alarm exists and is silenced
 
 `quality_control.py` computes per-contrast VIFs, writes them to CSV, logs at
 **`logger.debug`**, and carries an explicit "Does NOT fail-fast on high VIFs" comment. A VIF
@@ -244,13 +263,13 @@ fixable misspecification. Revisit that ignore-list once Defect 1 is fixed.
   `has_constant` heuristic would be fooled by any genuinely constant non-zero nuisance
   column.
 
-### Fixing Defect 1 requires code, not just config
+### A Grinband comparison arm needs no new code
 
-There is **no mean-centring or orthogonalisation anywhere** in the regressor path;
-`_resolve_column_or_constant` returns raw column values. So `amplitude: response_time` would
-still be an un-centred modulator and still collinear. A correct fix needs a centring
-capability in the loader/design layer before the YAMLs can express a parametric RT
-regressor.
+RTDur stays as the primary model. A Grinband-style comparison arm — condition regressors
+carrying `duration: response_time` and no separate RT regressor — is expressible in YAML
+today and needs no centring capability. Note that no mean-centring or orthogonalisation
+exists in the regressor path (`_resolve_column_or_constant` returns raw column values), so a
+*parametric* RT modulator would require new code; that is not the direction chosen.
 
 ## Remaining questions
 
