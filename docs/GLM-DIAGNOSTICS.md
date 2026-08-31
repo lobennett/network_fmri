@@ -217,8 +217,34 @@ the RT regressor's subset is `... and trial_type == 'go'` — the *identical eve
 damage lands on the contrasts of interest: `nogo_success-go` VIF 11.5. `stopSignalWFlanker`
 and `stopSignalWDirectedForgetting` carry it too, over all correct test trials.
 
-RT should be omitted from the inhibition tasks. No HRF derivative is used, on the same
-authors' advice.
+**Do not remove RT from the inhibition tasks without reading this.** `goNogo.yaml` and
+`stopSignal.yaml` carry an explicit rationale for including it, citing the same Mumford
+work and naming this exact contrast:
+
+> This keeps `nogo_success-go` / `stop_success-go` from absorbing RT variance via the go
+> regressor (the Mumford paradox) while avoiding RT modeling on trials whose RT is not a
+> clean motor-readiness signal.
+
+So the inclusion is deliberate and targets the contrast of interest. The trade-off is real
+in both directions: keeping RT deconfounds those contrasts but inflates their standard
+errors ~3.4x (VIF 11.5); removing it restores efficiency but reintroduces the confound the
+comment was written to avoid. Empirically, `nogo_success-go` is the *most* run-to-run
+reliable differential contrast in the battery (r 0.15-0.34), and it moved more than any
+other when RT was dropped (-4.79 pp), which is consistent with RT carrying real variance
+there. Decide on the methodology, not on the VIF alone. The two stop duals carry the same
+regressor with no recorded rationale.
+
+No HRF derivative is used, on the same authors' advice.
+
+### Arms available
+
+| arm | design | notes |
+|---|---|---|
+| `RTDur` | constant-duration conditions + pooled RT-duration regressor | study default; Mumford et al. 2023 |
+| `noRT` | RT regressor dropped | RT variance left in the residual |
+| `RTepoch` | no RT regressor; conditions carry `duration = RT` | Grinband variable epoch; **refuses the four inhibition tasks**, whose stop/nogo trials have no response and would otherwise contrast an RT-length epoch against a one-second one |
+
+`lev1` now warns at run time about any contrast at or above VIF 5.
 
 ### Defect:  epoch and event regressors averaged together in `task-baseline`
 
