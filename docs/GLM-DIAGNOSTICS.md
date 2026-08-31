@@ -133,6 +133,58 @@ modest task-baseline reliability is not an upstream data-quality problem:
 The combination beats the best single echo by ~57%, which is what optimal combination should
 do. Measured with `tsnr_check.py`.
 
+## The response-time regressor is misspecified (defect)
+
+Every task config declares RT as `amplitude: 1, duration: response_time` on the same trials
+as the condition regressors. That makes it a near-duplicate boxcar rather than a parametric
+modulator: measured `r(response_time, congruent + incongruent) = 0.950–0.964` on every
+flanker run.
+
+lev1's own QC already records the damage:
+
+| contrast | VIF (flanker, sub-s03) |
+|---|---:|
+| `task-baseline` | **21.6** |
+| `response_time` | **14.8** |
+| `incongruent-congruent` | 1.14 |
+
+`task-baseline` VIF by task: flanker 21.6, cuedTS 19.2, nBack 21.6, goNogo n/a,
+stopSignal 14.3, spatialTS 13.7, directedForgetting 33.8, shapeMatching 59.5. All 19 task
+YAMLs share the spec, so this is study-wide.
+
+The consequence is a **sign inversion in the affected contrasts**. In a-priori ROIs, flanker
+`task-baseline` is negative everywhere with RT in the model — left motor cortex −1.42, 0/5
+subjects positive, p = 0.006 — for a button-press task that must be strongly positive. Drop
+the RT regressor and left motor becomes **+1.90, 5/5 positive, p = 0.002**. This is also
+what the earlier `noRT` result was really showing: removing RT raised `task-baseline`
+suprathreshold fraction by +2.9 to +15.2 pp because RT had been suppressing it.
+
+**Scope, precisely.** Difference contrasts are insulated: both conditions are equally
+collinear with RT, so it cancels in the subtraction (VIF 1.14). Affected are
+`task-baseline`, `response_time`, and any contrast that sums rather than differences
+conditions. This therefore does **not** explain the dead flanker conflict contrast — see
+below.
+
+A correct RT regressor carries mean-centred RT as *amplitude* on the trial events, so it
+models RT-related variance orthogonal to the mean task response.
+
+## Flanker conflict: still unexplained after the RT finding
+
+`incongruent-congruent` remains absent in the cognitive-control network in **both** arms.
+a-priori dACC/pre-SMA is −0.628 (0/5 subjects positive) with RT and −0.205 (1/5) without;
+the literature requires a positive dACC/pre-SMA response. So the RT defect above is not the
+cause, and neither is any of the following, each tested:
+
+- alignment — the per-run event→BOLD lag is *no worse* for flanker than for nBack, which
+  works (r at lag 0: flanker +0.281, nBack +0.400; peak-lag sd 3.06 s vs 2.70 s);
+- trimming — `NumberOfVolumesDiscardedByUser: 7` is uniform, and `first_onset` is 0.577 s
+  in all 25 runs, so onsets are task-program-relative and consistently placed;
+- design, labels, tSNR, z calibration — see the sections above.
+
+Both tasks do show a systematic **+1.8 s (≈1.2 TR)** best-fitting lag. It is uniform across
+tasks so it cannot be flanker-specific, but it is close enough to one volume to be worth
+a separate look; it costs sensitivity everywhere.
+
 ## Remaining questions
 
 - Choose the response-time arm for headline analyses.

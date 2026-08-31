@@ -3,7 +3,8 @@
 `network_fmri` orchestrates the r01network study from Flywheel curation through BIDS,
 preprocessing handoff, quality gates, and model submission on Stanford's Sherlock cluster.
 Slurm executes the work; DataLad records data-writing steps; pinned sibling packages own
-events, exclusions, and GLMs.
+events, exclusions, and GLMs. Versioned lifecycle integrations let another package join
+at a supported boundary without changing the central pipeline.
 
 The built dataset contains **57 subjects, 590 sessions, 2,738 BOLD acquisitions, and
 2,111 `events.tsv` files** across three cohorts: `discovery` (5), `validation` (41),
@@ -19,19 +20,20 @@ and `excluded` (11). Cohort outputs live under
 | Understand exclusions and scientific preprocessing choices | [Scan and scientific decisions](docs/SCAN-NOTES.md) |
 | Interpret sparse first-level maps, RT arms, or reliability | [First-level GLM diagnostics](docs/GLM-DIAGNOSTICS.md) |
 | Operate or recreate MRIQC/fMRIPrep/XCP-D | [Preprocessing campaign](docs/campaign/README.md) |
-| Add a package at a pipeline boundary | [Extending the cohort pipeline](docs/EXTENDING.md) |
+| Add a Python package before or after preprocessing | [Adding a package](docs/EXTENDING.md) |
 | Change code or dependency pins | [Contributing](CONTRIBUTING.md) |
 
 ## System overview
 
 ```text
 Flywheel
-  └─ cohort pipeline (12 dependent Slurm stages)
+  └─ BIDS profile (12 dependent Slurm stages)
        export → merge → prepare → events → validate → check
+                    ↑ pre-trim                 ↓ pre-fMRIPrep integrations
          ├─ MRIQC campaign ──→ IQMs ──→ motion/behavior lockfile
-         └─ fMRIPrep campaign → derivatives ──→ first-level GLMs
-                                                  └─ outlier QA
-                                                       └─ second-level GLMs
+         └─ fMRIPrep campaign → verified derivatives → post-fMRIPrep integrations
+                                      └─ verified exclusions → analysis integrations
+                                                                     └─ GLMs
 ```
 
 Responsibility is intentionally split:
@@ -72,6 +74,11 @@ Inspect before submitting:
 uv run --frozen network_fmri pipeline --cohort discovery --print
 uv run --frozen network_fmri pipeline --cohort discovery --live
 uv run --frozen network_fmri pipeline --cohort discovery --from trim --live
+
+# Inspect explicitly activated package integrations before submitting.
+uv run --frozen network_fmri integration list
+uv run --frozen network_fmri pipeline --cohort discovery \
+    --enable-integration package-name --print
 ```
 
 `--print` has no filesystem side effects unless `--plan-json PATH` is supplied.
@@ -115,6 +122,25 @@ uv run --frozen network_fmri qa-reject --apply
 
 This is intentionally outside the cohort chain because it mutates the shared Flywheel
 project.
+
+### Package lifecycle integrations
+
+New packages use versioned manifests and one of four stable slots: `pre-trim`,
+`pre-fmriprep`, `post-fmriprep`, or `analysis`. Installation alone never activates a v1
+integration. The post-fMRIPrep and analysis profiles verify external derivatives and the
+compiled exclusion lockfile before submitting the package job.
+
+```bash
+uv run --frozen network_fmri integration validate --check-installed
+uv run --frozen network_fmri pipeline --cohort discovery \
+    --profile analysis --fmriprep-dir <fmriprep> \
+    --exclusions-file <motion-lock.json> --analysis-dir <results> \
+    --enable-integration package-analysis --print
+```
+
+Every integration gets an atomic execution receipt with the package version, exact argv,
+inputs, outputs, timestamps, and status. See [Adding a package](docs/EXTENDING.md) for the
+manifest schema, effect semantics, resume safeguard, and contributor checklist.
 
 ## Preprocessing and models
 
@@ -187,9 +213,10 @@ Exact subjects, sessions, evidence, and known limitations are in
 
 ## Design and provenance
 
-- The typed registry is the only cohort-pipeline extension boundary. It validates commands,
-  resources, dependencies, and logical artifacts before submission. Slurm remains the only
-  backend; see [docs/EXTENDING.md](docs/EXTENDING.md).
+- Versioned lifecycle manifests are the supported package boundary. They compile to the
+  existing typed registry, which validates commands, resources, dependencies, and logical
+  artifacts before submission. Slurm remains the only backend; see
+  [docs/EXTENDING.md](docs/EXTENDING.md).
 - Subject exports are separate DataLad datasets so array tasks never contend on one Git
   index.
 - In-place preparation commands are designed to resume safely and are recorded by DataLad.
@@ -202,8 +229,9 @@ Exact subjects, sessions, evidence, and known limitations are in
 
 ```text
 src/network_fmri/
-  registry.py          CLI and typed stage contracts
+  registry.py          CLI and internal typed stage contracts
   pipeline.py          plan, record, and submit the Slurm DAG
+  integrations/        public v1 contracts, manifests, profiles, and receipts
   cohorts.py           rosters and staging locations
   provenance.py        DataLad and Git provenance helpers
   fw2bids/             Flywheel curation, export, merge, and source QA marks

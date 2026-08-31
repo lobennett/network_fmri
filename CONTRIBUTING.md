@@ -55,6 +55,7 @@ Use the working tree through `uv`; bare `pytest` may import an older installed w
 uv run --frozen pytest -q
 ruff check src tests
 git diff --check
+uv run --frozen network_fmri integration validate --check-installed
 uv run --frozen network_fmri pipeline --cohort discovery --print --no-extensions
 ```
 
@@ -85,8 +86,11 @@ For a sibling-package change:
 3. run `uv lock`, then `uv sync --frozen`;
 4. verify installed revisions and run the full suite.
 
-Do not broaden the pipeline into a general workflow engine. New cohort-level integrations
-use the bounded Slurm stage contract in [docs/EXTENDING.md](docs/EXTENDING.md).
+Do not broaden the pipeline into a general workflow engine. New packages use the bounded,
+versioned lifecycle contract in [docs/EXTENDING.md](docs/EXTENDING.md): add a pinned
+dependency and a disabled manifest, declare inputs/outputs/resources, activate it
+explicitly, and add focused tests. New contributions must not depend on internal
+`StageSpec` details or add another execution backend.
 
 ## Documentation and commits
 
@@ -97,7 +101,7 @@ Update the focused document in the same commit as the behavior:
 - scientific or exclusion decisions: `docs/SCAN-NOTES.md`;
 - first-level diagnostic evidence: `docs/GLM-DIAGNOSTICS.md`;
 - campaign config and patches: `docs/campaign/`;
-- extension API: `docs/EXTENDING.md`.
+- lifecycle integration API and manifest schema: `docs/EXTENDING.md`.
 
 Before committing, review the complete diff, confirm the worktree contains no unrelated
 files, and record what was tested. Commands should remain idempotent where practical so

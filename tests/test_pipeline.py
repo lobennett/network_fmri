@@ -33,7 +33,9 @@ def test_print_plan_writes_optional_dry_run_record_only(tmp_path, monkeypatch):
     assert not (staging / "logs").exists()
 
     record = json.loads(record_path.read_text())
-    assert record["schema_version"] == 1
+    assert record["schema_version"] == 2
+    assert record["profile"] == "bids"
+    assert record["integrations"] == []
     assert record["status"] == "dry-run"
     assert record["subjects"] == ["s03", "s10", "s19", "s29", "s43"]
     assert len(record["code"]["revision"]) == 40

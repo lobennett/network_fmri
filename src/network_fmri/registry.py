@@ -444,6 +444,11 @@ COMMANDS: tuple[CommandSpec, ...] = (
         ("pipeline",), "network_fmri.pipeline:main", "submit the cohort pipeline"
     ),
     CommandSpec(
+        ("integration",),
+        "network_fmri.integrations.cli:main",
+        "list, validate, or execute package integrations",
+    ),
+    CommandSpec(
         ("submit", "fw-heudiconv"),
         "network_fmri.fw2bids.jobs:submit",
         "submit an export array",

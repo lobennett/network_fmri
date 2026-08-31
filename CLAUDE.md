@@ -11,7 +11,7 @@ Use the focused references when relevant:
 - [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md) for data exclusions and scientific decisions;
 - [docs/GLM-DIAGNOSTICS.md](docs/GLM-DIAGNOSTICS.md) for RT arms, sparsity, and reliability;
 - [docs/campaign/README.md](docs/campaign/README.md) for MRIQC, fMRIPrep, and XCP-D;
-- [docs/EXTENDING.md](docs/EXTENDING.md) for adding a bounded Slurm stage;
+- [docs/EXTENDING.md](docs/EXTENDING.md) for adding a package at a versioned lifecycle boundary;
 - [CONTRIBUTING.md](CONTRIBUTING.md) for development and verification.
 
 ## Non-negotiables
@@ -40,7 +40,7 @@ Update documentation in the same commit as the behavior it describes:
 | Setup, path, environment, workflow, or diagnosed failure | `docs/AGENT-ONBOARDING.md` |
 | Exclusion or scientific preprocessing decision | `docs/SCAN-NOTES.md` |
 | Campaign config or vendored patch | `docs/campaign/` |
-| Registry extension contract | `docs/EXTENDING.md` |
+| Lifecycle integration contract | `docs/EXTENDING.md` |
 | Development workflow | `CONTRIBUTING.md` |
 
 Delete stale claims. Live job state belongs in Slurm, campaign status, execution records,

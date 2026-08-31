@@ -130,8 +130,21 @@ uv run --frozen network_fmri pipeline --cohort discovery --live
 
 Each submitted stage writes an incremental JSON execution record in the cohort log
 directory. The built-in registry owns stage order, resources, and artifact handoffs.
-Use [EXTENDING.md](EXTENDING.md) only when a genuinely new cohort-level Slurm stage is
-needed.
+External packages use versioned lifecycle manifests; they do not edit the central DAG.
+
+```bash
+uv run --frozen network_fmri integration validate --check-installed
+uv run --frozen network_fmri integration list
+uv run --frozen network_fmri pipeline --cohort discovery \
+    --enable-integration <name> --print
+```
+
+Use the `post-fmriprep` profile for packages that only require verified fMRIPrep output,
+and `analysis` when the package also needs the compiled exclusion lockfile. Always pass
+explicit `/oak` result paths for large derivatives. Integration receipts live under
+`<staging>/logs/<cohort>/integrations/`; a resume cannot bypass an enabled integration
+without a receipt unless `--assume-complete` is explicitly supplied. The full contract
+and examples are in [EXTENDING.md](EXTENDING.md).
 
 Operate the preprocessing campaign in small, observable steps:
 
@@ -192,6 +205,8 @@ after a nested shell command silently failed. Verify the decisive artifact.
 | A GLM cell exits nonzero but has maps | Run-level junk QA may skip only some runs. Inspect the successful-run count and minimum-runs tag. |
 | RIA reports unexpected EOF | Put the venv's `git-annex-remote-ora` on `PATH`. |
 | DataLad refuses to run | Clean and save the exact dataset or subdataset first; do not recursively save the whole campaign on a login node. |
+| An integration is absent from the plan | Installation is not activation. Check `integration list`, the manifest directory, profile/slot compatibility, and `--enable-integration`. |
+| `--from` refuses to skip an integration | Resume at the named integration, restore its receipt, or use `--assume-complete` only after verifying its output independently. |
 | Lustre reports transport or I/O errors | Check whether failures cluster on a node/chassis, then retry as infrastructure permits. |
 
 The old proportion-of-frames DVARS rule is not implemented because MRIQC exposes mean
@@ -249,7 +264,7 @@ Update the document that owns the fact:
 | environment, paths, operations, or diagnosed failures | this guide |
 | scientific, acquisition, exclusion, or preprocessing decision | `SCAN-NOTES.md` |
 | response-time arm, map sparsity, design checks, or reliability evidence | `GLM-DIAGNOSTICS.md` |
-| extension contract | `EXTENDING.md` |
+| lifecycle integration contract or manifest schema | `EXTENDING.md` |
 | campaign patch or reconstruction detail | `campaign/README.md` and patch snapshots |
 | contributor checks or dependency workflow | `CONTRIBUTING.md` |
 

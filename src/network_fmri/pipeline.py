@@ -17,22 +17,29 @@ from typing import Any
 
 from network_fmri import provenance
 from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, roster
-from network_fmri.registry import (
-    PipelineContext,
-    PlannedStage,
-    RegistryError,
-    SubmissionKind,
-    pipeline_registry,
+from network_fmri.integrations.planner import (
+    DEFAULT_START,
+    IntegrationContext,
+    PipelineProfile,
+    build_registry,
+    plan_with_resume_guard,
 )
+from network_fmri.registry import PlannedStage, RegistryError, SubmissionKind
 
 NF = str(Path(sys.executable).parent / "network_fmri")
 NE = str(Path(sys.executable).parent / "network-events")
-PLAN_SCHEMA_VERSION = 1
+PLAN_SCHEMA_VERSION = 2
 
 
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="network_fmri pipeline")
     parser.add_argument("--cohort", required=True, choices=list(COHORTS))
+    parser.add_argument(
+        "--profile",
+        choices=[profile.value for profile in PipelineProfile],
+        default=PipelineProfile.BIDS.value,
+        help="lifecycle slice to submit",
+    )
     parser.add_argument("--staging", default=DEFAULT_STAGING)
     parser.add_argument(
         "--live",
@@ -47,11 +54,37 @@ def get_parser() -> argparse.ArgumentParser:
         help="concurrent export tasks; Flywheel returns HTTP 500s above about 8",
     )
     parser.add_argument("--project", default="r01network")
+    parser.add_argument("--fmriprep-dir", help="external fMRIPrep derivative root")
+    parser.add_argument("--exclusions-file", help="compiled exclusion lockfile")
+    parser.add_argument("--analysis-dir", help="root exposed as {analysis_dir}")
     parser.add_argument(
         "--from",
         dest="start",
-        default="export",
-        help="resume at this registered stage",
+        help="resume at this stage (defaults to the profile's first stage)",
+    )
+    parser.add_argument(
+        "--integration-dir",
+        action="append",
+        type=Path,
+        default=[],
+        help="additional directory of versioned integration TOML manifests",
+    )
+    parser.add_argument(
+        "--enable-integration",
+        action="append",
+        default=[],
+        help="explicitly enable a manifest or installed v1 entry point",
+    )
+    parser.add_argument(
+        "--disable-integration",
+        action="append",
+        default=[],
+        help="disable a catalog manifest that has enabled=true",
+    )
+    parser.add_argument(
+        "--assume-complete",
+        action="store_true",
+        help="allow --from to bypass an enabled integration without a receipt",
     )
     parser.add_argument(
         "--print",
@@ -67,13 +100,13 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-extensions",
         action="store_true",
-        help="ignore installed third-party pipeline stage entry points",
+        help="ignore legacy network_fmri.pipeline_stages entry points",
     )
     return parser
 
 
-def _context(args: argparse.Namespace) -> PipelineContext:
-    return PipelineContext(
+def _context(args: argparse.Namespace) -> IntegrationContext:
+    return IntegrationContext(
         cohort=args.cohort,
         staging=args.staging,
         network_fmri_bin=NF,
@@ -82,12 +115,16 @@ def _context(args: argparse.Namespace) -> PipelineContext:
         partition=args.partition,
         throttle=args.throttle,
         live=args.live,
+        profile=args.profile,
+        fmriprep_root=args.fmriprep_dir,
+        exclusions_path=args.exclusions_file,
+        analysis_root=args.analysis_dir,
     )
 
 
 def _record(
     args: argparse.Namespace,
-    context: PipelineContext,
+    context: IntegrationContext,
     plan: tuple[PlannedStage, ...],
     *,
     created_at: str,
@@ -117,16 +154,25 @@ def _record(
         },
         "cohort": args.cohort,
         "subjects": roster(args.cohort),
+        "profile": args.profile,
         "staging": args.staging,
         "bids_dir": context.bids_dir,
+        "fmriprep_dir": context.fmriprep_dir,
+        "exclusions_file": context.exclusions_file,
+        "analysis_dir": context.analysis_dir,
         "parameters": {
+            "assume_complete": args.assume_complete,
+            "disable_integration": args.disable_integration,
+            "enable_integration": args.enable_integration,
+            "integration_directories": [str(path) for path in args.integration_dir],
             "live": args.live,
             "partition": args.partition,
             "project": args.project,
             "start": args.start,
             "throttle": args.throttle,
-            "extensions_enabled": not args.no_extensions,
+            "legacy_extensions_enabled": not args.no_extensions,
         },
+        "integrations": args.resolved_integrations,
         "stages": stages,
     }
 
@@ -146,7 +192,7 @@ def _default_record_path(log_dir: Path, created: datetime) -> Path:
 def _print_plan(args: argparse.Namespace, plan: tuple[PlannedStage, ...]) -> None:
     print(
         f"cohort {args.cohort} ({len(roster(args.cohort))} subjects), "
-        f"{len(plan)} stages, staging {args.staging}"
+        f"profile {args.profile}, {len(plan)} stages, staging {args.staging}"
     )
     for stage in plan:
         dependency = (
@@ -226,10 +272,32 @@ def _submit_export(stage: PlannedStage) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = get_parser().parse_args(argv)
+    profile = PipelineProfile(args.profile)
+    args.start = args.start or DEFAULT_START[profile]
     context = _context(args)
     try:
-        plan = pipeline_registry(include_extensions=not args.no_extensions).plan(
-            context, start=args.start
+        registry, integrations = build_registry(
+            profile,
+            integration_directories=args.integration_dir,
+            enable=args.enable_integration,
+            disable=args.disable_integration,
+            include_legacy_extensions=not args.no_extensions,
+        )
+        args.resolved_integrations = [
+            {
+                "name": spec.name,
+                "package": spec.package,
+                "slot": spec.slot.value,
+                "effect": spec.effect.value,
+                "source": spec.source,
+            }
+            for spec in integrations
+        ]
+        plan = plan_with_resume_guard(
+            registry,
+            context,
+            start=args.start,
+            assume_complete=args.assume_complete,
         )
     except RegistryError as error:
         raise SystemExit(str(error)) from error
@@ -242,6 +310,8 @@ def main(argv: list[str] | None = None) -> int:
         if stage.submission == SubmissionKind.EXPORT_ARRAY:
             submission_commands[stage.name] = _export_submission_command(stage)
     log_dir = Path(args.staging) / "logs" / args.cohort
+    if profile != PipelineProfile.BIDS:
+        log_dir /= profile.value
 
     if args.print_only:
         _print_plan(args, plan)
