@@ -185,6 +185,73 @@ Both tasks do show a systematic **+1.8 s (≈1.2 TR)** best-fitting lag. It is u
 tasks so it cannot be flanker-specific, but it is close enough to one volume to be worth
 a separate look; it costs sensitivity everywhere.
 
+## Regressor code review (before any re-run)
+
+Reviewed `task_config/loader.py`, `lev1/processing/{design,events,glm,confounds,contrasts,
+quality_control}.py`, and all 19 task YAMLs.
+
+### Defect 1 — RT is a duplicate boxcar, not a modulator (severe, study-wide)
+
+Covered above. The collinearity takes two forms, and the second is worse:
+
+| design | mechanism | what breaks |
+|---|---|---|
+| balanced (flanker, cuedTS, nBack, spatialTS, shapeMatching, directedForgetting) | RT duplicates the *sum* of conditions (`r = 0.95–0.96`) | `task-baseline`, `response_time`; differences spared (VIF ≈ 1.1) |
+| one dominant condition (goNogo, stopSignal) | RT duplicates `go` *directly* (`r = 0.965 / 0.963`, `go` ≈ 96% of trials) | the `go` beta and **every contrast containing it**, including the main contrasts `nogo_success-go` (VIF 11.5) and `stop_success-go` |
+
+So goNogo and stopSignal main contrasts are affected; flanker's is not.
+
+### Defect 2 — epoch and event regressors averaged together in `task-baseline`
+
+`directedForgetting`, `directedForgettingWFlanker` and `stopSignalWDirectedForgetting`
+average `memory_and_cue` (`duration: duration`, a multi-second epoch) with `duration: 1`
+condition regressors. Convolved amplitude scales with duration, so the nominal equal
+weights do not produce an equal average. directedForgetting has the second-highest
+`task-baseline` VIF (33.8).
+
+### Defect 3 — the VIF alarm exists and is silenced
+
+`quality_control.py` computes per-contrast VIFs, writes them to CSV, logs at
+**`logger.debug`**, and carries an explicit "Does NOT fail-fast on high VIFs" comment. A VIF
+of 59.5 therefore produced no output at default log level for the entire study. Worse, the
+signal *did* reach `qa-lev1` via `cohort-outliers`, and `network_qa`'s
+`DEFAULT_VIF_IGNORE = ("task-baseline", "response_time")` was then added to suppress it. The
+justification recorded at the time — "high by construction" — was wrong: it is high by a
+fixable misspecification. Revisit that ignore-list once Defect 1 is fixed.
+
+### Verified NOT broken (do not re-check)
+
+- **Confounds alignment**: `reset_index(drop=True)` after both trim and filter, so
+  `pd.concat(axis=1)` cannot misalign task regressors against confounds.
+- **NaN handling**: negative RT becomes NaN before `rt_too_fast` is computed, so omissions
+  cannot double-count; NaN rows are dropped before `compute_regressor`.
+- **Numeric durations**: the `constant_{N}_column` sentinel correctly preserves
+  `duration: 10` (a prior bug collapsed all numeric durations to 1.0).
+- **Trial coverage**: 0–2% of `test_trial` rows unmodelled across the eight base tasks —
+  edge cases, not systematic leakage into the implicit baseline.
+- **Nuisance definition**: go/nogo tasks restrict to `trial_type == "go"`, so successful
+  withholds are not mis-flagged as omissions.
+- **Amplitudes**: only `1` or binary indicators; no un-centred continuous modulator exists.
+- **Slice-timing reference** is resolved from the sidecar, not hardcoded to TR/2.
+
+### Choices worth questioning (not defects)
+
+- `hrf_model="spm"` with **no temporal derivative**, against a measured systematic +1.8 s
+  (≈1.2 TR) best-fitting lag. A temporal derivative would absorb it; today it costs
+  sensitivity in every task.
+- A stale comment in `design.py` claims fMRIPrep's `cosine00` is a constant column. It is
+  not (235 unique values, sd 0.065). The fallback still adds an intercept correctly, but the
+  `has_constant` heuristic would be fooled by any genuinely constant non-zero nuisance
+  column.
+
+### Fixing Defect 1 requires code, not just config
+
+There is **no mean-centring or orthogonalisation anywhere** in the regressor path;
+`_resolve_column_or_constant` returns raw column values. So `amplitude: response_time` would
+still be an un-centred modulator and still collinear. A correct fix needs a centring
+capability in the loader/design layer before the YAMLs can express a parametric RT
+regressor.
+
 ## Remaining questions
 
 - Choose the response-time arm for headline analyses.
