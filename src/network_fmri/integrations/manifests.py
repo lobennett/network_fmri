@@ -19,6 +19,7 @@ from network_fmri.integrations.v1 import (
 
 ENTRY_POINT_GROUP = "network_fmri.integrations.v1"
 CATALOG = Path(__file__).parent / "catalog"
+_SLOT_ORDER = {slot: index for index, slot in enumerate(LifecycleSlot)}
 _TOP_LEVEL = {
     "api_version",
     "name",
@@ -200,9 +201,14 @@ def resolve_integrations(
     unknown = sorted(enabled - known)
     if unknown:
         raise ManifestError("unknown integrations: " + ", ".join(unknown))
+    unknown_disabled = sorted(disabled - {spec.name for spec in manifests})
+    if unknown_disabled:
+        raise ManifestError(
+            "unknown disabled integrations: " + ", ".join(unknown_disabled)
+        )
     active = [
         spec
         for spec in all_specs
         if spec.name not in disabled and (spec.enabled or spec.name in enabled)
     ]
-    return tuple(sorted(active, key=lambda spec: (spec.slot.value, spec.name)))
+    return tuple(sorted(active, key=lambda spec: (_SLOT_ORDER[spec.slot], spec.name)))

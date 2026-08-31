@@ -313,6 +313,45 @@ def test_fmriprep_verifier_records_subjects_and_exclusions(tmp_path):
         verify_inputs(args)
 
 
+def test_activation_typos_fail_and_specs_follow_lifecycle_order():
+    with pytest.raises(ManifestError, match="unknown disabled integrations"):
+        resolve_integrations(disable=["misspelled"])
+
+    specs = {
+        "a-pre-fmriprep": IntegrationSpec(
+            name="a-pre-fmriprep",
+            package="pytest",
+            description="later lifecycle slot",
+            category=IntegrationCategory.PREPROCESSING,
+            slot=LifecycleSlot.PRE_FMRIPREP,
+            effect=Effect.READ_ONLY,
+            command=("later",),
+        ),
+        "z-pre-trim": IntegrationSpec(
+            name="z-pre-trim",
+            package="pytest",
+            description="earlier lifecycle slot",
+            category=IntegrationCategory.PREPROCESSING,
+            slot=LifecycleSlot.PRE_TRIM,
+            effect=Effect.READ_ONLY,
+            command=("earlier",),
+        ),
+    }
+
+    class EntryPoint:
+        def __init__(self, name):
+            self.name = name
+
+        def load(self):
+            return specs[self.name]
+
+    resolved = resolve_integrations(
+        enable=specs,
+        discovered=[EntryPoint(name) for name in specs],
+    )
+    assert [spec.name for spec in resolved] == ["z-pre-trim", "a-pre-fmriprep"]
+
+
 def test_integration_cli_route_is_public():
     command, remaining = resolve_command(["integration", "list"])
     assert command.target == "network_fmri.integrations.cli:main"
