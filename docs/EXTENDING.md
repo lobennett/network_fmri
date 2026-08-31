@@ -85,7 +85,9 @@ uv run --frozen network_fmri pipeline --cohort discovery \
 ```
 
 `enabled = true` is available for a project-wide default; operators can still use
-`--disable-integration`. Prefer `enabled = false` until the package and its scientific
+`--disable-integration`. Unknown enable and disable names fail planning so configuration
+typos cannot silently change the DAG. Prefer `enabled = false` until the package and its
+scientific
 parameters have been reviewed. The machine-readable plan records the manifest source,
 package, slot, effect, rendered argv, resources, paths, and provider.
 
@@ -101,8 +103,11 @@ uv run --frozen network_fmri pipeline --cohort discovery \
 
 ## Post-fMRIPrep and analysis examples
 
-The external inputs are verified in a small Slurm job before the package runs. This
-prevents a typo or incomplete derivative from launching an analysis.
+The external inputs are verified in a small Slurm job before the package runs. The
+verifier requires an fMRIPrep `GeneratedBy` record and the exact selected cohort roster.
+For the analysis profile it also requires a `network_qa`-style lockfile whose metadata
+names the same cohort. This prevents a typo, partial derivative, or wrong exclusion file
+from launching an analysis.
 
 ```bash
 # Package that needs fMRIPrep but makes its own QC derivative.

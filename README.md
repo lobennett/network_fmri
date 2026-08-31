@@ -83,7 +83,9 @@ uv run --frozen network_fmri pipeline --cohort discovery \
 
 `--print` has no filesystem side effects unless `--plan-json PATH` is supplied.
 A live submission returns after queuing the dependency graph and writes an atomic
-`pipeline-plan-*.json` under `$SCRATCH/network_fmri/logs/<cohort>/`. The record includes
+`pipeline-plan-*.json`. BIDS-profile records live under
+`$SCRATCH/network_fmri/logs/<cohort>/`; post-fMRIPrep and analysis records add the profile
+as a subdirectory. The record includes
 the code revision, dirty state, subjects, commands, resources, artifacts, dependencies,
 providers, job IDs, and any partial-submission failure.
 
@@ -127,8 +129,9 @@ project.
 
 New packages use versioned manifests and one of four stable slots: `pre-trim`,
 `pre-fmriprep`, `post-fmriprep`, or `analysis`. Installation alone never activates a v1
-integration. The post-fMRIPrep and analysis profiles verify external derivatives and the
-compiled exclusion lockfile before submitting the package job.
+integration. The post-fMRIPrep profile verifies the derivative and exact cohort roster;
+the analysis profile additionally verifies the compiled exclusion lockfile and its cohort
+identity before submitting the package job.
 
 ```bash
 uv run --frozen network_fmri integration validate --check-installed

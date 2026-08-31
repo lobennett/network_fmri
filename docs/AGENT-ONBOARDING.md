@@ -91,7 +91,7 @@ for reproducible runs.
 | Resource | Path |
 |---|---|
 | Cohort BIDS datasets | `$SCRATCH/network_fmri/<cohort>/bids` |
-| Cohort and campaign logs | `$SCRATCH/network_fmri/logs/<cohort>/`, `.../logs/campaign/` |
+| Cohort and campaign logs | `$SCRATCH/network_fmri/logs/<cohort>/` (profile plans may be one level below), `.../logs/campaign/` |
 | Campaign | `$SCRATCH/mechababs_campaigns/r01network` |
 | Campaign ledger | `<campaign>/desc-mechababs_datasets.tsv` |
 | BABS projects | `<campaign>/studies/study-<cohort>/derivatives/<Pipeline>` |
