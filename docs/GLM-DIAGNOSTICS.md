@@ -370,6 +370,27 @@ powered test.
 **Incidental but useful:** `RTepoch` gives a cleaner positive control than `noRT` on every
 ROI, which is evidence the variable-epoch model fits these data better.
 
+## Whole-brain group result, and why n = 5 cannot settle it
+
+The ROI tests could only see a-priori coordinates. Unrestricted whole-brain group inference
+on the `RTepoch` arm (FSL randomise, TFCE, sign-flipping):
+
+| | max(1-p) | corrected p | voxels p<0.10 | uncorrected \|t\|>3.5 |
+|---|---:|---:|---:|---:|
+| `task-baseline` (control) | 0.9375 | **0.0625** | 7,115 (16.3%) | 4.16% |
+| `incongruent-congruent` | 0.5625 | 0.4375 | 0 | 2.22% |
+
+The control shows a strong, spatially extended effect; the conflict contrast shows nothing
+anywhere, not merely outside the chosen ROIs.
+
+**The binding constraint is structural, not statistical.** With five subjects a one-sample
+sign-flip test has only 2^5 = 32 possible permutations, so the smallest attainable corrected
+p is 1/32 = 0.031. Clearing p < 0.05 requires being the single most extreme permutation. The
+positive control reached p = 0.0625 — second best of 32 — so even a large, obvious effect
+cannot be declared significant at this n. Discovery is therefore incapable of a corrected
+group result regardless of effect size, and validation (n = 41) is the first cohort where
+permutation inference can return a meaningful corrected p at all.
+
 ## Independent verification
 
 `network_glm`'s flanker result was reproduced by an implementation sharing no code with it:
