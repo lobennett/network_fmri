@@ -333,10 +333,42 @@ strict.
    conflict activation here is largely time-on-task, RTDur removing it is correct behaviour,
    not a defect.
 
-Possibility 2 is directly testable with the three arms, and they make opposite predictions:
-`RTDur` removes RT-driven conflict, `noRT` leaves it unmodelled in the conditions, and
-`RTepoch` models it *as* condition duration and should show it most strongly. Flanker-only
-across all three is ~15 cells.
+Possibility 2 was tested with all three arms on flanker (5 subjects, a-priori ROIs) and is
+**falsified**. `RTepoch` models RT *as* condition duration and should therefore capture any
+time-on-task conflict effect most strongly; it shows nothing.
+
+`task-baseline` (positive control), mean z / n>0 of 5:
+
+| ROI | RTDur | noRT | RTepoch |
+|---|---:|---:|---:|
+| L motor | -1.42, 0/5 | +1.90, 5/5 (p=.002) | **+2.65, 5/5 (p=.001)** |
+| L IPS | -1.36, 0/5 | +0.97, 4/5 | **+1.69, 5/5 (p=.037)** |
+
+`incongruent-congruent` (the test):
+
+| ROI | RTDur | noRT | RTepoch |
+|---|---:|---:|---:|
+| dACC / pre-SMA | -0.63, 0/5 (p=.010) | -0.21, 1/5 | -0.26, 1/5 |
+| L dlPFC | -0.29, 1/5 | -0.16, 2/5 | -0.25, 1/5 |
+| R dlPFC | -0.09, 2/5 | +0.15, 3/5 | +0.19, 3/5 |
+| L motor (ctrl) | -0.08, 1/5 | +0.50, 5/5 (p=.038) | +0.36, 4/5 |
+
+Two conclusions.
+
+**The pipeline is validated.** Under `RTepoch` the positive control is textbook — left motor
+cortex at +2.65 with 5/5 subjects positive for a right-hand button-press task, and left IPS
+at +1.69, 5/5. A pipeline that recovers that is capable of detecting what is present, so a
+null elsewhere can be read as a null rather than a defect. `RTDur`'s significantly *negative*
+dACC is an artifact of that arm's global sign inversion, not an inverted conflict effect.
+
+**There is no detectable flanker conflict effect at n = 5, under any RT model.** The only
+positive is left motor (noRT +0.50, 5/5) — longer/more effortful responding on incongruent
+trials, in the control region, not in the cognitive-control network. This is an effect-size
+and power question, not a modelling one; the validation cohort is the first properly
+powered test.
+
+**Incidental but useful:** `RTepoch` gives a cleaner positive control than `noRT` on every
+ROI, which is evidence the variable-epoch model fits these data better.
 
 ## Remaining questions
 
