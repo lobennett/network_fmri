@@ -370,6 +370,44 @@ powered test.
 **Incidental but useful:** `RTepoch` gives a cleaner positive control than `noRT` on every
 ROI, which is evidence the variable-epoch model fits these data better.
 
+## Independent verification
+
+`network_glm`'s flanker result was reproduced by an implementation sharing no code with it:
+SPM double-gamma HRF written from the formula (scipy, not nilearn's `compute_regressor`),
+design assembled directly, fit by `numpy.linalg.lstsq`, runs combined by inverse-variance
+weighting. Restricted to the a-priori ROIs. Script: `independent_glm_check.py`.
+
+| ROI | task-baseline (indep / nglm noRT) | incongruent-congruent (indep / nglm noRT) |
+|---|---|---|
+| L motor (control) | **+2.83, 5/5** / +1.90, 5/5 | +0.79, 5/5 / +0.50, 5/5 |
+| L IPS | +0.94, 4/5 / +0.97, 4/5 | +0.27, 4/5 / +0.15, 4/5 |
+| dACC / pre-SMA | -1.79, 0/5 / -0.72, 2/5 | **-0.11, 2/5** / -0.21, 1/5 |
+| L ant insula | -1.48, 0/5 / -0.65, 2/5 | +0.19, 4/5 / +0.03, 3/5 |
+
+Every sign and subject-count agrees. Magnitudes differ where expected: the independent model
+uses 6 motion parameters plus cosines, `network_glm` uses 24 plus spike regressors.
+
+### FitLins was attempted and abandoned
+
+FitLins 0.11.0 (`/home/groups/russpold/singularity_images/fitlins-0.11.0.simg`; the
+`fitlins_latest.sif` in the OAK shared containers is broken — Python 3.6, numpy/nilearn
+conflict). Seven attempts, each fix revealing a different mismatch:
+
+- `--cleanenv` does not stop the container importing the user's `~/.local` site-packages;
+  `--containall` plus `PYTHONNOUSERSITE=1` is required.
+- pybids `Filter` only exposes columns named in `By` to its query.
+- `Filter` densifies its inputs through a signal filter, which fails on a string column, so
+  `Factor` must come first; `Factor` in turn cannot sort a column mixing strings with NaN.
+- Then a recurring off-by-one between the pybids sample grid and the BOLD length
+  (`length of regressors provided: 247, number of time-frames: 246`). Partly explained by
+  floating point — `246*1.49/1.49 = 246.00000000000003`, which `ceil`s to 247 — but
+  excluding the two runs that predicted for produced a further, different off-by-one
+  (234 vs 233), so the grid is derived through rounding stages this model does not capture.
+
+The derivatives are not at fault: confounds and BOLD row counts match exactly in all five
+sessions. Note also that FitLins uses nilearn internally, so it would not have provided
+HRF- or solver-level independence anyway — the from-scratch check above provides more.
+
 ## Remaining questions
 
 - Choose the response-time arm for headline analyses.
