@@ -49,10 +49,13 @@ script_preamble: |
 job_compute_space: "/scratch/users/${USER}"
 
 # Max array tasks running at once, baked into babs's `--array=1-N%<throttle>`.
-# russpold is a 16-node/448-CPU lab partition and each job takes 5 CPUs, so an
-# unthrottled 497-task array would take the whole thing and block labmates. 12 x 5
-# = 60 CPUs, ~13% of russpold, with the rest spilling to `normal`.
-array_throttle: 12
+# russpold is a 16-node/448-CPU lab partition, so an unthrottled array would take the
+# whole thing and block labmates. Per-job cost differs by pipeline -- MRIQC asks 5 CPUs,
+# fMRIPrep 8, XCP-D 9 -- so at 8 concurrent the worst case is 72 CPUs, ~16% of russpold,
+# with the rest spilling to `normal`. Baked in at `babs init` as --throttle, so it must be
+# set before scaffolding; a live array can be changed with
+# `scontrol update ArrayTaskThrottle=N`.
+array_throttle: 8
 
 # Sherlock has NO Slurm auto-routing — every job MUST name a --partition.
 # russpold (lab owner, 16 nodes, up to 7-day) first, normal (shared pool) as
