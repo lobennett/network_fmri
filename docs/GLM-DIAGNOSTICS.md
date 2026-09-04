@@ -429,6 +429,59 @@ The derivatives are not at fault: confounds and BOLD row counts match exactly in
 sessions. Note also that FitLins uses nilearn internally, so it would not have provided
 HRF- or solver-level independence anyway — the from-scratch check above provides more.
 
+## The powered answer: n = 46 on the v1 derivatives
+
+Discovery could not settle the flanker question (five subjects cap a sign-flip test at
+p >= 1/32). Rather than wait for v2's validation fMRIPrep, the models were run against the
+**v1** derivatives on OAK, which already cover all 41 v2-validation subjects plus the 5
+discovery subjects with `space-MNI152NLin2009cAsym_res-2` preproc BOLD, confounds and
+events -- 208 flanker runs, complete coverage, no code change required.
+
+**Why v1 works unmodified.** v1 is internally consistent: its events (0.002-340.31 s) match
+its *untrimmed* 242-volume BOLD, and its confounds match that length. v2's trim and its
+-7 TR event shift are a matched pair; v1's untrimmed pair is equally valid, and
+`network_glm` already defaults to `dummy_scans=0` / `adjust_for_dummy_scans=False`. v2's
+exclusion lockfiles transfer directly because they record decisions about *scans*, not
+derivatives, which also sidesteps v1's older MRIQC threshold.
+
+### Result, three arms, n = 46
+
+`task-baseline` (positive control) is overwhelming in every arm — 40-59% of the brain at
+corrected p < 0.05, `max(1-p) = 0.9998`, every a-priori ROI at p ~= 1.000.
+
+`incongruent-congruent` yields **zero voxels at corrected p < 0.05 in all three arms**:
+
+| arm | best corrected p | dACC uncorrected t | L motor `task-baseline` t |
+|---|---:|---:|---:|
+| RTDur | 0.051 | -0.35 | **-4.10 (inverted)** |
+| noRT | 0.104 | +0.97 | +2.78 |
+| RTepoch | 0.162 | **+1.37** | **+4.51** |
+
+The lev2 test is a two-sided F-test (`--fonly`), so significance there is sign-agnostic —
+the signs above come from the uncorrected t maps and are what make the result readable.
+
+**Conclusions.**
+
+1. **Not a power problem and not a pipeline problem.** With a control lighting up half the
+   brain at corrected p < 0.05, a conflict contrast producing nothing anywhere is a fact
+   about the effect, not the analysis.
+2. **The effect is directionally correct but tiny.** In the two arms whose control has the
+   right sign, dACC conflict is *positive* (+1.37 RTepoch, +0.97 noRT) — the expected
+   direction, at roughly a third of the t needed for uncorrected significance.
+3. **RTDur's task-baseline is sign-inverted at n = 46**, replicating the n = 5 finding. Its
+   nominally best conflict p-value comes from a model whose positive control is wrong and
+   should not be used to choose the arm.
+4. **RTepoch is the arm to use** for anything involving `task-baseline`: correct sign,
+   largest control effect, and the largest dACC conflict t.
+
+**Caveats.** These are v1 derivatives — fMRIPrep 25.2.4, the 7 non-steady-state volumes
+retained, no qa-reject anatomical decisions, no DataLad provenance. v2 should confirm when
+its validation fMRIPrep finishes; the direction and magnitude are unlikely to change
+qualitatively but the published numbers must come from v2. Note also that the ROI figures
+are whole-brain-corrected p values sampled inside spheres, not small-volume-corrected — a
+properly ROI-corrected test would be more sensitive, though a dACC t of 1.37 will not
+survive it either.
+
 ## Remaining questions
 
 - Choose the response-time arm for headline analyses.
