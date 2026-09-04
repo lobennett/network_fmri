@@ -482,6 +482,14 @@ are whole-brain-corrected p values sampled inside spheres, not small-volume-corr
 properly ROI-corrected test would be more sensitive, though a dACC t of 1.37 will not
 survive it either.
 
+## Summary PDF
+
+`flanker_report.py` regenerates a three-page summary at
+`$SCRATCH/network_fmri/flanker_findings.pdf`: the n = 46 result and per-arm comparison, the
+RTepoch group maps (control, conflict corrected, conflict uncorrected), and the ruled-out
+table with the measurement that eliminated each explanation. Measured values are constants
+at the top of the script, sourced from this document.
+
 ## Remaining questions
 
 - Choose the response-time arm for headline analyses.
