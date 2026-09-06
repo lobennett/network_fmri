@@ -57,6 +57,7 @@ ruff check src tests
 git diff --check
 uv run --frozen network_fmri integration validate --check-installed
 uv run --frozen network_fmri pipeline --cohort discovery --print --no-extensions
+uv run --frozen network_fmri workflow plan config/workflow.example.toml
 ```
 
 When Ruff is available, format-check files you changed rather than reformatting unrelated
@@ -88,8 +89,8 @@ For a sibling-package change:
 
 Do not broaden the pipeline into a general workflow engine. New packages use the bounded,
 versioned lifecycle contract in [docs/EXTENDING.md](docs/EXTENDING.md): add a pinned
-dependency and a disabled manifest, declare inputs/outputs/resources, activate it
-explicitly, and add focused tests. New contributions must not depend on internal
+dependency and a disabled manifest, declare inputs/outputs/resources, activate it explicitly
+in the study-run file, and add focused tests. New contributions must not depend on internal
 `StageSpec` details or add another execution backend.
 
 ## Documentation and commits

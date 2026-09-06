@@ -14,7 +14,7 @@ and DataLad history as described in [Checking live state](#checking-live-state).
    `git branch -vv`.
 3. Use the pinned environment. A green test run against stale sibling packages is not
    evidence.
-4. Print a pipeline plan before submission.
+4. Create one run specification and print its complete plan before submission.
 5. Treat campaign datasets and execution records as provenance, not disposable output.
 
 `network_fmri` owns curation, orchestration, Slurm submission, and DataLad provenance.
@@ -107,31 +107,54 @@ The campaign uses DataLad container shims, not the image paths directly. See
 
 ## Running the workflow
 
-Print the cohort DAG and resolved commands first:
+Copy the versioned example, change the cohort and Oak model paths, then inspect the whole
+run before touching Flywheel or Slurm:
 
 ```bash
-uv run --frozen network_fmri pipeline --cohort discovery --print
+cp config/workflow.example.toml config/workflow.local.toml
+uv run --frozen network_fmri workflow plan config/workflow.local.toml \
+    --json workflow-plan.json
 ```
 
-Submit only after checking cohort, paths, resources, and exclusions:
+The plan is an ordered runbook, not another execution engine. For each ready step, check
+its filesystem inputs and print the exact command:
 
 ```bash
-uv run --frozen network_fmri pipeline --cohort discovery --live
+uv run --frozen network_fmri workflow check config/workflow.local.toml <step>
+uv run --frozen network_fmri workflow command config/workflow.local.toml <step>
 ```
 
-Each submitted stage writes an incremental JSON execution record in the cohort log
-directory. The built-in registry owns stage order, resources, and artifact handoffs.
-External packages use versioned lifecycle manifests; they do not edit the central DAG.
+Review the generated command, run it from the pinned environment, wait for its decisive
+artifact, then advance to the next step. The BIDS profile submits a dependency graph and
+writes its own incremental JSON execution record; campaign and model commands expose
+their Slurm job IDs and logs. Archive the reviewed TOML and JSON plan with the analysis.
+
+Keep `live = false` while reviewing Flywheel export. Set it to true only for the
+production run. The workflow refuses relative paths, unset environment variables,
+unknown keys, unsupported task-contrast spaces, and scientific flags duplicated in
+`level1_extra_args` or `level2_extra_args`.
+
+The final model steps are deliberately:
+
+```text
+level1-initial → level1-outliers → compile-level1-exclusions
+               → level1-finalize → level2
+```
+
+The final exclusion lock does not directly filter level 2. It must first refresh every
+subject's fixed-effects maps. Keep `residuals = true` when practical so
+`level1-finalize` can reuse run fits via `--skip-existing`; otherwise that safety pass
+refits the runs.
+
+External packages are activated by name in the run file's `[integrations]` table:
 
 ```bash
 uv run --frozen network_fmri integration validate --check-installed
 uv run --frozen network_fmri integration list
-uv run --frozen network_fmri pipeline --cohort discovery \
-    --enable-integration <name> --print
 ```
 
-Use the `post-fmriprep` profile for packages that only require verified fMRIPrep output,
-and `analysis` when the package also needs the compiled exclusion lockfile. Always pass
+Use `post_fmriprep` for packages that only require verified fMRIPrep output, and
+`analysis` when the package also needs the compiled motion exclusion lock. Always use
 explicit `/oak` result paths for large derivatives. Integration receipts live under
 `<staging>/logs/<cohort>/integrations/`; a resume cannot bypass an enabled integration
 without a receipt unless `--assume-complete` is explicitly supplied. The full contract

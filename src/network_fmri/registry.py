@@ -441,6 +441,11 @@ def load_stage_extensions(
 
 COMMANDS: tuple[CommandSpec, ...] = (
     CommandSpec(
+        ("workflow",),
+        "network_fmri.workflow:main",
+        "plan and preflight an end-to-end study run",
+    ),
+    CommandSpec(
         ("pipeline",), "network_fmri.pipeline:main", "submit the cohort pipeline"
     ),
     CommandSpec(

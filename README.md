@@ -29,11 +29,13 @@ and `excluded` (11). Cohort outputs live under
 Flywheel
   └─ BIDS profile (12 dependent Slurm stages)
        export → merge → prepare → events → validate → check
-                    ↑ pre-trim                 ↓ pre-fMRIPrep integrations
-         ├─ MRIQC campaign ──→ IQMs ──→ motion/behavior lockfile
-         └─ fMRIPrep campaign → verified derivatives → post-fMRIPrep integrations
-                                      └─ verified exclusions → analysis integrations
-                                                                     └─ GLMs
+                    ↑ pre-trim                 ↓ pre-fMRIPrep package integrations
+         ├─ MRIQC campaign ──→ IQMs ──→ motion/behavior lock ────────┐
+         └─ fMRIPrep campaign → derivatives → post-fMRIPrep packages ├─→ level 1
+                                                                      ↓
+                                                   cohort outliers → final lock
+                                                                      ↓
+                                              refresh fixed effects → level 2
 ```
 
 Responsibility is intentionally split:
@@ -66,7 +68,39 @@ The exact check and canonical paths are in
 Flywheel credentials come from `~/.config/flywheel/user.json` and can be created with
 `fw login <key>`.
 
-## Run the cohort pipeline
+## Plan an end-to-end run
+
+The normal entry point is one small, versioned TOML file. It records cohort, storage,
+explicit package integrations, and scientific model choices without replacing the
+existing commands or Slurm:
+
+```bash
+cp config/workflow.example.toml config/workflow.local.toml
+# Edit the cohort and Oak level1/level2 paths.
+
+uv run --frozen network_fmri workflow plan config/workflow.local.toml --json workflow-plan.json
+uv run --frozen network_fmri workflow check config/workflow.local.toml prepare-bids
+uv run --frozen network_fmri workflow command config/workflow.local.toml prepare-bids
+```
+
+`workflow plan` is read-only unless `--json` is requested. It prints the complete
+operator runbook from Flywheel through level 2, including required handoffs and exact
+commands. `workflow check` tests a step's filesystem prerequisites, and
+`workflow command` prints one shell-safe command to run. Execution still belongs to the
+existing commands, so there is no second workflow engine to learn.
+
+Keep reviewed study-run files and their JSON plans with the project provenance. Do not
+put credentials in them. The example defaults to `live = false`, which prevents
+Flywheel tagging and export until the operator deliberately enables it. Large model
+outputs must use explicit Oak paths.
+
+The model tail intentionally contains two level-1 passes. The first fits runs using the
+motion/behavior lock. Cohort outlier detection then creates additional evidence, which
+`qa-lev1` compiles into the final lock. The second pass refreshes subject fixed effects
+against that final lock before level 2. With residuals enabled, existing run fits are
+reused; without residuals, the safety pass refits them.
+
+## Run or recover the BIDS stages directly
 
 Inspect before submitting:
 
@@ -162,31 +196,22 @@ After campaign cells merge, the normal downstream order is:
 MRIQC → mriqc-iqms → qa-motion ───────────────┐
                                                ├→ glm-lev1
 fMRIPrep → fmriprep-derivs ──────────────────┘
-glm-lev1 → glm-outliers → qa-lev1 → glm-lev2
+glm-lev1 (provisional fixed effects)
+  → glm-outliers
+  → qa-lev1 (final lock)
+  → glm-lev1 --skip-existing (refresh fixed effects)
+  → glm-lev2
 ```
 
-Representative commands, with paths replaced for the analysis:
+Use the run specification rather than retyping paths and scientific flags:
 
 ```bash
-# Foreground DataLad operation: run in an allocation or enclosing Slurm job.
-uv run --frozen network_fmri mriqc-iqms --cohort discovery
-uv run --frozen network_fmri qa-motion --cohort discovery
-
-# Foreground DataLad operation: submit this wrapper with enough memory.
-sbatch -p russpold,normal -c 8 --mem=128G -t 48:00:00 \
-    --wrap "uv run --frozen network_fmri fmriprep-derivs --cohort discovery"
-
-uv run --frozen network_fmri glm-lev1 --cohort discovery --base-tasks \
-    --results-dir <lev1> -- \
-    --bids-dir <bids> --fmriprep-dir <fmriprep> \
-    --exclusions-file <motion-lock.json> --residuals
-
-uv run --frozen network_fmri glm-outliers --lev1-dirs <lev1> \
-    --results-dir <lev1>/cohort_qa
-uv run --frozen network_fmri qa-lev1 --cohort discovery --lev1-dir <lev1> \
-    --dependency <glm-outliers-job-id>
-uv run --frozen network_fmri glm-lev2 --lev1-dirs <lev1> --all \
-    --results-dir <lev2> -- --num-permutations 5000
+network_fmri workflow check <run.toml> level1-initial
+network_fmri workflow command <run.toml> level1-initial
+network_fmri workflow command <run.toml> level1-outliers
+network_fmri workflow command <run.toml> compile-level1-exclusions
+network_fmri workflow command <run.toml> level1-finalize
+network_fmri workflow command <run.toml> level2
 ```
 
 Arguments after `--` pass unchanged to the owning sibling package. This repository owns
@@ -209,7 +234,7 @@ are applied when models consume the data rather than by deleting preprocessed ou
 | Behavioral reconciliation | Leave 5 false starts and 8 runs with no source file without events |
 | Event creation | Clip 22 behavioral records to the acquired scan |
 | `qa-motion` | Gate level-1 runs using MRIQC motion and behavioral evidence |
-| `qa-lev1` | Gate level-2 inputs using level-1 outlier evidence |
+| `qa-lev1` | Add level-1 outliers, then gate the fixed-effects refresh that feeds level 2 |
 
 Exact subjects, sessions, evidence, and known limitations are in
 [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md).
@@ -232,6 +257,7 @@ Exact subjects, sessions, evidence, and known limitations are in
 
 ```text
 src/network_fmri/
+  workflow.py          strict study-run config, runbook, provenance plan, and preflight
   registry.py          CLI and internal typed stage contracts
   pipeline.py          plan, record, and submit the Slurm DAG
   integrations/        public v1 contracts, manifests, profiles, and receipts
@@ -243,5 +269,6 @@ src/network_fmri/
   qa/                  validation, invariants, campaign handoff, and exclusions
   glm/                 Slurm fan-out for network_glm
 tests/                 unit and orchestration contract tests
+config/                copyable study-run example
 docs/                  operational, scientific, extension, and campaign references
 ```

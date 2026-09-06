@@ -5,7 +5,8 @@ Two compiles gate the models, each downstream of the step producing its evidence
 * ``qa-motion`` after ``mriqc-iqms`` — motion and behavioural exclusions, the lockfile
   ``glm-lev1 --exclusions-file`` consumes. Motion comes from MRIQC's IQMs, so this needs
   no fMRIPrep output and the exclusion set is known before preprocessing.
-* ``qa-lev1`` after ``glm-outliers`` — adds lev1 outliers, gating what enters lev2.
+* ``qa-lev1`` after ``glm-outliers`` — adds lev1 outliers. Its final lockfile must
+  refresh subject fixed effects before those maps enter lev2.
 
 Flags after ``--`` go to ``network-qa compile`` untouched, so what they mean stays that
 package's business. Nothing here filters a pipeline's inputs: the full BIDS tree is
@@ -108,5 +109,5 @@ def motion(argv: list[str] | None = None) -> int:
 
 
 def lev1(argv: list[str] | None = None) -> int:
-    """Adds lev1 outliers, for the second level."""
+    """Add lev1 outliers for a final fixed-effects pass before the second level."""
     return _run("lev1", argv)

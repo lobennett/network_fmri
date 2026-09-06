@@ -8,6 +8,7 @@ def test_help_is_generated_from_the_authoritative_command_registry(capsys):
     assert cli.main(["--help"]) == 0
     output = capsys.readouterr().out
     assert output == command_usage()
+    assert "workflow" in output
     assert "submit fw-heudiconv" in output
     assert "glm-lev2" in output
 

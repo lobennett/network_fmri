@@ -1,0 +1,45 @@
+# Copy this file, choose the cohort and two Oak result paths, then run:
+#   network_fmri workflow plan config/workflow.local.toml
+#
+# The file is configuration and provenance, not a shell script. Environment variables
+# are expanded, but every resulting path must be absolute.
+schema_version = 1
+cohort = "discovery"
+project = "r01network"
+staging = "${SCRATCH}/network_fmri"
+campaign = "${SCRATCH}/mechababs_campaigns/r01network"
+partition = "russpold,normal"
+export_throttle = 3
+campaign_batch = 1
+
+# Safe default: plan Flywheel work without tagging or exporting. Set true only for the
+# reviewed production run.
+live = false
+
+[integrations]
+# Additional directories containing v1 TOML manifests.
+directories = []
+# Explicit activation is grouped by the lifecycle profile that will run the package.
+bids = []
+post_fmriprep = []
+analysis = []
+
+[model]
+# Large derivatives belong on Oak, not in a home directory.
+level1_dir = "/oak/stanford/groups/your-group/network_fmri/discovery/level1"
+level2_dir = "/oak/stanford/groups/your-group/network_fmri/discovery/level2"
+tasks = "base" # base, dual, or all
+space = "fsaverage6" # MNI, T1w, surface (fsnative), or fsaverage6
+# Omit smoothing_fwhm for no smoothing; add it only after scientific review.
+min_runs = 2
+confounds_mode = "full"
+
+# Keeping residuals lets level1-finalize reuse run fits and refresh fixed effects after
+# cohort outlier exclusions. With residuals=false that safety pass refits the runs.
+residuals = true
+skip_qc_plots = true
+num_permutations = 5000
+
+# Escape hatches for supported sibling-package flags not governed above.
+level1_extra_args = []
+level2_extra_args = []

@@ -84,12 +84,20 @@ uv run --frozen network_fmri pipeline --cohort discovery \
     --enable-integration package-qc --print
 ```
 
-`enabled = true` is available for a project-wide default; operators can still use
-`--disable-integration`. Unknown enable and disable names fail planning so configuration
-typos cannot silently change the DAG. Prefer `enabled = false` until the package and its
-scientific
-parameters have been reviewed. The machine-readable plan records the manifest source,
-package, slot, effect, rendered argv, resources, paths, and provider.
+For a real study run, activation belongs in its workflow file so it cannot be separated
+from the cohort, paths, and model choices:
+
+```toml
+[integrations]
+bids = ["package-qc"]
+```
+
+Then inspect it with `network_fmri workflow plan <run.toml>`. The lower-level
+`pipeline --enable-integration` form remains useful for focused development and recovery.
+`enabled = true` is available for a project-wide default, but prefer `enabled = false`
+until the package and its scientific parameters have been reviewed. Unknown names fail
+planning instead of silently changing the DAG. The machine-readable plan records the
+manifest source, package, slot, effect, rendered argv, resources, paths, and provider.
 
 For a site manifest:
 
