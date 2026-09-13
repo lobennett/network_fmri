@@ -66,6 +66,8 @@ bids_app_args:
   --warp-surfaces-native2std: ""
   --combine-runs: ""
   --linc-qc: ""
+  # Avoid the ABCC report failure in this container; retain surface processing.
+  --abcc-qc: "n"
   --min-time: "150"
   --min-coverage: "0.5"
   --band-stop-min: "12"
