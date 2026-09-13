@@ -147,8 +147,11 @@ Then, in order:
    verify the YAML source paths. Configure from the three pipeline filenames and
    `sherlock.yaml`; configure vendors the shims.
 3. Regenerate and save each study wrapper's `sourcedata+subjects.tsv` and
-   `sourcedata+subjects+sessions.tsv` using the patched `study_meta.py` against its
-   curated BIDS tree. The helper's `--out` directory must already exist. Register
+   `sourcedata+subjects+sessions.tsv` by running the patched `study_meta.py` as a
+   script (`python3 code/mechababs/study_meta.py --bids-dir <tree> --out <dir>`)
+   against its curated BIDS tree; its help text labels itself `network_fmri
+   study-meta`, but there is no such subcommand. The helper's `--out` directory must
+   already exist. Register
    the cohort study wrappers with `add-dataset`; metadata must be current before
    generating inclusion lists or scaffolding.
 4. Inspect composed BABS configuration, inclusion lists and generated job scripts.
@@ -157,9 +160,11 @@ Then, in order:
    `iterate --dry-run` before any separately authorized campaign advance.
 5. Save the campaign dataset and changed study/subdataset pointers.
 
-`uv run --frozen pytest -q tests/test_campaign_snapshot.py` applies the patch to
-offline source fixtures and checks selection, metadata regeneration and composed
-BABS arguments. It does not launch BIDS apps or a campaign.
+`uv run --frozen pytest -q tests/test_campaign_snapshot.py` applies the whole patch
+to offline source fixtures and checks selection, metadata regeneration, composed
+BABS configuration, and the `babs init` arguments `iterate` builds — including each
+pipeline's processing level and `--throttle 8`. It does not launch BIDS apps, BABS,
+Slurm, or a campaign.
 
 A BABS container source is a shim DataLad dataset, not a direct `.sif` path. The
 checked-in pipeline configs refer to shim datasets relative to the campaign root; create

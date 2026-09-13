@@ -1,6 +1,8 @@
 """Execute the published campaign patch against its pinned source fixtures."""
 
+import contextlib
 import csv
+import importlib
 import runpy
 import shutil
 import subprocess
@@ -22,14 +24,7 @@ def reconstructed(tmp_path):
     # Give git apply its own root even when pytest's temp directory is in a checkout.
     subprocess.run(["git", "init", "-q", str(target)], check=True, capture_output=True)
     subprocess.run(
-        [
-            "git",
-            "apply",
-            "--include=mechababs/select.py",
-            "--include=merge_config.py",
-            "--include=study_meta.py",
-            str(SNAPSHOT / "mechababs-local-patches.diff"),
-        ],
+        ["git", "apply", str(SNAPSHOT / "mechababs-local-patches.diff")],
         cwd=target,
         check=True,
         capture_output=True,
@@ -40,6 +35,39 @@ def reconstructed(tmp_path):
 
 def config(name):
     return yaml.safe_load((SNAPSHOT / name).read_text())
+
+
+@contextlib.contextmanager
+def mechababs_package(root):
+    """Import the reconstructed package, then unload it so the next case re-imports."""
+    sys.path.insert(0, str(root))
+    importlib.invalidate_caches()
+    try:
+        yield importlib.import_module("mechababs.iterate")
+    finally:
+        sys.path.remove(str(root))
+        for name in [n for n in sys.modules if n.split(".")[0] == "mechababs"]:
+            del sys.modules[name]
+
+
+def synthetic_campaign(tmp_path, pipelines, ds_id):
+    """A campaign root holding the snapshot configs and one cloned study wrapper."""
+    campaign = tmp_path / "campaign"
+    for name in (*pipelines, "sherlock.yaml"):
+        destination = campaign / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text((SNAPSHOT / name).read_text())
+    study = campaign / "studies" / f"study-{ds_id}"
+    (study / "sourcedata").mkdir(parents=True)
+    (study / "sourcedata" / "sourcedata+subjects+sessions.tsv").write_text(
+        (FIXTURES / "sessions.tsv").read_text()
+    )
+    (study / ".gitmodules").write_text(
+        f'[submodule "sourcedata/{ds_id}"]\n'
+        f"\tpath = sourcedata/{ds_id}\n"
+        f"\turl = https://example.invalid/{ds_id}.git\n"
+    )
+    return campaign
 
 
 def test_mriqc_inclusion_excludes_fieldmap_only_sessions(reconstructed, tmp_path):
@@ -177,3 +205,49 @@ def test_generated_babs_config_preserves_campaign_behavior(
         assert merged["pre_app_commands"] == config(name)["pre_app_commands"]
     elif name.startswith("MRIQC"):
         assert merged["bids_app_args"]["--fd_thres"] == "0.5"
+
+
+@pytest.mark.parametrize(
+    "pipeline,processing_level,chained",
+    [
+        ("MRIQC-24.0.2.yaml", "session", False),
+        ("fMRIPrep-25.2.5.yaml", "subject", False),
+        ("XCP-D-26.0.2.yaml", "subject", True),
+    ],
+)
+def test_scaffold_builds_babs_init_from_pipeline_level_and_cluster_throttle(
+    reconstructed,
+    tmp_path,
+    monkeypatch,
+    pipeline,
+    processing_level,
+    chained,
+):
+    pipelines = ["MRIQC-24.0.2.yaml", "fMRIPrep-25.2.5.yaml", "XCP-D-26.0.2.yaml"]
+    ds_id = "ds-example"
+    short = pipeline.removesuffix(".yaml")
+    campaign = synthetic_campaign(tmp_path, pipelines, ds_id)
+    # The ledger says session; only the pipeline YAML can raise a cell to subject.
+    row = {"dataset_id": ds_id, "processing_level": "session"}
+    if chained:
+        row["fMRIPrep-25.2.5_babs"] = f"studies/study-{ds_id}/derivatives/fMRIPrep-25.2.5"
+        row["fMRIPrep-25.2.5_babs-merged"] = "merged"
+    cfg = {"venv": "venv", "cluster": "sherlock.yaml", "pipelines": pipelines}
+
+    commands = []
+    with mechababs_package(reconstructed) as iterate:
+        monkeypatch.setattr(iterate, "run", lambda cmd, **kw: commands.append(list(map(str, cmd))))
+        update = iterate.scaffold(campaign, cfg, row, short, pipeline, dry_run=True)
+
+    assert update == {f"{short}_babs": f"studies/study-{ds_id}/derivatives/{short}"}
+    babs_init = next(c[c.index("duct") + 1 :] for c in commands if "duct" in c)
+    assert babs_init[:3] == ["babs", "init", f"studies/study-{ds_id}/derivatives/{short}"]
+    assert babs_init[babs_init.index("--processing-level") + 1] == processing_level
+    assert babs_init[babs_init.index("--throttle") + 1] == "8"
+    if chained:
+        assert "--list-sub-file" not in babs_init
+    else:
+        assert (
+            babs_init[babs_init.index("--list-sub-file") + 1]
+            == f".mechababs/inclusions/{ds_id}_{short}.csv"
+        )
