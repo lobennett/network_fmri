@@ -7,7 +7,7 @@ import json
 import subprocess
 import sys
 from datetime import UTC, datetime
-from importlib.metadata import PackageNotFoundError, distribution, entry_points
+from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +16,7 @@ from network_fmri.integrations.manifests import (
     ENTRY_POINT_GROUP,
     ManifestError,
     load_manifests,
+    package_record as _package_record,
 )
 
 
@@ -28,19 +29,6 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
     temporary = path.with_name(f".{path.name}.tmp")
     temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
     temporary.replace(path)
-
-
-def _package_record(name: str) -> dict[str, Any]:
-    try:
-        installed = distribution(name)
-    except PackageNotFoundError as error:
-        raise RuntimeError(f"integration package is not installed: {name}") from error
-    direct_url = installed.read_text("direct_url.json")
-    return {
-        "name": installed.metadata.get("Name", name),
-        "version": installed.version,
-        "direct_url": json.loads(direct_url) if direct_url else None,
-    }
 
 
 def run_integration(args: argparse.Namespace) -> int:
@@ -59,9 +47,11 @@ def run_integration(args: argparse.Namespace) -> int:
         "command": command,
         "inputs": args.input,
         "outputs": args.output,
+        "predecessor": getattr(args, "predecessor", None),
         "started_at": _now(),
         "status": "running",
     }
+    _write_json(receipt, record)
     try:
         record["package"] = _package_record(args.package)
         missing_inputs = [path for path in args.input if not Path(path).exists()]
@@ -78,6 +68,8 @@ def run_integration(args: argparse.Namespace) -> int:
     except Exception as error:
         record["status"] = "failed"
         record["error"] = f"{type(error).__name__}: {error}"
+        if isinstance(error, subprocess.CalledProcessError):
+            record["returncode"] = error.returncode
         raise
     finally:
         record["ended_at"] = _now()
@@ -85,8 +77,8 @@ def run_integration(args: argparse.Namespace) -> int:
     return 0
 
 
-def verify_inputs(args: argparse.Namespace) -> int:
-    """Verify an externally produced derivative before downstream submission."""
+def _verified_inputs_record(args: argparse.Namespace) -> dict[str, Any]:
+    """Validate external inputs and return their receipt fields."""
 
     root = Path(args.fmriprep_dir)
     description_path = root / "dataset_description.json"
@@ -145,26 +137,36 @@ def verify_inputs(args: argparse.Namespace) -> int:
         exclusion_count = len(exclusions["exclusions"])
         exclusion_generators = metadata.get("generators")
 
-    _write_json(
-        Path(args.receipt),
-        {
-            "schema_version": 1,
-            "status": "verified",
-            "verified_at": _now(),
-            "cohort": args.cohort,
-            "fmriprep_dir": str(root.resolve()),
-            "fmriprep_generated_by": generated,
-            "subjects": subjects,
-            "exclusions_file": (
-                str(Path(args.exclusions_file).resolve())
-                if args.exclusions_file
-                else None
-            ),
-            "n_exclusions": exclusion_count,
-            "exclusion_generators": exclusion_generators,
-        },
-    )
-    print(f"verified {len(subjects)} fMRIPrep subjects -> {args.receipt}")
+    return {
+        "schema_version": 1,
+        "status": "verified",
+        "verified_at": _now(),
+        "cohort": args.cohort,
+        "fmriprep_dir": str(root.resolve()),
+        "fmriprep_generated_by": generated,
+        "subjects": subjects,
+        "exclusions_file": (
+            str(Path(args.exclusions_file).resolve()) if args.exclusions_file else None
+        ),
+        "n_exclusions": exclusion_count,
+        "exclusion_generators": exclusion_generators,
+    }
+
+
+def verify_inputs(args: argparse.Namespace) -> int:
+    """Verify external inputs, invalidating any receipt from an earlier attempt."""
+    receipt = Path(args.receipt)
+    record = {"schema_version": 1, "status": "running", "started_at": _now()}
+    _write_json(receipt, record)
+    try:
+        record.update(_verified_inputs_record(args))
+    except (Exception, SystemExit) as error:
+        record.update(status="failed", error=f"{type(error).__name__}: {error}")
+        raise
+    finally:
+        record["ended_at"] = _now()
+        _write_json(receipt, record)
+    print(f"verified {len(record['subjects'])} fMRIPrep subjects -> {args.receipt}")
     return 0
 
 
@@ -222,6 +224,7 @@ def get_parser() -> argparse.ArgumentParser:
     run.add_argument("--package", required=True)
     run.add_argument("--effect", required=True)
     run.add_argument("--receipt", required=True)
+    run.add_argument("--predecessor")
     run.add_argument("--input", action="append", default=[])
     run.add_argument("--output", action="append", default=[])
     run.add_argument("command", nargs=argparse.REMAINDER)

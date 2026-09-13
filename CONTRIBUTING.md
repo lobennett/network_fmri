@@ -19,6 +19,7 @@ Run setup and tests on a Sherlock compute node (`sh_dev` or Slurm), not a login 
 
 ```bash
 ml load devel gcc/12.4.0
+ml load system git/2.45.1
 export UV_PROJECT_ENVIRONMENT="$SCRATCH/venvs/network_fmri_dev"
 export UV_CACHE_DIR="$SCRATCH/.uv"
 uv sync --frozen

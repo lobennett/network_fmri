@@ -8,9 +8,11 @@ the exception, since it decides the lev2 fan-out and which modules to load.
 from __future__ import annotations
 
 import argparse
+import shlex
 import subprocess
 import sys
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from network_fmri.cohorts import COHORTS, roster
 
@@ -22,23 +24,49 @@ def _split_passthrough(argv: list[str]) -> tuple[list[str], list[str]]:
     """Split our own flags from everything after ``--``, which is the runner's."""
     if "--" in argv:
         i = argv.index("--")
-        return argv[:i], argv[i + 1:]
+        return argv[:i], argv[i + 1 :]
     return argv, []
 
 
-def _write_list(log_dir: Path, name: str, lines: list[str]) -> Path:
+def _write_list(
+    log_dir: Path, name: str, lines: list[str], *, print_only=False
+) -> Path:
+    """Give each submission its own roster, including when earlier jobs are queued."""
+    log_dir = log_dir.resolve()
+    if print_only:
+        return log_dir / f"{Path(name).stem}-PREVIEW.txt"
     log_dir.mkdir(parents=True, exist_ok=True)
-    path = log_dir / name
-    path.write_text("\n".join(lines) + "\n")
-    return path
+    with NamedTemporaryFile(
+        mode="w",
+        dir=log_dir,
+        prefix=f"{Path(name).stem}-",
+        suffix=".txt",
+        delete=False,
+    ) as handle:
+        handle.write("\n".join(lines) + "\n")
+        return Path(handle.name)
 
 
-def _sbatch(name: str, body: str, args: argparse.Namespace, log_dir: Path,
-            n_tasks: int | None) -> str:
+def _sbatch(
+    name: str, body: str, args: argparse.Namespace, log_dir: Path, n_tasks: int | None
+) -> str:
     """Submit one job, or an array of ``n_tasks``. Returns the Slurm job id."""
-    cmd = ["sbatch", "-J", name, "-p", args.partition,
-           "-c", str(args.cpus), f"--mem={args.mem_gb}G", "-t", args.time,
-           "-o", f"{log_dir}/{name}-%A-%a.out", "-e", f"{log_dir}/{name}-%A-%a.err"]
+    cmd = [
+        "sbatch",
+        "-J",
+        name,
+        "-p",
+        args.partition,
+        "-c",
+        str(args.cpus),
+        f"--mem={args.mem_gb}G",
+        "-t",
+        args.time,
+        "-o",
+        f"{log_dir}/{name}-%A-%a.out",
+        "-e",
+        f"{log_dir}/{name}-%A-%a.err",
+    ]
     if n_tasks is not None:
         cmd.append(f"--array=1-{n_tasks}%{args.throttle}")
     if args.dependency:
@@ -73,11 +101,16 @@ def _common(p: argparse.ArgumentParser, level: str) -> None:
 
 def lev1(argv: list[str] | None = None) -> int:
     """One array task per (subject, task)."""
-    from network_glm.task_config.loader import get_all_tasks, get_base_tasks, get_dual_tasks
+    from network_glm.task_config.loader import (
+        get_all_tasks,
+        get_base_tasks,
+        get_dual_tasks,
+    )
 
     own, extra = _split_passthrough(list(sys.argv[1:] if argv is None else argv))
-    p = argparse.ArgumentParser(prog="network_fmri glm-lev1",
-                                epilog="Flags after -- go to `network-glm lev1`.")
+    p = argparse.ArgumentParser(
+        prog="network_fmri glm-lev1", epilog="Flags after -- go to `network-glm lev1`."
+    )
     p.add_argument("--cohort", choices=list(COHORTS))
     p.add_argument("--subjects", nargs="+")
     g = p.add_mutually_exclusive_group(required=True)
@@ -93,25 +126,34 @@ def lev1(argv: list[str] | None = None) -> int:
     subjects = args.subjects or (roster(args.cohort) if args.cohort else None)
     if not subjects:
         raise SystemExit("need --cohort or --subjects")
-    tasks = {"all": get_all_tasks, "base": get_base_tasks,
-             "dual": get_dual_tasks}[args.taskset]() if args.taskset else args.tasks
+    tasks = (
+        {"all": get_all_tasks, "base": get_base_tasks, "dual": get_dual_tasks}[
+            args.taskset
+        ]()
+        if args.taskset
+        else args.tasks
+    )
 
     # sub- prefixed: the runner interpolates subj_id raw into output filenames.
     pairs = [f"sub-{s.removeprefix('sub-')} {t}" for s in subjects for t in tasks]
     log_dir = Path(args.log_dir or Path(args.results_dir) / "logs")
-    listfile = _write_list(log_dir, "lev1_units.txt", pairs)
+    listfile = _write_list(log_dir, "lev1_units.txt", pairs, print_only=args.print_only)
 
     # mri_surf2surf is only reached from the surface branch, and only when smoothing.
     modules = ""
     if args.space in SURFACE_SPACES and "--smoothing-fwhm" in extra:
         modules = "module load biology freesurfer/8.1.0\n"
 
-    body = (f'set -euo pipefail\n{modules}'
-            f'UNIT="$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {listfile})"\n'
-            f'{GLM} lev1 --subj-id "${{UNIT%% *}}" --task-name "${{UNIT##* }}" '
-            f'--results-dir {args.results_dir} --space {args.space} {" ".join(extra)}')
+    body = (
+        f"set -euo pipefail\n{modules}"
+        f'UNIT="$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {shlex.quote(str(listfile))})"\n'
+        f'{shlex.quote(GLM)} lev1 --subj-id "${{UNIT%% *}}" --task-name "${{UNIT##* }}" '
+        f"{shlex.join(['--results-dir', args.results_dir, '--space', args.space, *extra])}"
+    )
     job = _sbatch("glm-lev1", body, args, log_dir, len(pairs))
-    print(f"  glm-lev1 {job}  ({len(subjects)} subjects x {len(tasks)} tasks = {len(pairs)} tasks)")
+    print(
+        f"  glm-lev1 {job}  ({len(subjects)} subjects x {len(tasks)} tasks = {len(pairs)} tasks)"
+    )
     return 0
 
 
@@ -121,8 +163,9 @@ def lev2(argv: list[str] | None = None) -> int:
     from network_glm.task_config.loader import get_base_tasks, get_dual_tasks
 
     own, extra = _split_passthrough(list(sys.argv[1:] if argv is None else argv))
-    p = argparse.ArgumentParser(prog="network_fmri glm-lev2",
-                                epilog="Flags after -- go to `network-glm lev2`.")
+    p = argparse.ArgumentParser(
+        prog="network_fmri glm-lev2", epilog="Flags after -- go to `network-glm lev2`."
+    )
     p.add_argument("--lev1-dirs", nargs="+", required=True)
     p.add_argument("--results-dir", required=True)
     g = p.add_mutually_exclusive_group(required=True)
@@ -137,26 +180,41 @@ def lev2(argv: list[str] | None = None) -> int:
     if args.contrasts:
         contrasts = args.contrasts
     else:
-        task_filter = {"all": None, "base": get_base_tasks(), "dual": get_dual_tasks()}[args.taskset]
+        task_filter = {"all": None, "base": get_base_tasks(), "dual": get_dual_tasks()}[
+            args.taskset
+        ]
         contrasts = discover_contrasts_from_lev1_dirs(
-            args.lev1_dirs, task_filter=task_filter, space=args.space)
+            args.lev1_dirs, task_filter=task_filter, space=args.space
+        )
     if not contrasts:
         raise SystemExit(f"no contrasts found under {' '.join(args.lev1_dirs)}")
 
     log_dir = Path(args.log_dir or Path(args.results_dir) / "logs")
-    listfile = _write_list(log_dir, "lev2_contrasts.txt", contrasts)
+    listfile = _write_list(
+        log_dir, "lev2_contrasts.txt", contrasts, print_only=args.print_only
+    )
 
     # randomise is FSL; the surface path is self-contained.
     modules = "" if args.space == "surface" else "module load biology fsl\n"
 
     # --level1-dirs, not --lev1-dirs: network_glm spells it out, and it is required —
     # discovering the contrasts here does not tell the subprocess where the maps are.
-    lev1 = " ".join(str(d) for d in args.lev1_dirs)
-    body = (f'set -euo pipefail\n{modules}'
-            f'CONTRAST="$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {listfile})"\n'
-            f'{GLM} lev2 --contrast "$CONTRAST" --level1-dirs {lev1} '
-            f'--output-dir {args.results_dir} '
-            f'--space {args.space} {" ".join(extra)}')
+    command_args = shlex.join(
+        [
+            "--level1-dirs",
+            *args.lev1_dirs,
+            "--output-dir",
+            args.results_dir,
+            "--space",
+            args.space,
+            *extra,
+        ]
+    )
+    body = (
+        f"set -euo pipefail\n{modules}"
+        f'CONTRAST="$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {shlex.quote(str(listfile))})"\n'
+        f'{shlex.quote(GLM)} lev2 --contrast "$CONTRAST" {command_args}'
+    )
     job = _sbatch("glm-lev2", body, args, log_dir, len(contrasts))
     print(f"  glm-lev2 {job}  ({len(contrasts)} contrasts)")
     return 0
@@ -165,21 +223,31 @@ def lev2(argv: list[str] | None = None) -> int:
 def outliers(argv: list[str] | None = None) -> int:
     """A single job: cohort-level outlier detection over the level-1 maps."""
     own, extra = _split_passthrough(list(sys.argv[1:] if argv is None else argv))
-    p = argparse.ArgumentParser(prog="network_fmri glm-outliers",
-                                epilog="Flags after -- go to `network-glm cohort-outliers`.")
+    p = argparse.ArgumentParser(
+        prog="network_fmri glm-outliers",
+        epilog="Flags after -- go to `network-glm cohort-outliers`.",
+    )
     # Same split as glm-lev2: the lev1 tree is an input, not where results land.
     p.add_argument("--lev1-dirs", nargs="+", required=True)
-    p.add_argument("--results-dir", default=None,
-                   help="where lev1_outliers.csv lands (default: <first lev1 dir>/cohort_qa)")
+    p.add_argument(
+        "--results-dir",
+        default=None,
+        help="where lev1_outliers.csv lands (default: <first lev1 dir>/cohort_qa)",
+    )
     _common(p, "outliers")
     args = p.parse_args(own)
 
     out = Path(args.results_dir or Path(args.lev1_dirs[0]) / "cohort_qa")
     log_dir = Path(args.log_dir or out / "logs")
-    log_dir.mkdir(parents=True, exist_ok=True)
-    lev1 = " ".join(f"--lev1-dir {d}" for d in args.lev1_dirs)
-    body = (f'set -euo pipefail\n'
-            f'{GLM} cohort-outliers {lev1} --output-dir {out} {" ".join(extra)}')
+    if not args.print_only:
+        log_dir.mkdir(parents=True, exist_ok=True)
+    lev1 = [
+        token for directory in args.lev1_dirs for token in ("--lev1-dir", directory)
+    ]
+    command = shlex.join(
+        [GLM, "cohort-outliers", *lev1, "--output-dir", str(out), *extra]
+    )
+    body = f"set -euo pipefail\n{command}"
     job = _sbatch("glm-outliers", body, args, log_dir, None)
     print(f"  glm-outliers {job}")
     return 0

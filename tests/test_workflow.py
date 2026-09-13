@@ -97,12 +97,11 @@ def test_review_mode_cannot_submit_flywheel_export(tmp_path):
     )
 
 
-def test_without_residuals_finalization_explicitly_refits(tmp_path):
+def test_without_residuals_finalization_reuses_completed_contrast_fits(tmp_path):
     _, steps = _by_name(_write_config(tmp_path, residuals=False))
     final = steps["level1-finalize"]
     assert "--residuals" not in final.command
-    assert "--skip-existing" not in final.command
-    assert "refits run models" in final.note
+    assert "--skip-existing" in final.command
 
 
 def test_integrations_are_routed_to_explicit_profiles(tmp_path):

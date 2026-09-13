@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from network_fmri.integrations.manifests import ManifestError, resolve_integrations
+from network_fmri.cohorts import roster
+from network_fmri.integrations.manifests import (
+    ManifestError,
+    package_record,
+    resolve_integrations,
+)
 from network_fmri.integrations.v1 import Effect, IntegrationSpec, LifecycleSlot
 from network_fmri.registry import (
     CHECKED,
@@ -210,6 +217,8 @@ def _integration_stage(
         spec.effect.value,
         "--receipt",
         receipt.location,
+        "--predecessor",
+        predecessor,
     ]
     for path in required_paths:
         wrapper.extend(("--input", path))
@@ -276,6 +285,70 @@ def build_registry(
     return registry, integrations
 
 
+def _receipt_problem(
+    stage: PlannedStage, context: IntegrationContext, path: Path
+) -> str | None:
+    """A receipt permits resume only for a successful, matching contract."""
+    try:
+        record = json.loads(path.read_text())
+    except (OSError, ValueError) as error:
+        return f"unreadable receipt ({error})"
+    if not isinstance(record, dict) or record.get("schema_version") != 1:
+        return "invalid receipt schema"
+
+    if stage.provider.startswith("integration:"):
+        command = stage.command
+        expected = {
+            "status": "completed",
+            "integration": stage.name,
+            "effect": command[command.index("--effect") + 1],
+            "command": list(command[command.index("--") + 1 :]),
+            "predecessor": command[command.index("--predecessor") + 1],
+            "inputs": [item.location for item in stage.inputs],
+            "outputs": [
+                item.location for item in stage.outputs if item.location != str(path)
+            ],
+        }
+        package = record.get("package")
+
+        def normalize(name):
+            return re.sub(r"[-_.]+", "-", name).lower()
+
+        if not isinstance(package, dict) or not isinstance(package.get("name"), str):
+            return "missing package identity"
+        if normalize(package["name"]) != normalize(
+            stage.provider.removeprefix("integration:")
+        ):
+            return "package changed"
+        try:
+            installed = package_record(package["name"])
+        except (RuntimeError, OSError, ValueError) as error:
+            return f"cannot verify installed package ({error})"
+        if any(package.get(key) != installed[key] for key in ("version", "direct_url")):
+            return "installed package revision changed"
+    else:
+        expected = {
+            "status": "verified",
+            "cohort": context.cohort,
+            "subjects": sorted(f"sub-{subject}" for subject in roster(context.cohort)),
+            "fmriprep_dir": str(Path(context.fmriprep_dir).resolve()),
+            "exclusions_file": (
+                str(Path(context.exclusions_file).resolve())
+                if stage.name == "analysis-ready"
+                else None
+            ),
+        }
+    for key, value in expected.items():
+        if record.get(key) != value:
+            return f"{key} does not match the current stage"
+    missing = [
+        item.location
+        for item in (*stage.inputs, *stage.outputs)
+        if not Path(item.location).exists()
+    ]
+    return "missing paths: " + ", ".join(missing) if missing else None
+
+
 def plan_with_resume_guard(
     registry: StageRegistry,
     context: IntegrationContext,
@@ -304,11 +377,12 @@ def plan_with_resume_guard(
                 for output in stage.outputs
                 if output.name.endswith("-receipt") or output.name == stage.name
             )
-            if not Path(receipt.location).is_file():
-                missing.append(f"{stage.name}: {receipt.location}")
+            problem = _receipt_problem(stage, context, Path(receipt.location))
+            if problem:
+                missing.append(f"{stage.name}: {receipt.location} ({problem})")
         if missing:
             raise RegistryError(
-                "resume would bypass integrations without receipts: "
+                "resume would bypass integrations without receipts that prove completion: "
                 + "; ".join(missing)
                 + ". Resume at the first missing integration or pass --assume-complete."
             )

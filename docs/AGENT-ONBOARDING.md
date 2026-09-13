@@ -47,6 +47,7 @@ Use a compute node for environment creation and wheel builds:
 ```bash
 sh_dev
 ml load devel gcc/12.4.0
+ml load system git/2.45.1
 export UV_PROJECT_ENVIRONMENT=$SCRATCH/venvs/network_fmri_dev
 export UV_CACHE_DIR=$SCRATCH/.uv
 export PATH="$SCRATCH/git-annex/usr/bin:$PATH"
@@ -57,6 +58,8 @@ uv sync --frozen
 Python is constrained to 3.13. Loading GCC 12.4.0 is required on this CentOS 7 host;
 otherwise NumPy may fail with `CXXABI_1.3.9 not found`. Use `uv sync --frozen`, never an
 ad hoc `uv pip install`, so the installed sibling commits match `uv.lock`.
+Load Git 2.45.1 as well: the login environment's old Git lacks `--show-origin`,
+which prevents DataLad from importing even when the Python environment is correct.
 
 Verify what Python will actually import:
 
@@ -142,9 +145,12 @@ level1-initial → level1-outliers → compile-level1-exclusions
 ```
 
 The final exclusion lock does not directly filter level 2. It must first refresh every
-subject's fixed-effects maps. Keep `residuals = true` when practical so
-`level1-finalize` can reuse run fits via `--skip-existing`; otherwise that safety pass
-refits the runs.
+subject's fixed-effects maps. `level1-finalize` uses `--skip-existing` to reuse only
+completed runs with matching code, settings, input contents, and intact output contents.
+This also supports contrast-only runs. Legacy runs without completion records refit once.
+Smoothed GIFTI runs still refit because external FreeSurfer inputs are not fingerprinted.
+Superseded run contrast and fixed-effects maps are retained under suffixes that exclude
+them from level-2 discovery, including when exclusions remove every eligible run.
 
 External packages are activated by name in the run file's `[integrations]` table:
 
@@ -157,7 +163,7 @@ Use `post_fmriprep` for packages that only require verified fMRIPrep output, and
 `analysis` when the package also needs the compiled motion exclusion lock. Always use
 explicit `/oak` result paths for large derivatives. Integration receipts live under
 `<staging>/logs/<cohort>/integrations/`; a resume cannot bypass an enabled integration
-without a receipt unless `--assume-complete` is explicitly supplied. The full contract
+without a successful, matching receipt unless `--assume-complete` is explicitly supplied. The full contract
 and examples are in [EXTENDING.md](EXTENDING.md).
 
 Operate the preprocessing campaign in small, observable steps:

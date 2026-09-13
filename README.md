@@ -54,6 +54,7 @@ Use a compute node, not a login node:
 
 ```bash
 ml load devel gcc/12.4.0
+ml load system git/2.45.1
 export UV_PROJECT_ENVIRONMENT="$SCRATCH/venvs/network_fmri_dev"
 export UV_CACHE_DIR="$SCRATCH/.uv"
 uv sync --frozen
@@ -97,8 +98,9 @@ outputs must use explicit Oak paths.
 The model tail intentionally contains two level-1 passes. The first fits runs using the
 motion/behavior lock. Cohort outlier detection then creates additional evidence, which
 `qa-lev1` compiles into the final lock. The second pass refreshes subject fixed effects
-against that final lock before level 2. With residuals enabled, existing run fits are
-reused; without residuals, the safety pass refits them.
+against that final lock before level 2. Completed run fits are reused only when the
+code, settings, inputs, and outputs match, including when residuals are disabled.
+Old runs without completion records are refitted once.
 
 ## Run or recover the BIDS stages directly
 
@@ -178,6 +180,8 @@ uv run --frozen network_fmri pipeline --cohort discovery \
 Every integration gets an atomic execution receipt with the package version, exact argv,
 inputs, outputs, timestamps, and status. See [Adding a package](docs/EXTENDING.md) for the
 manifest schema, effect semantics, resume safeguard, and contributor checklist.
+Use `after = ["another-integration"]` to order packages within the same lifecycle slot.
+Resume requires a successful receipt matching the current contract and existing paths.
 
 ## Preprocessing and models
 
@@ -217,6 +221,8 @@ network_fmri workflow command <run.toml> level2
 Arguments after `--` pass unchanged to the owning sibling package. This repository owns
 fan-out, Slurm resources, dependencies, and host modules; the sibling package defines the
 scientific meaning of those arguments.
+Each model submission gets a unique array roster, so later submissions cannot change
+queued jobs. Model `--print` commands create no output directories or roster files.
 
 The campaign configuration, container locations, shim requirement, and XCP-D adaptations
 are documented in [docs/campaign/](docs/campaign/).

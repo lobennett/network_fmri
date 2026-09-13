@@ -290,6 +290,7 @@ def main(argv: list[str] | None = None) -> int:
                 "slot": spec.slot.value,
                 "effect": spec.effect.value,
                 "source": spec.source,
+                "after": list(spec.after),
             }
             for spec in integrations
         ]
