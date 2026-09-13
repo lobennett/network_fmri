@@ -92,6 +92,7 @@ class IntegrationSpec:
     outputs: tuple[IntegrationOutput, ...] = ()
     enabled: bool = False
     source: str | None = None
+    after: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not _NAME.fullmatch(self.name):
@@ -102,6 +103,12 @@ class IntegrationSpec:
             raise ValueError(f"integration {self.name!r} has an empty command token")
         if any(not path for path in self.requires):
             raise ValueError(f"integration {self.name!r} has an empty requirement")
+        if self.name in self.after or any(
+            not _NAME.fullmatch(name) for name in self.after
+        ):
+            raise ValueError(
+                f"integration {self.name!r} has invalid after dependencies"
+            )
         if self.effect == Effect.DERIVATIVE and not self.outputs:
             raise ValueError(
                 f"derivative integration {self.name!r} must declare an output"

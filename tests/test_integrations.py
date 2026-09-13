@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from network_fmri.integrations import (
     IntegrationSpec,
     LifecycleSlot,
 )
+from network_fmri.integrations import cli
 from network_fmri.integrations.cli import run_integration, verify_inputs
 from network_fmri.integrations.manifests import (
     ManifestError,
@@ -187,8 +189,229 @@ command = ["package-qc"]
         tmp_path / "staging" / "logs" / "discovery" / "integrations" / "package-qc.json"
     )
     receipt.parent.mkdir(parents=True)
-    receipt.write_text("{}\n")
+    bids = Path(context.bids_dir)
+    bids.mkdir(parents=True)
+    receipt.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "integration": "package-qc",
+                "status": "completed",
+                "effect": "read-only",
+                "command": ["package-qc"],
+                "inputs": [str(bids)],
+                "outputs": [],
+                "package": cli._package_record("pytest"),
+                "predecessor": "gs-pre",
+            }
+        )
+    )
     assert plan_with_resume_guard(registry, context, start="trim")[0].name == "trim"
+
+    for status in ("failed", "running"):
+        record = json.loads(receipt.read_text())
+        record["status"] = status
+        receipt.write_text(json.dumps(record))
+        with pytest.raises(RegistryError, match="receipt"):
+            plan_with_resume_guard(registry, context, start="trim")
+
+
+@pytest.mark.parametrize("receipt_text", ["{}", "{broken", "[]", "null"])
+def test_resume_rejects_invalid_receipts(tmp_path, receipt_text):
+    _manifest(
+        tmp_path,
+        """
+api_version = 1
+name = "package-qc"
+package = "pytest"
+description = "QC"
+category = "quality-control"
+slot = "pre-trim"
+effect = "read-only"
+enabled = true
+command = ["qc"]
+""",
+    )
+    registry, _ = build_registry(
+        "bids", integration_directories=[tmp_path], include_legacy_extensions=False
+    )
+    context = _context(tmp_path)
+    receipt = Path(context.staging) / "logs/discovery/integrations/package-qc.json"
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text(receipt_text)
+    with pytest.raises(RegistryError, match="receipt"):
+        plan_with_resume_guard(registry, context, start="trim")
+    assert (
+        plan_with_resume_guard(registry, context, start="trim", assume_complete=True)[
+            0
+        ].name
+        == "trim"
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "command",
+        "inputs",
+        "outputs",
+        "missing-output",
+        "package-version",
+        "package-revision",
+        "predecessor",
+    ],
+)
+def test_resume_requires_current_contract_and_outputs(tmp_path, change):
+    _manifest(
+        tmp_path,
+        """
+api_version = 1
+name = "package-qc"
+package = "pytest"
+description = "QC"
+category = "quality-control"
+slot = "pre-trim"
+effect = "derivative"
+enabled = true
+command = ["qc", "--threshold", "2"]
+[[outputs]]
+name = "report"
+location = "{bids_dir}/report.json"
+description = "QC report"
+""",
+    )
+    registry, _ = build_registry(
+        "bids", integration_directories=[tmp_path], include_legacy_extensions=False
+    )
+    context = _context(tmp_path)
+    bids = Path(context.bids_dir)
+    bids.mkdir(parents=True)
+    output = bids / "report.json"
+    if change != "missing-output":
+        output.write_text("{}")
+    record = {
+        "schema_version": 1,
+        "integration": "package-qc",
+        "effect": "derivative",
+        "status": "completed",
+        "command": ["qc", "--threshold", "2"],
+        "inputs": [str(bids)],
+        "outputs": [str(output)],
+        "package": cli._package_record("pytest"),
+        "predecessor": "gs-pre",
+    }
+    if change in ("command", "inputs", "outputs"):
+        record[change] = ["old-value"]
+    elif change == "package-version":
+        record["package"]["version"] = "0.0.1"
+    elif change == "package-revision":
+        record["package"]["direct_url"] = {"vcs_info": {"commit_id": "old"}}
+    elif change == "predecessor":
+        record["predecessor"] = "old-stage-order"
+    receipt = Path(context.staging) / "logs/discovery/integrations/package-qc.json"
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text(json.dumps(record))
+    with pytest.raises(RegistryError, match="receipt"):
+        plan_with_resume_guard(registry, context, start="trim")
+
+
+def test_failed_verification_invalidates_previous_success_receipt(tmp_path):
+    receipt = tmp_path / "verified.json"
+    receipt.write_text(json.dumps({"status": "verified"}))
+    args = argparse.Namespace(
+        cohort=None,
+        fmriprep_dir=str(tmp_path / "missing"),
+        exclusions_file=None,
+        receipt=str(receipt),
+    )
+    with pytest.raises(SystemExit, match="does not exist"):
+        verify_inputs(args)
+    assert json.loads(receipt.read_text())["status"] == "failed"
+
+
+def test_integration_marks_receipt_running_before_launch(tmp_path):
+    receipt = tmp_path / "receipt.json"
+    receipt.write_text(json.dumps({"status": "completed"}))
+    args = argparse.Namespace(
+        name="qc",
+        package="pytest",
+        effect="read-only",
+        receipt=str(receipt),
+        input=[],
+        output=[],
+        command=[
+            sys.executable,
+            "-c",
+            "import json,sys; assert json.load(open(sys.argv[1]))['status'] == 'running'",
+            str(receipt),
+        ],
+    )
+    assert run_integration(args) == 0
+    assert json.loads(receipt.read_text())["status"] == "completed"
+
+
+def test_explicit_integration_order_overrides_alphabetical_names(tmp_path):
+    for name, after in (("z-first", []), ("a-second", ["z-first"])):
+        (tmp_path / f"{name}.toml").write_text(f'''
+api_version = 1
+name = "{name}"
+package = "pytest"
+description = "ordered QC"
+category = "quality-control"
+slot = "pre-trim"
+effect = "read-only"
+enabled = true
+command = ["qc"]
+after = {json.dumps(after)}
+''')
+    registry, _ = build_registry(
+        "bids", integration_directories=[tmp_path], include_legacy_extensions=False
+    )
+    plan = registry.plan(_context(tmp_path))
+    names = [stage.name for stage in plan]
+    assert names[names.index("gs-pre") : names.index("trim") + 1] == [
+        "gs-pre",
+        "z-first",
+        "a-second",
+        "trim",
+    ]
+    assert next(stage for stage in plan if stage.name == "a-second").dependencies == (
+        "z-first",
+    )
+
+
+@pytest.mark.parametrize("problem", ["missing", "cycle", "different-slot"])
+def test_invalid_integration_order_fails_before_submission(problem):
+    first = IntegrationSpec(
+        name="first",
+        package="pytest",
+        description="first",
+        command=("qc",),
+        category=IntegrationCategory.QUALITY_CONTROL,
+        slot=LifecycleSlot.PRE_TRIM,
+        effect=Effect.READ_ONLY,
+    )
+    second = replace(first, name="second", after=("first",))
+    if problem == "missing":
+        second = replace(second, after=("missing",))
+    elif problem == "cycle":
+        first = replace(first, after=("second",))
+    else:
+        first = replace(first, slot=LifecycleSlot.PRE_FMRIPREP)
+
+    class EntryPoint:
+        def __init__(self, spec):
+            self.name = spec.name
+            self.spec = spec
+
+        def load(self):
+            return self.spec
+
+    with pytest.raises(ManifestError):
+        resolve_integrations(
+            enable=["first", "second"],
+            discovered=[EntryPoint(first), EntryPoint(second)],
+        )
 
 
 def test_analysis_profile_verifies_external_inputs_before_package(tmp_path):

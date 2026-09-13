@@ -70,6 +70,32 @@ Additional paths in `requires` and all declared outputs are checked on the compu
 The command is considered successful only when it exits zero and every promised output
 exists.
 
+### Put an added stage between existing steps
+
+For a check between `gs-pre` and `trim`, use `slot = "pre-trim"` in the manifest above.
+The planner creates `gs-pre → package-qc → trim`; the check's failure prevents trimming.
+No scheduler or submission code needs to change.
+
+When one package needs another package in the same slot, declare the dependency:
+
+```toml
+# In the second package's manifest:
+slot = "pre-trim"
+after = ["package-qc"]
+```
+
+`after` names enabled integrations in the same slot. Missing/disabled predecessors,
+cross-slot dependencies, and cycles fail before submission. Unconstrained packages
+remain deterministic; names do not override an explicit dependency. A slot's commands
+remain serial, which also keeps in-place preparation operations from overlapping.
+
+For a new boundary between other built-in stages, add one `LifecycleSlot` member and
+one `_SLOTS` declaration in `integrations/planner.py`, naming its input artifact,
+predecessor, and successor. Add a placement/dependency test alongside
+`test_pretrim_integration_gates_trim_and_renders_contract`. Keep new scientific work in
+the contributing package's CLI. This small, explicit addition avoids teaching every
+package the internal registry or creating a general-purpose workflow language.
+
 ## Install and activate it
 
 Add the package to `[project.dependencies]` and, for an immutable Git dependency, pin its
@@ -165,7 +191,23 @@ status, exact argv, inputs, outputs, installed distribution version and direct U
 code, and any failure. Post-fMRIPrep and analysis verification create similar receipts
 under `.../artifacts/`.
 
-If `--from` would skip an enabled integration whose receipt is absent, planning stops.
+If `--from` would skip an enabled integration whose receipt is missing, invalid,
+running, failed, or different from the planned contract, planning stops. The check
+compares the installed package version/revision, immediate predecessor, command,
+effect, input/output paths, and successful
+status; declared paths must still exist. Verification receipts must match the cohort,
+roster, derivative path, and exclusion path. Starting another execution or verification
+invalidates the previous receipt before work begins.
+
+Older receipts without the predecessor field must be regenerated. Changing a package
+pin or stage ordering likewise requires re-execution; unchanged command text alone is
+not proof that the same implementation ran in the same position. Editable packages
+should not be used for production resume: their recorded local path is not a source hash.
+
+Receipts verify the execution contract; they do not recursively hash large derivative
+directories or prove that their contents have not changed. Preserve DataLad revisions
+and use distinct result paths for different configurations.
+
 Resume at that integration, or use `--assume-complete` only after independently verifying
 the output. This safeguard does not replace DataLad provenance for commands that modify a
 dataset; packages remain responsible for using DataLad when appropriate.

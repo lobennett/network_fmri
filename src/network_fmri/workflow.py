@@ -490,7 +490,7 @@ def _level1_command(
         command.append("--residuals")
     if model.skip_qc_plots:
         command.append("--skip-qc-plots")
-    if finalize and model.residuals:
+    if finalize:
         command.append("--skip-existing")
     command.extend(model.level1_extra_args)
     return tuple(command)
@@ -704,11 +704,7 @@ def build_steps(config: WorkflowConfig) -> tuple[WorkflowStep, ...]:
                 _level1_command(config, config.final_lock, finalize=True),
                 requires=(config.model.level1_dir, config.final_lock),
                 produces=(config.model.level1_dir,),
-                note=(
-                    "Existing residuals make this a fixed-effects refresh."
-                    if config.model.residuals
-                    else "Residuals are disabled, so this safety pass refits run models."
-                ),
+                note="Matching completed run fits are reused; fixed effects use the final lock.",
             ),
             WorkflowStep(
                 "level2",

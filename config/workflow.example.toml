@@ -34,8 +34,8 @@ space = "fsaverage6" # MNI, T1w, surface (fsnative), or fsaverage6
 min_runs = 2
 confounds_mode = "full"
 
-# Keeping residuals lets level1-finalize reuse run fits and refresh fixed effects after
-# cohort outlier exclusions. With residuals=false that safety pass refits the runs.
+# Emit residual time series in addition to contrasts. Finalization can reuse completed
+# run fits with either value; code, settings, inputs, and outputs must still match.
 residuals = true
 skip_qc_plots = true
 num_permutations = 5000

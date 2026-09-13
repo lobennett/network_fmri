@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import tomllib
 from collections.abc import Iterable
-from importlib.metadata import EntryPoint, entry_points
+from graphlib import CycleError, TopologicalSorter
+from importlib.metadata import (
+    EntryPoint,
+    PackageNotFoundError,
+    distribution,
+    entry_points,
+)
 from pathlib import Path
 
 from network_fmri.integrations.v1 import (
@@ -19,7 +26,22 @@ from network_fmri.integrations.v1 import (
 
 ENTRY_POINT_GROUP = "network_fmri.integrations.v1"
 CATALOG = Path(__file__).parent / "catalog"
-_SLOT_ORDER = {slot: index for index, slot in enumerate(LifecycleSlot)}
+
+
+def package_record(name: str) -> dict:
+    """Identify the installed implementation used by an integration receipt."""
+    try:
+        installed = distribution(name)
+    except PackageNotFoundError as error:
+        raise RuntimeError(f"integration package is not installed: {name}") from error
+    direct_url = installed.read_text("direct_url.json")
+    return {
+        "name": installed.metadata.get("Name", name),
+        "version": installed.version,
+        "direct_url": json.loads(direct_url) if direct_url else None,
+    }
+
+
 _TOP_LEVEL = {
     "api_version",
     "name",
@@ -33,6 +55,7 @@ _TOP_LEVEL = {
     "requires",
     "resources",
     "outputs",
+    "after",
 }
 
 
@@ -98,6 +121,7 @@ def load_manifest(path: Path) -> IntegrationSpec:
             outputs=tuple(outputs),
             enabled=enabled,
             source=str(path),
+            after=_strings(data.get("after", []), f"{path}: after"),
         )
     except (KeyError, TypeError, ValueError, tomllib.TOMLDecodeError) as error:
         if isinstance(error, ManifestError):
@@ -211,4 +235,30 @@ def resolve_integrations(
         for spec in all_specs
         if spec.name not in disabled and (spec.enabled or spec.name in enabled)
     ]
-    return tuple(sorted(active, key=lambda spec: (_SLOT_ORDER[spec.slot], spec.name)))
+    by_name = {spec.name: spec for spec in active}
+    for spec in active:
+        for predecessor in spec.after:
+            if predecessor not in by_name:
+                raise ManifestError(
+                    f"integration {spec.name!r} requires enabled integration {predecessor!r}"
+                )
+            if by_name[predecessor].slot != spec.slot:
+                raise ManifestError(
+                    f"integration {spec.name!r}: after dependencies must use the same slot"
+                )
+    ordered = []
+    for slot in LifecycleSlot:
+        graph = {
+            spec.name: spec.after
+            for spec in sorted(active, key=lambda spec: spec.name)
+            if spec.slot == slot
+        }
+        try:
+            ordered.extend(
+                by_name[name] for name in TopologicalSorter(graph).static_order()
+            )
+        except CycleError as error:
+            raise ManifestError(
+                f"integration dependency cycle: {error.args[1]}"
+            ) from error
+    return tuple(ordered)
