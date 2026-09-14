@@ -50,6 +50,20 @@ PY
 
 ## Verification
 
+GitHub Actions runs the full software suite on pushes and pull requests using Ubuntu
+24.04 (x86_64), Python 3.13, and `uv.lock`. The workflow verifies the checkout import
+and installed Git dependency revisions, then runs `uv run --frozen pytest -q -ra`
+without test exclusions; any skips and their reasons appear in the test summary.
+The same frozen commands work in an isolated Linux x86_64 development environment;
+the lock intentionally does not support macOS or ARM.
+
+Tests generate small NIfTI/JSON/TSV fixtures and mock scheduler boundaries. They cover
+curation, BIDS invariants, CLI routing, workflow plans, lifecycle integrations,
+provenance records, and model submission contracts. Generic Linux CI does not run
+participant-data processing, live Flywheel operations, Slurm jobs, DataLad campaign
+execution, or external MRIQC/fMRIPrep/XCP-D/FSL/FreeSurfer computations. Those require
+the production environment and separate operational validation.
+
 Use the working tree through `uv`; bare `pytest` may import an older installed wheel.
 
 ```bash

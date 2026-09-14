@@ -23,6 +23,10 @@ and `excluded` (11). Cohort outputs live under
 | Add a Python package before or after preprocessing | [Adding a package](docs/EXTENDING.md) |
 | Change code or dependency pins | [Contributing](CONTRIBUTING.md) |
 
+GitHub Actions runs `uv sync --frozen` and `uv run --frozen pytest -q -ra` on Linux
+x86_64 with Python 3.13 for every push and pull request. See
+[contributor verification](CONTRIBUTING.md#verification) for coverage and production-only limits.
+
 ## System overview
 
 ```text
