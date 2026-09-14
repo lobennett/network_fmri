@@ -4,6 +4,10 @@ This guide gets a new contributor from a Sherlock login to a trustworthy develop
 environment and explains how to operate the pipeline safely. Read [the README](../README.md)
 first for the pipeline itself and [SCAN-NOTES.md](SCAN-NOTES.md) for scientific decisions.
 
+Software tests also run in generic Linux x86_64 CI using the frozen Python 3.13
+environment. See [contributor verification](../CONTRIBUTING.md#verification) for
+the commands and limits; production execution still requires Sherlock.
+
 Live job and cohort status does not belong in this document. Query Slurm, campaign records,
 and DataLad history as described in [Checking live state](#checking-live-state).
 
