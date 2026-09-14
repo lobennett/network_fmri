@@ -275,10 +275,15 @@ without resampling and corresponding metadata.
 
 - `sub-s1399/ses-12` has three BOLD runs and no fieldmap. It is the only analyzed session
   without distortion correction.
-- `sub-s03/ses-13` (anatomical plus fieldmap) and `sub-s297/ses-01` (fieldmap only) hold
-  no functional runs. `b0link` correctly records their fieldmaps as `orphan_fmap`. The
-  distinction matters for MRIQC: its `require_any_datatypes: [anat, func]` rule admits
-  the s03 visit and drops the fieldmap-only one.
+- `sub-s03/ses-13` is anatomical plus fieldmap, with no functional runs. `b0link`
+  records its fieldmaps as `orphan_fmap`; MRIQC's
+  `require_any_datatypes: [anat, func]` rule admits this anatomical visit.
+- The historical fieldmap-only classification of `sub-s297/ses-01` is **unverified**
+  against a versioned curated BIDS inventory. Before deciding its MRIQC eligibility,
+  regenerate the study metadata from the curated BIDS tree and inspect the generated
+  datatype-based inclusion list, following [campaign reconstruction](campaign/README.md).
+  Do not infer anatomy absence from Flywheel alias mappings. The selector excludes
+  fieldmap-only visits and admits visits containing `anat` or `func`.
 - `sub-s1165/ses-02/task-directedForgetting` has a list-valued DICOM
   `SoftwareVersions`. BIDS requires a string, so `fix-sidecars` coerces it after export;
   Flywheel metadata remains unchanged.
