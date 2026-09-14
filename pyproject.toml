@@ -45,11 +45,11 @@ override-dependencies = [
 ]
 
 [tool.uv.sources]
-fw-heudiconv = { git = "https://github.com/lobennett/fw-heudiconv.git", rev = "e7509a4" }
-global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "5d92c33" }
-network_events = { git = "https://github.com/lobennett/network_events.git", rev = "6b9a8b8" }
-network_glm = { git = "https://github.com/lobennett/network_glm.git", rev = "122fa29cd11e724a6cfc8160841bcfc537bb2c82" }
-network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "d401e5f" }
+fw-heudiconv = { git = "https://github.com/lobennett/fw-heudiconv.git", rev = "81c44e778e785cf33c700e1a0fd7e14b2716a500" }
+global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "ee5ad00ad2f51586d0379d2fe5a6a5fa3e2e60d7" }
+network_events = { git = "https://github.com/lobennett/network_events.git", rev = "e3ceda53a8409ca103574d879390d38180ca9443" }
+network_glm = { git = "https://github.com/lobennett/network_glm.git", rev = "c99a2810133b1b54cc9e62c37e5c277c99e25889" }
+network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "9a2f22ca7325890a815ff6d3f7ac56c522e1abfc" }
 
 [build-system]
 requires = ["hatchling"]
