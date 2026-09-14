@@ -1,0 +1,2 @@
+# A unified diff encodes an empty context line as one space.
+docs/campaign/*.diff whitespace=-blank-at-eol

@@ -38,10 +38,10 @@ output_ria_path: ".babs/output_ria"
 # fMRIPrep emits a T2w-only anat/ there — a phantom second anatomical session, and the
 # run dies before doing any work.
 #
-# Dropping those anat/ dirs from XCP-D's copy of the input costs nothing: fMRIPrep has
-# already used the T2w to refine the surfaces, and those surfaces are what XCP-D reads.
-# It leaves exactly one anatomical session, so XCP-D takes the one-to-all path and
-# processes every functional session against the T1w session's anatomy. Verified on
+# XCP-D reads the retained fMRIPrep surfaces, not the isolated T2w derivative. See
+# ../SCAN-NOTES.md#preprocessing-decisions for the T2w pial-refinement limitations.
+# Removing those directories leaves one anatomical session, so XCP-D takes the
+# one-to-all path and processes every functional session against its anatomy. Verified on
 # sub-s03: workflow built as sub_s03_ses_13_ses_010203...12_wf.
 #
 # --bids-filter-file cannot do this: the filter-to-session-list path in parser.py is
@@ -66,6 +66,8 @@ bids_app_args:
   --warp-surfaces-native2std: ""
   --combine-runs: ""
   --linc-qc: ""
+  # Avoid the ABCC report failure in this container; retain surface processing.
+  --abcc-qc: "n"
   --min-time: "150"
   --min-coverage: "0.5"
   --band-stop-min: "12"

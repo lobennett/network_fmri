@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -42,14 +41,12 @@ def run_with_retries(cmd: list[str], what: str, retries: int, env: dict | None =
 
 
 def export(project: str, fw_subjects: set[str], out: Path, retries: int = 2) -> None:
-    """Download tagged files into ``out``, which is wiped first.
-
-    The engine rmtree's its output root on any file conflict, so a partial export
-    would otherwise poison every retry. ``out`` must be a dir this task owns.
-    """
-    if out.exists():
-        print(f"[export] clearing existing {out}", flush=True)
-        shutil.rmtree(out)
+    """Download tagged files into a new output root, preserving existing exports."""
+    if out.exists() or out.is_symlink():
+        raise SystemExit(
+            f"export destination {out} already exists; existing output is preserved. "
+            "Choose a new output path."
+        )
     out.parent.mkdir(parents=True, exist_ok=True)
     run_with_retries(
         [
@@ -73,7 +70,7 @@ def get_parser() -> argparse.ArgumentParser:
                    help="write info.BIDS on Flywheel (default: dry run)")
     p.add_argument("--out", metavar="DIR",
                    help="export the tagged files here (requires --live); must be a "
-                        "directory this run owns")
+                        "new path that does not already exist")
     p.add_argument("--retries", type=int, default=3,
                    help="retries for each curate and export invocation")
     return p

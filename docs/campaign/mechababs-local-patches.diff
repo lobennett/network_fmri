@@ -38,6 +38,34 @@ index 29e5dfb..8b4b406 100644
      datalad_duct(babs_init, dataset=ctx.campaign,
                   message=f"scaffold {ctx.ds_id}/{ctx.short}: babs init",
                   log_prefix=f".duct-logs/{ctx.ds_id}/{ctx.short}/babs-init_{{datetime}}-{{pid}}_",
+diff --git a/mechababs/select.py b/mechababs/select.py
+index 04664a8..7b0d6e9 100644
+--- a/mechababs/select.py
++++ b/mechababs/select.py
+@@ -54,15 +54,22 @@ def read_study_metadata(study):
+ 
+ def build_eligibility(rule):
+     """A predicate over an aggregated row, from a pipeline's ``selection:`` config:
+-    every ``require_datatypes`` present AND every ``require_positive`` count > 0.
++    every ``require_datatypes`` present, at least one ``require_any_datatypes`` present,
++    AND every ``require_positive`` count > 0.
++
++    ``require_any_datatypes`` is the OR to ``require_datatypes``' AND. MRIQC has something
++    to say about a session holding *either* anat or func, so requiring both would drop
++    anat-only visits while requiring neither would queue a session holding only a fieldmap.
+ 
+     The rule names TSV columns directly (``t1w_num``, …), so a new app's needs are
+     data, not code."""
+     req_datatypes = rule.get("require_datatypes", [])
++    req_any = rule.get("require_any_datatypes", [])
+     req_positive = rule.get("require_positive", [])
+ 
+     def eligible(agg):
+         return (all(dt in agg["datatypes"] for dt in req_datatypes)
++                and (not req_any or any(dt in agg["datatypes"] for dt in req_any))
+                 and all(agg["counts"].get(c, 0) > 0 for c in req_positive))
+     return eligible
+ 
 diff --git a/merge_config.py b/merge_config.py
 index ba78534..e9713cb 100644
 --- a/merge_config.py
@@ -118,3 +146,90 @@ index ba78534..e9713cb 100644
  
      # Chained-input origin_urls: a downstream YAML declares the upstream stage's
      # output as an input but leaves origin_url out — the upstream RIA doesn't
+diff --git a/study_meta.py b/study_meta.py
+new file mode 100644
+index 0000000..7474678
+--- /dev/null
++++ b/study_meta.py
+@@ -0,0 +1,81 @@
++"""Regenerate the mechababs study metadata TSVs from a BIDS tree.
++
++Lives here rather than in network_fmri: it serves this campaign, not Flywheel -> BIDS.
++Run it after any rebuild of the BIDS trees, before babs init, or a stale t1w_num/t2w_num
++will queue a pipeline on a scan that no longer exists.
++
++mechababs's ``selection`` rule filters on these columns, so they must match the tree
++after any pruning (a stale ``t1w_num`` would queue MRIQC on a scan that no longer
++exists). Written as code rather than by hand so a campaign can be re-derived.
++"""
++
++from __future__ import annotations
++
++import argparse
++import collections
++import sys
++from pathlib import Path
++
++DATATYPES = ("anat", "dwi", "fmap", "func", "perf")
++
++
++def scan(bids_dir: Path) -> dict:
++    """{(subject, session): {datatypes, t1w_num, t2w_num, bold_num}}."""
++    out = {}
++    for sub in sorted(bids_dir.glob("sub-*")):
++        if not sub.is_dir():
++            continue
++        for ses in sorted(sub.glob("ses-*")):
++            present = sorted(d for d in DATATYPES if (ses / d).is_dir())
++            anat = ses / "anat"
++            out[(sub.name, ses.name)] = dict(
++                datatypes=",".join(present),
++                t1w_num=len(list(anat.glob("*_T1w.nii.gz"))) if anat.is_dir() else 0,
++                t2w_num=len(list(anat.glob("*_T2w.nii.gz"))) if anat.is_dir() else 0,
++                # echo-1 only: multi-echo BOLD would otherwise count each echo.
++                bold_num=len(list((ses / "func").glob("*echo-1_bold.nii.gz")))
++                if (ses / "func").is_dir() else 0,
++            )
++    return out
++
++
++def write(bids_dir: Path, out_dir: Path) -> tuple[int, int]:
++    rows = scan(bids_dir)
++    cols = ("datatypes", "t1w_num", "t2w_num", "bold_num")
++
++    ses_tsv = out_dir / "sourcedata+subjects+sessions.tsv"
++    with ses_tsv.open("w") as f:
++        f.write("subject_id\tsession_id\t" + "\t".join(cols) + "\n")
++        for (sub, ses), r in sorted(rows.items()):
++            f.write(f"{sub}\t{ses}\t" + "\t".join(str(r[c]) for c in cols) + "\n")
++
++    # Subject level: union of datatypes, sum of counts.
++    agg: dict = collections.defaultdict(lambda: dict(dt=set(), t1w_num=0, t2w_num=0, bold_num=0))
++    for (sub, _), r in rows.items():
++        a = agg[sub]
++        a["dt"].update(x for x in r["datatypes"].split(",") if x)
++        for c in ("t1w_num", "t2w_num", "bold_num"):
++            a[c] += r[c]
++
++    sub_tsv = out_dir / "sourcedata+subjects.tsv"
++    with sub_tsv.open("w") as f:
++        f.write("subject_id\t" + "\t".join(cols) + "\n")
++        for sub, a in sorted(agg.items()):
++            f.write(f"{sub}\t{','.join(sorted(a['dt']))}\t"
++                    + "\t".join(str(a[c]) for c in ("t1w_num", "t2w_num", "bold_num")) + "\n")
++
++    return len(agg), len(rows)
++
++
++def main(argv: list[str] | None = None) -> int:
++    p = argparse.ArgumentParser(prog="network_fmri study-meta")
++    p.add_argument("--bids-dir", required=True)
++    p.add_argument("--out", required=True, help="directory to write both TSVs into")
++    args = p.parse_args(argv)
++    n_sub, n_ses = write(Path(args.bids_dir), Path(args.out))
++    print(f"[study-meta] {n_sub} subjects, {n_ses} sessions", flush=True)
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())

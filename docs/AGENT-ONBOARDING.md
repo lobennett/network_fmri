@@ -247,7 +247,10 @@ important.
 The campaign vendors patched mechababs and BABS checkouts. Their patch snapshots live in
 [docs/campaign](campaign/). Refresh the snapshots whenever those checkouts change.
 Current local behavior includes per-pipeline processing levels, resource overrides,
-`primary_input`, and `pre_app_commands`.
+`primary_input`, `pre_app_commands`, and MRIQC's `require_any_datatypes` selection.
+Reconstruction requires the exact bases and step order in the campaign guide — each patch
+applies once to its own base, never stacked — including the `study_meta.py` helper used to
+regenerate selection metadata after BIDS changes.
 
 A campaign cell that is retired is archived under `derivative-attempts/` and is not
 resumable because BABS embeds absolute RIA paths. Flags are baked into generated job

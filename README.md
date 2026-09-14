@@ -256,7 +256,9 @@ Exact subjects, sessions, evidence, and known limitations are in
   artifacts before submission. Slurm remains the only backend; see
   [docs/EXTENDING.md](docs/EXTENDING.md).
 - Subject exports are separate DataLad datasets so array tasks never contend on one Git
-  index.
+  index. `curate --out` requires a new path and refuses an existing file, directory, or
+  symlink without deleting it. After a partial export, inspect the preserved output
+  and choose a new destination before trying again.
 - In-place preparation commands are designed to resume safely and are recorded by DataLad.
 - The lockfile and immutable dependency pins define the software environment.
 - Reconciled behavioral data is a separate DataLad dataset on `$OAK`.
