@@ -231,8 +231,8 @@ cannot enter a model.
 
 ## Preprocessing decisions
 
-These values are explicit in `docs/campaign/mechababs-config.yaml` and are scientific
-choices, not accidental defaults.
+These scientific choices are explicit in the pipeline YAMLs listed in the
+[campaign snapshot](campaign/README.md#snapshot-contents), not accidental defaults.
 
 ### MRIQC and fMRIPrep
 

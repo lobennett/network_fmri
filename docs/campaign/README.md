@@ -146,22 +146,25 @@ Then, in order:
 2. Build one registered container shim per pipeline with `network_fmri shim` and
    verify the YAML source paths. Configure from the three pipeline filenames and
    `sherlock.yaml`; configure vendors the shims.
-3. Regenerate and save each study wrapper's `sourcedata+subjects.tsv` and
-   `sourcedata+subjects+sessions.tsv` by running the patched `study_meta.py` as a
-   script (`python3 code/mechababs/study_meta.py --bids-dir <tree> --out <dir>`)
-   against its curated BIDS tree; its help text labels itself `network_fmri
-   study-meta`, but there is no such subcommand. The helper's `--out` directory must
-   already exist. Register the cohort study wrappers with `add-dataset`; metadata must
-   be current before generating inclusion lists or scaffolding.
+3. Regenerate and save `sourcedata+subjects.tsv` and
+   `sourcedata+subjects+sessions.tsv` in each study wrapper's `sourcedata/` directory.
+   From the campaign root, run the patched helper as a script:
+   `python3 code/mechababs/study_meta.py --bids-dir <curated-bids> --out <study-wrapper>/sourcedata`.
+   The `--out` directory must already exist. The help text labels itself
+   `network_fmri study-meta`, but there is no such subcommand. Register the cohort
+   study wrappers with `add-dataset`; metadata must be current before generating
+   inclusion lists or scaffolding. If refreshing an existing unscaffolded cell,
+   regenerate and review its `.mechababs/inclusions/<dataset>_<pipeline>.csv` pin too:
+   `iterate` reuses an existing pin without rereading the study metadata.
 4. Inspect composed BABS configuration, inclusion lists and generated job scripts.
    MRIQC must exclude fieldmap-only visits, XCP-D must lead with fMRIPrep input
    and pass `--abcc-qc n`, and generated arrays must carry throttle 8. Run
    `iterate --dry-run` before any separately authorized campaign advance.
 5. Save the campaign dataset and changed study/subdataset pointers.
 
-`uv run --frozen pytest -q tests/test_campaign_snapshot.py` applies the whole patch
-to offline source fixtures and checks selection, metadata regeneration, composed
-BABS configuration, and the `babs init` arguments `iterate` builds — including each
+`uv run --frozen pytest -q tests/test_campaign_snapshot.py` applies the whole
+mechababs patch to offline source fixtures and checks selection, metadata regeneration,
+composed BABS configuration, and the `babs init` arguments `iterate` builds — including each
 pipeline's processing level and `--throttle 8`. It does not launch BIDS apps, BABS,
 Slurm, or a campaign.
 

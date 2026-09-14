@@ -230,18 +230,26 @@ def test_scaffold_builds_babs_init_from_pipeline_level_and_cluster_throttle(
     # The ledger says session; only the pipeline YAML can raise a cell to subject.
     row = {"dataset_id": ds_id, "processing_level": "session"}
     if chained:
-        row["fMRIPrep-25.2.5_babs"] = f"studies/study-{ds_id}/derivatives/fMRIPrep-25.2.5"
+        row["fMRIPrep-25.2.5_babs"] = (
+            f"studies/study-{ds_id}/derivatives/fMRIPrep-25.2.5"
+        )
         row["fMRIPrep-25.2.5_babs-merged"] = "merged"
     cfg = {"venv": "venv", "cluster": "sherlock.yaml", "pipelines": pipelines}
 
     commands = []
     with mechababs_package(reconstructed) as iterate:
-        monkeypatch.setattr(iterate, "run", lambda cmd, **kw: commands.append(list(map(str, cmd))))
+        monkeypatch.setattr(
+            iterate, "run", lambda cmd, **kw: commands.append(list(map(str, cmd)))
+        )
         update = iterate.scaffold(campaign, cfg, row, short, pipeline, dry_run=True)
 
     assert update == {f"{short}_babs": f"studies/study-{ds_id}/derivatives/{short}"}
     babs_init = next(c[c.index("duct") + 1 :] for c in commands if "duct" in c)
-    assert babs_init[:3] == ["babs", "init", f"studies/study-{ds_id}/derivatives/{short}"]
+    assert babs_init[:3] == [
+        "babs",
+        "init",
+        f"studies/study-{ds_id}/derivatives/{short}",
+    ]
     assert babs_init[babs_init.index("--processing-level") + 1] == processing_level
     assert babs_init[babs_init.index("--throttle") + 1] == "8"
     if chained:
