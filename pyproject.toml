@@ -28,6 +28,11 @@ dev = ["pytest>=8"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.ruff]
+# Byte-faithful upstream mechababs sources at a pinned commit. The published patch
+# applies against their exact context lines, so they must not be reformatted or fixed.
+extend-exclude = ["tests/fixtures/campaign/mechababs-base"]
+
 [tool.uv]
 # Pillow 12 ships no wheel for this host (glibc 2.17) and its sdist needs libjpeg
 # headers we do not have. matplotlib pulls it in for the PDF traces.

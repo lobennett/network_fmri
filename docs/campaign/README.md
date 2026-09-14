@@ -151,9 +151,8 @@ Then, in order:
    script (`python3 code/mechababs/study_meta.py --bids-dir <tree> --out <dir>`)
    against its curated BIDS tree; its help text labels itself `network_fmri
    study-meta`, but there is no such subcommand. The helper's `--out` directory must
-   already exist. Register
-   the cohort study wrappers with `add-dataset`; metadata must be current before
-   generating inclusion lists or scaffolding.
+   already exist. Register the cohort study wrappers with `add-dataset`; metadata must
+   be current before generating inclusion lists or scaffolding.
 4. Inspect composed BABS configuration, inclusion lists and generated job scripts.
    MRIQC must exclude fieldmap-only visits, XCP-D must lead with fMRIPrep input
    and pass `--abcc-qc n`, and generated arrays must carry throttle 8. Run
