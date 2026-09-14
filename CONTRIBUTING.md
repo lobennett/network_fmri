@@ -59,10 +59,13 @@ the lock intentionally does not support macOS or ARM.
 
 Tests generate small NIfTI/JSON/TSV fixtures and mock scheduler boundaries. They cover
 curation, BIDS invariants, CLI routing, workflow plans, lifecycle integrations,
-provenance records, and model submission contracts. Generic Linux CI does not run
-participant-data processing, live Flywheel operations, Slurm jobs, DataLad campaign
-execution, or external MRIQC/fMRIPrep/XCP-D/FSL/FreeSurfer computations. Those require
-the production environment and separate operational validation.
+provenance records, campaign snapshot reconstruction, and model submission contracts.
+Campaign reconstruction reuses checked-in upstream sources that must stay byte-faithful,
+so Ruff excludes them; see the [fixture notes](tests/fixtures/campaign/README.md).
+Generic Linux CI does not run participant-data processing, live Flywheel operations,
+Slurm jobs, DataLad campaign execution, or external MRIQC/fMRIPrep/XCP-D/FSL/FreeSurfer
+computations. Those require the production environment and separate operational
+validation.
 
 Use the working tree through `uv`; bare `pytest` may import an older installed wheel.
 
