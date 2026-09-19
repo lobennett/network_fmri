@@ -154,19 +154,27 @@ def test_verification_rejects_empty_imaging_outputs_and_stale_receipts(tmp_path)
         verify_fmriprep(config, GitRunner())
 
 
-def test_verification_requires_both_output_spaces_for_every_multi_echo_input(tmp_path):
+def test_verification_groups_multi_echo_spaces_and_requires_each_native_echo(tmp_path):
     config = configuration(tmp_path)
     root = _complete_fmriprep(config)
-    raw = config.paths.bids_dir / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_run-2_echo-2_bold.nii.gz"
-    _write(raw, "raw")
+    raw_one = config.paths.bids_dir / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_run-2_echo-1_bold.nii.gz"
+    raw_two = config.paths.bids_dir / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_run-2_echo-2_bold.nii.gz"
+    _write(raw_one, "raw")
+    _write(raw_two, "raw")
     _write(
-        root / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_run-2_echo-2_space-T1w_desc-preproc_bold.nii.gz",
+        root / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_run-2_space-T1w_desc-preproc_bold.nii.gz",
         "preprocessed",
     )
-    mni = root / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_run-2_echo-2_space-MNI152NLin2009cAsym_res-2_desc-preproc_bold.nii.gz"
+    mni = root / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_run-2_space-MNI152NLin2009cAsym_res-2_desc-preproc_bold.nii.gz"
     _write(mni, "preprocessed")
+    _write(
+        root / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_run-2_echo-1_desc-preproc_bold.nii.gz",
+        "preprocessed",
+    )
+    echo_two = root / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_run-2_echo-2_desc-preproc_bold.nii.gz"
+    _write(echo_two, "preprocessed")
     assert verify_fmriprep(config, GitRunner()).name == "fmriprep-complete"
 
-    mni.unlink()
-    with pytest.raises(StageError, match="output-space BOLD"):
+    echo_two.unlink()
+    with pytest.raises(StageError, match="native echo BOLD"):
         verify_fmriprep(config, GitRunner())

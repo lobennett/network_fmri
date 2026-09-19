@@ -104,13 +104,29 @@ def verify_fmriprep(config: WorkflowConfig, runner: Runner = subprocess.run) -> 
     ]
     if no_raw_bold:
         raise StageError("fMRIPrep has no eligible BOLD acquisition for roster subjects: " + ", ".join(no_raw_bold))
-    missing_bold = [
-        path for path in expected_bold
-        if any(not output.is_file() or output.stat().st_size == 0
-               for output in _preprocessed_bold_paths(root, config.paths.bids_dir, path))
+    logical_bold = _logical_bold_groups(expected_bold)
+    missing_standard = [
+        echoes[0] for echoes in logical_bold.values()
+        if any(
+            not output.is_file() or output.stat().st_size == 0
+            for output in _standard_preprocessed_bold_paths(root, config.paths.bids_dir, echoes[0])
+        )
     ]
-    if missing_bold:
-        raise StageError("fMRIPrep completion has missing established output-space BOLD files: " + _display(missing_bold, config.paths.bids_dir))
+    if missing_standard:
+        raise StageError(
+            "fMRIPrep completion has missing established output-space BOLD files: "
+            + _display(missing_standard, config.paths.bids_dir)
+        )
+    missing_native_echoes = [
+        path for echoes in logical_bold.values() for path in echoes
+        if _has_echo_entity(path)
+        and not _nonempty(_native_echo_preprocessed_bold_path(root, config.paths.bids_dir, path))
+    ]
+    if missing_native_echoes:
+        raise StageError(
+            "fMRIPrep completion has missing native echo BOLD files: "
+            + _display(missing_native_echoes, config.paths.bids_dir)
+        )
     bad_receipts = []
     for subject in config.subjects:
         path = receipt_path(root, "fmriprep", subject)
@@ -169,16 +185,51 @@ def _raw_bold(bids_dir: Path, subjects: Iterable[str]) -> tuple[Path, ...]:
     ))
 
 
-def _preprocessed_bold_paths(root: Path, bids_dir: Path, raw: Path) -> tuple[Path, Path]:
+def _logical_bold_groups(paths: Iterable[Path]) -> dict[str, tuple[Path, ...]]:
+    """Group raw echoes that belong to one logical BOLD acquisition."""
+
+    groups: dict[str, list[Path]] = {}
+    for path in paths:
+        key = str(path.with_name(_without_echo(_bold_stem(path))))
+        groups.setdefault(key, []).append(path)
+    return {key: tuple(sorted(echoes)) for key, echoes in groups.items()}
+
+
+def _standard_preprocessed_bold_paths(root: Path, bids_dir: Path, raw: Path) -> tuple[Path, Path]:
+    """Return the two echo-combined standard-space outputs for one logical run."""
+
     relative = raw.relative_to(bids_dir)
-    stem = raw.name.removesuffix(".nii.gz").removesuffix(".nii")
-    prefix = stem.removesuffix("_bold")
+    prefix = _without_echo(_bold_stem(raw)).removesuffix("_bold")
     return (
         root / relative.with_name(prefix + "_space-T1w_desc-preproc_bold.nii.gz"),
         root / relative.with_name(
             prefix + "_space-MNI152NLin2009cAsym_res-2_desc-preproc_bold.nii.gz"
         ),
     )
+
+
+def _native_echo_preprocessed_bold_path(root: Path, bids_dir: Path, raw: Path) -> Path:
+    """Return the native-space echo product enabled by ``--me-output-echos``."""
+
+    relative = raw.relative_to(bids_dir)
+    prefix = _bold_stem(raw).removesuffix("_bold")
+    return root / relative.with_name(prefix + "_desc-preproc_bold.nii.gz")
+
+
+def _bold_stem(path: Path) -> str:
+    return path.name.removesuffix(".nii.gz").removesuffix(".nii")
+
+
+def _without_echo(stem: str) -> str:
+    return "_".join(part for part in stem.split("_") if not part.startswith("echo-"))
+
+
+def _has_echo_entity(path: Path) -> bool:
+    return any(part.startswith("echo-") for part in _bold_stem(path).split("_"))
+
+
+def _nonempty(path: Path) -> bool:
+    return path.is_file() and path.stat().st_size > 0
 
 
 def _crash_files(roots: Iterable[Path]) -> tuple[Path, ...]:
