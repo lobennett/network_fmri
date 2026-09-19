@@ -46,6 +46,8 @@ uv run --frozen network-fmri pipeline submit /path/to/pilot-workflow.toml \
 
 The `--pilot-subject` option derives a one-subject run from the validated full roster; it
 does not accept a reduced roster or share the full-run BIDS, parts, work, or log paths.
+Its identity is written to the submission record, so every resume of that pilot must
+repeat the same `--pilot-subject s03` option.
 Confirm Flywheel access, container binds, DataLad annex content, validator diagnostics,
 and Slurm logs before the full 46-subject submission.
 

@@ -28,6 +28,13 @@ uv run --frozen network-fmri pipeline submit /path/to/pilot-workflow.toml \
 
 Inspect the pilot's Flywheel access, container binds, DataLad saves, validator output,
 and Slurm logs. It must never share paths with the full run.
+The pilot selector is persisted in its submission record; include the same selector on
+the approval resume command:
+
+```bash
+uv run --frozen network-fmri pipeline submit /path/to/pilot-workflow.toml \
+  --pilot-subject s03 --resume
+```
 
 For the full run, submit the initial graph after that pilot:
 

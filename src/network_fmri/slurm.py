@@ -51,6 +51,7 @@ class SubmissionRecord:
     dry_run: bool = False
     status: str = "submitted"
     error: str | None = None
+    pilot_subject: str | None = None
 
 
 def sbatch_command(

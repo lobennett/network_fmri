@@ -30,9 +30,16 @@ _POST_APPROVAL_START = "mriqc-curated"
 
 def build_plan(
     config: WorkflowConfig, *, config_path: Path | None = None,
+    pilot_subject: str | None = None,
 ) -> tuple[PlannedJob, ...]:
     """Construct the complete dependency graph for one exact subject roster."""
 
+    if pilot_subject is not None and config.subjects != (pilot_subject,):
+        raise ValueError("pilot worker commands require the matching one-subject roster")
+    if pilot_subject is None and len(config.subjects) == 1:
+        # Keep direct callers safe too: a derived pilot config must never create
+        # workers that reload the original full roster from the TOML.
+        pilot_subject = config.subjects[0]
     source = str(config_path) if config_path is not None else "<workflow-config>"
     resources = {
         "cpus": config.slurm.cpus,
@@ -46,6 +53,7 @@ def build_plan(
         command = (
             "network-fmri", "_stage", name, source,
             *(("--array-index", "${SLURM_ARRAY_TASK_ID}") if is_array else ()),
+            *(("--pilot-subject", pilot_subject) if pilot_subject else ()),
         )
         jobs.append(PlannedJob(
             name=name,
@@ -184,12 +192,16 @@ def read_record(path: Path) -> SubmissionRecord:
         raise RuntimeError(f"cannot read pipeline submission record: {path}") from error
     if not isinstance(jobs, dict) or not isinstance(commands, dict):
         raise RuntimeError(f"pipeline submission record is malformed: {path}")
+    pilot_subject = value.get("pilot_subject")
+    if pilot_subject is not None and (not isinstance(pilot_subject, str) or not pilot_subject):
+        raise RuntimeError(f"pipeline submission record has an invalid pilot subject: {path}")
     return SubmissionRecord(
         jobs={str(name): str(job_id) for name, job_id in jobs.items()},
         commands={str(name): tuple(map(str, command)) for name, command in commands.items()},
         dry_run=bool(value.get("dry_run", False)),
         status=str(value.get("status", "submitted")),
         error=value.get("error"),
+        pilot_subject=pilot_subject,
     )
 
 
@@ -214,6 +226,7 @@ def stage_parser() -> argparse.ArgumentParser:
     parser.add_argument("stage", choices=STAGE_ORDER)
     parser.add_argument("config", type=Path)
     parser.add_argument("--array-index", type=int)
+    parser.add_argument("--pilot-subject")
     return parser
 
 
@@ -238,15 +251,18 @@ def main(argv: list[str] | None = None, *, runner=None) -> int:
     args = get_parser().parse_args(supplied)
     command_runner = runner or subprocess.run
     config = WorkflowConfig.load(args.config)
-    if getattr(args, "pilot_subject", None):
-        config = pilot_config(config, args.pilot_subject)
-    plan = build_plan(config, config_path=args.config)
+    pilot_subject = getattr(args, "pilot_subject", None)
+    if pilot_subject:
+        config = pilot_config(config, pilot_subject)
+    plan = build_plan(config, config_path=args.config, pilot_subject=pilot_subject)
     if args.command == "plan":
         _print_plan(plan)
         return 0
     if args.command == "status":
         record = read_record(record_path(config))
         print(f"status\t{record.status}")
+        if record.pilot_subject:
+            print(f"pilot_subject\t{record.pilot_subject}")
         if record.error:
             print(f"error\t{record.error}")
         for name in STAGE_ORDER:
@@ -255,6 +271,11 @@ def main(argv: list[str] | None = None, *, runner=None) -> int:
         return 0
 
     previous = _existing_record(config)
+    if previous is not None and previous.pilot_subject != pilot_subject:
+        raise RuntimeError(
+            "pipeline submission record belongs to a different pilot selection; "
+            "resume with the original --pilot-subject"
+        )
     if previous is not None and not args.resume:
         raise RuntimeError(
             "a pipeline submission record already exists; use 'pipeline status' or '--resume'"
@@ -281,10 +302,15 @@ def main(argv: list[str] | None = None, *, runner=None) -> int:
         existing_jobs=existing, externally_completed=complete,
         runner=command_runner,
         on_update=(
-            (lambda current: write_record(record_path(config), current))
+            (lambda current: write_record(
+                record_path(config), replace(current, pilot_subject=pilot_subject),
+            ))
             if not args.dry_run else None
         ),
     )
+    record = replace(record, pilot_subject=pilot_subject)
+    if not args.dry_run:
+        write_record(record_path(config), record)
     for name, command in record.commands.items():
         state = "would submit" if args.dry_run else f"submitted {record.jobs[name]}"
         print(f"{name}: {state}\n  {' '.join(command)}")
@@ -308,33 +334,42 @@ def pilot_config(config: WorkflowConfig, subject: str) -> WorkflowConfig:
     return replace(config, subjects=(subject,))
 
 
-def stage_main(argv: list[str] | None = None) -> int:
+def stage_main(argv: list[str] | None = None, *, runner=None) -> int:
     """Execute one private Slurm stage and save serial milestones explicitly."""
 
     args = stage_parser().parse_args(argv)
     config = WorkflowConfig.load(args.config)
+    if args.pilot_subject:
+        config = pilot_config(config, args.pilot_subject)
     array_stages = {"fw2bids-array", "mriqc-array", "fmriprep-array"}
     if (args.stage in array_stages) != (args.array_index is not None):
         stage_parser().error("--array-index is required only for array stages")
     try:
-        result = _run_stage(config, args.stage, args.array_index)
+        result = (
+            _run_stage(config, args.stage, args.array_index)
+            if runner is None else _run_stage(config, args.stage, args.array_index, runner=runner)
+        )
     except _validation_error_type() as error:
         # The validator itself atomically publishes both files.  Save those
         # diagnostics separately from a success milestone before preserving
         # its nonzero stage result.
         from network_fmri.milestones import save_diagnostic
 
+        kwargs = {} if runner is None else {"runner": runner}
         save_diagnostic(
             config.paths.bids_dir, args.stage,
-            [error.result.report, error.result.log],
+            [error.result.report, error.result.log], **kwargs,
         )
         raise
     if args.stage not in array_stages | {"bids-curated-validated"}:
-        save_stage_result(config.paths.bids_dir, result, config=config)
+        kwargs = {} if runner is None else {"runner": runner}
+        save_stage_result(config.paths.bids_dir, result, config=config, **kwargs)
     return 0
 
 
-def _run_stage(config: WorkflowConfig, name: str, array_index: int | None):
+def _run_stage(
+    config: WorkflowConfig, name: str, array_index: int | None, *, runner=subprocess.run,
+):
     """Dispatch one graph node to the focused stage module that owns its work."""
 
     from network_fmri.containers import current_datalad_commit, write_subject_receipt
@@ -356,59 +391,61 @@ def _run_stage(config: WorkflowConfig, name: str, array_index: int | None):
     from network_fmri.stages.global_signal import run_global_signal
 
     if name == "fw2bids-array":
-        return convert_subject(config, _array_subject(config, array_index))
+        return convert_subject(config, _array_subject(config, array_index), runner)
     if name == "bids-assembled":
-        return assemble_dataset(config)
+        return assemble_dataset(config, runner)
     if name == "behavioral-sourcedata-ingested":
-        return ingest_behavior(config)
+        return ingest_behavior(config, runner)
     if name == "gs-pretrim":
-        return run_global_signal(config.paths.bids_dir, "pretrim")
+        return run_global_signal(config.paths.bids_dir, "pretrim", runner)
     if name == "dummy-volumes-trimmed":
         return trim_dataset(config.paths.bids_dir, jobs=config.slurm.cpus)
     if name == "bids-events-generated":
-        return generate_events(config.paths.bids_dir)
+        return generate_events(config.paths.bids_dir, runner)
     if name == "gs-posttrim":
-        return run_global_signal(config.paths.bids_dir, "posttrim")
+        return run_global_signal(config.paths.bids_dir, "posttrim", runner)
     if name == "b0-fieldmaps-linked":
         return link_b0(config.paths.bids_dir)
     if name == "bids-precuration-validated":
-        return _validation_result("bids-precuration-validated", validate_bids(config.paths.bids_dir, "precuration"))
+        return _validation_result(
+            "bids-precuration-validated", validate_bids(config.paths.bids_dir, "precuration", runner),
+        )
     if name == "mriqc-array":
         subject = _array_subject(config, array_index)
-        subprocess.run(mriqc_participant_command(config, subject), check=True)
-        commit = current_datalad_commit(config.paths.bids_dir)
+        runner(mriqc_participant_command(config, subject), check=True)
+        commit = current_datalad_commit(config.paths.bids_dir, runner)
         root = config.paths.bids_dir / "derivatives" / "mriqc"
         from network_fmri.containers import receipt_path
         write_subject_receipt(receipt_path(root, "mriqc", subject), mriqc_subject_receipt(config, subject, commit))
         return _array_result(name, subject)
     if name == "mriqc-complete":
-        subprocess.run(mriqc_group_command(config), check=True)
-        commit = current_datalad_commit(config.paths.bids_dir)
+        runner(mriqc_group_command(config), check=True)
+        commit = current_datalad_commit(config.paths.bids_dir, runner)
         from network_fmri.containers import group_receipt_path
         root = config.paths.bids_dir / "derivatives" / "mriqc"
         write_subject_receipt(group_receipt_path(root, "mriqc"), mriqc_group_receipt(config, commit))
-        return verify_mriqc(config)
+        return verify_mriqc(config, runner)
     if name == "scan-decisions-generated":
-        return generate_decisions(config.paths.bids_dir)
+        return generate_decisions(config.paths.bids_dir, runner)
     if name == "scan-decisions-approved":
-        return validate_decisions(config.paths.bids_dir)
+        return validate_decisions(config.paths.bids_dir, runner)
     if name == "mriqc-curated":
         manifest = config.paths.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
-        return apply_curation(config.paths.bids_dir, manifest)
+        return apply_curation(config.paths.bids_dir, manifest, runner)
     if name == "bids-curated-validated":
         return _validation_result(
-            "bids-curated-validated", validate_bids(config.paths.bids_dir, "curated"),
+            "bids-curated-validated", validate_bids(config.paths.bids_dir, "curated", runner),
         )
     if name == "fmriprep-array":
         subject = _array_subject(config, array_index)
-        subprocess.run(fmriprep_participant_command(config, subject), check=True)
-        commit = current_datalad_commit(config.paths.bids_dir)
+        runner(fmriprep_participant_command(config, subject), check=True)
+        commit = current_datalad_commit(config.paths.bids_dir, runner)
         root = config.paths.bids_dir / "derivatives" / "fmriprep"
         from network_fmri.containers import receipt_path
         write_subject_receipt(receipt_path(root, "fmriprep", subject), fmriprep_subject_receipt(config, subject, commit))
         return _array_result(name, subject)
     if name == "fmriprep-complete":
-        return verify_fmriprep(config)
+        return verify_fmriprep(config, runner)
     raise ValueError(f"unsupported pipeline stage: {name}")
 
 

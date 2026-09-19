@@ -438,7 +438,8 @@ removal, sidecar repair, and milestone receipts.
 
 Integration tests use synthetic miniature BIDS trees and must demonstrate:
 
-- exact 46-subject roster enforcement at assembly boundaries without requiring real data;
+- exact configured-roster enforcement at assembly boundaries (46 subjects for a full run,
+  one explicitly selected subject for a pilot) without requiring real data;
 - deterministic canonical behavior-to-BOLD identity checks;
 - seven-volume trimming and event onset adjustment;
 - pre/post global-signal derivative isolation;

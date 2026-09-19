@@ -51,15 +51,16 @@ def assemble_dataset(
     config: WorkflowConfig,
     runner: Runner = subprocess.run,
 ) -> StageResult:
-    """Validate all 46 parts and ask ``network_fw2bids`` to publish one BIDS root.
+    """Validate the configured roster and ask ``network_fw2bids`` to publish one BIDS root.
 
     The upstream assembly module validates each subject export and stages the
     combined tree before its exclusive publication.  This wrapper owns the
     workflow-level roster check, so a partial array result can never be passed
-    to the finalizer.
+    to the finalizer.  A one-subject roster is allowed only after the CLI has
+    derived it from the reviewed 46-subject configuration for a pilot.
     """
 
-    _require_fixed_roster(config.subjects)
+    _require_execution_roster(config.subjects)
     _require_complete_part_roster(config.paths.parts_dir, config.subjects)
     destination = config.paths.bids_dir
     if destination.exists() or destination.is_symlink():
@@ -95,9 +96,11 @@ def _require_roster_subject(config: WorkflowConfig, subject: str) -> None:
         raise StageError(f"subject is not in the configured 46-subject roster: {subject}")
 
 
-def _require_fixed_roster(subjects: Sequence[str]) -> None:
-    if len(subjects) != 46 or len(set(subjects)) != 46:
-        raise StageError("configured roster must contain exactly 46 unique subjects")
+def _require_execution_roster(subjects: Sequence[str]) -> None:
+    """Accept the full reviewed roster or the explicit one-subject pilot roster."""
+
+    if len(subjects) not in {1, 46} or len(set(subjects)) != len(subjects):
+        raise StageError("configured roster must contain exactly 46 unique subjects or one selected pilot subject")
 
 
 def _write_roster_manifest(subjects: Sequence[str]) -> Path:
