@@ -1,4 +1,5 @@
 import json
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,6 +17,15 @@ class RecordingRunner:
         if command[:2] == ["git", "-C"]:
             return SimpleNamespace(stdout="abc123\n")
         return SimpleNamespace(stdout="")
+
+
+class FailingSaveRunner(RecordingRunner):
+    def __call__(self, args, **kwargs):
+        command = [str(argument) for argument in args]
+        self.calls.append(command)
+        if command[:2] == ["datalad", "save"]:
+            raise subprocess.CalledProcessError(1, command)
+        return SimpleNamespace(stdout="abc123\n")
 
 
 def receipt(stage: str):
@@ -90,6 +100,32 @@ def test_save_milestone_rejects_a_non_success_receipt(tmp_path):
     assert not list(tmp_path.rglob("*"))
 
 
+def test_failed_milestone_save_leaves_no_new_success_receipt(tmp_path):
+    from network_fmri.milestones import receipt_path, save_milestone
+
+    runner = FailingSaveRunner()
+
+    with pytest.raises(subprocess.CalledProcessError):
+        save_milestone(tmp_path, receipt("bids-assembled"), runner)
+
+    assert runner.calls == [["datalad", "save", "-d", str(tmp_path), "-m", "bids-assembled"]]
+    assert not receipt_path(tmp_path, "bids-assembled").exists()
+
+
+def test_failed_milestone_save_preserves_an_existing_receipt(tmp_path):
+    from network_fmri.milestones import receipt_path, save_milestone
+
+    path = receipt_path(tmp_path, "bids-assembled")
+    path.parent.mkdir(parents=True)
+    old_bytes = b'{"status": "previous-success"}\n'
+    path.write_bytes(old_bytes)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        save_milestone(tmp_path, receipt("bids-assembled"), FailingSaveRunner())
+
+    assert path.read_bytes() == old_bytes
+
+
 def test_save_diagnostic_saves_only_supplied_paths_without_a_receipt(tmp_path):
     from network_fmri.milestones import save_diagnostic
 
@@ -109,11 +145,22 @@ def test_save_diagnostic_saves_only_supplied_paths_without_a_receipt(tmp_path):
             str(tmp_path),
             "-m",
             "mriqc-failed-diagnostics",
+            "--",
             str(log),
         ],
         ["git", "-C", str(tmp_path), "rev-parse", "--verify", "HEAD"],
     ]
     assert not (tmp_path / "code" / "network_fmri" / "milestones" / "mriqc.json").exists()
+
+
+def test_save_diagnostic_treats_a_relative_option_like_name_as_a_path(tmp_path):
+    from network_fmri.milestones import save_diagnostic
+
+    runner = RecordingRunner()
+
+    save_diagnostic(tmp_path, "mriqc", [Path("-diagnostic.log")], runner)
+
+    assert runner.calls[0][-2:] == ["--", str((tmp_path / "-diagnostic.log").resolve())]
 
 
 def test_save_diagnostic_rejects_a_path_containing_the_configured_token(tmp_path, monkeypatch):
@@ -126,3 +173,25 @@ def test_save_diagnostic_rejects_a_path_containing_the_configured_token(tmp_path
         save_diagnostic(tmp_path, "mriqc", [tmp_path / "secret-value.log"], runner)
 
     assert runner.calls == []
+
+
+def test_legacy_recording_commands_keep_their_provenance_exports():
+    from network_fmri import provenance
+    from network_fmri.registry import COMMANDS
+
+    assert all(
+        callable(getattr(provenance, name))
+        for name in ("datalad_env", "ensure_dataset", "run_recorded", "subject_commit")
+    )
+    routes = {
+        ("import-subject",),
+        ("merge",),
+        ("fix-sidecars",),
+        ("global-signal",),
+        ("trim",),
+        ("b0link",),
+        ("ingest-beh",),
+        ("mriqc-iqms",),
+        ("fmriprep-derivs",),
+    }
+    assert all(callable(command.load()) for command in COMMANDS if command.route in routes)

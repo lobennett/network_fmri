@@ -39,15 +39,23 @@ def receipt_path(bids_dir: Path, stage: str) -> Path:
 def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     """Publish JSON with an atomic replacement in its destination directory."""
 
+    encoded = (
+        json.dumps(payload, default=_json_default, indent=2, sort_keys=True) + "\n"
+    ).encode()
+    _write_bytes_atomic(path, encoded)
+
+
+def _write_bytes_atomic(path: Path, content: bytes) -> None:
+    """Replace ``path`` with ``content`` without exposing a partial file."""
+
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_name: str | None = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
+            mode="wb", dir=path.parent, prefix=f".{path.name}.", delete=False
         ) as temporary:
             temporary_name = temporary.name
-            json.dump(payload, temporary, default=_json_default, indent=2, sort_keys=True)
-            temporary.write("\n")
+            temporary.write(content)
             temporary.flush()
             os.fsync(temporary.fileno())
         os.replace(temporary_name, path)
@@ -69,12 +77,21 @@ def save_milestone(
         raise ValueError("milestone receipts must have status 'success'")
     payload = asdict(receipt)
     _reject_configured_token({"bids_dir": str(bids_dir), "receipt": payload})
-    write_json_atomic(receipt_path(bids_dir, receipt.stage), payload)
-    runner(
-        ["datalad", "save", "-d", str(bids_dir), "-m", receipt.stage],
-        check=True,
-    )
-    return git_head(bids_dir, runner)
+    path = receipt_path(bids_dir, receipt.stage)
+    prior = path.read_bytes() if path.exists() else None
+    try:
+        runner(
+            ["datalad", "save", "-d", str(bids_dir), "-m", receipt.stage],
+            check=True,
+        )
+        write_json_atomic(path, payload)
+        return git_head(bids_dir, runner)
+    except Exception:
+        if prior is None:
+            path.unlink(missing_ok=True)
+        else:
+            _write_bytes_atomic(path, prior)
+        raise
 
 
 def save_diagnostic(
@@ -88,7 +105,7 @@ def save_diagnostic(
     _validate_stage(stage)
     if not paths:
         raise ValueError("diagnostic save requires at least one path")
-    path_strings = [str(path) for path in paths]
+    path_strings = [str(_diagnostic_path(bids_dir, path)) for path in paths]
     _reject_configured_token(
         {"bids_dir": str(bids_dir), "stage": stage, "paths": path_strings}
     )
@@ -100,6 +117,7 @@ def save_diagnostic(
             str(bids_dir),
             "-m",
             f"{stage}-failed-diagnostics",
+            "--",
             *path_strings,
         ],
         check=True,
@@ -125,6 +143,13 @@ def git_head(bids_dir: Path, runner: Runner = subprocess.run) -> str:
 def _validate_stage(stage: str) -> None:
     if not _STAGE.fullmatch(stage):
         raise ValueError("stage must use lowercase letters, digits, and hyphens")
+
+
+def _diagnostic_path(bids_dir: Path, path: Path) -> Path:
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = Path(bids_dir) / candidate
+    return candidate.resolve(strict=False)
 
 
 def _reject_configured_token(payload: dict[str, Any]) -> None:
