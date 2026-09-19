@@ -1,116 +1,106 @@
-"""Assemble fMRIPrep output from the campaign's per-subject BABS zips into derivatives/.
-
-The campaign produces one zip per subject (subject-level fMRIPrep); ``glm-lev1
---fmriprep-dir`` wants one unpacked derivatives tree. Unlike ``mriqc-iqms`` this is bulk
-data, so everything is extracted, not just sidecars. Subject-level zips cannot collide,
-so extraction is a plain unzip per subject into the same tree.
-
-Fetching a zip makes a second copy of it -- the campaign's output RIA already holds one --
-so after a successful unpack the fetched copies are evicted (``--keep-zips`` to opt out).
-That is ~200 GB per subject, and the unpacked tree is a third copy, so without this the
-cohort costs 3x what it needs to. ``datalad drop`` refuses to remove a last copy, so the
-RIA remains the archive and the zips can be re-fetched.
-"""
+"""Direct fMRIPrep commands and completion checks for the curated BIDS dataset."""
 
 from __future__ import annotations
 
-import argparse
-import os
-import subprocess
-import sys
+import json
+from collections.abc import Iterable
 from pathlib import Path
 
-from network_fmri import provenance
-from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, cohort_dataset
-from network_fmri.qa.mriqc import CAMPAIGN, SEVENZIP_BIN, sevenzip
+from network_fmri.config import WorkflowConfig
+from network_fmri.containers import apptainer_prefix, bind, job_tmpdir
+from network_fmri.models import StageResult
+from network_fmri.stages import StageError
 
-PIPELINE = "fMRIPrep-25.2.5"
+
+def fmriprep_participant_command(config: WorkflowConfig, subject: str) -> tuple[str, ...]:
+    """Build one all-sessions fMRIPrep invocation for a roster subject."""
+
+    if subject not in config.subjects:
+        raise StageError(f"fMRIPrep subject {subject!r} is outside the exact roster")
+    root = config.paths.bids_dir / "derivatives" / "fmriprep"
+    work = config.paths.work_dir / "fmriprep" / subject
+    prefix = apptainer_prefix(
+        config.fmriprep,
+        binds=(
+            bind(config.paths.bids_dir, "/data", read_only=True),
+            bind(root, "/out"),
+            bind(work, "/work"),
+            bind(config.paths.templateflow_dir, "/templateflow", read_only=True),
+            bind(config.paths.freesurfer_license, "/license.txt", read_only=True),
+            bind(job_tmpdir(), "/tmp"),
+        ),
+        environment=(("TEMPLATEFLOW_HOME", "/templateflow"),),
+    )
+    return prefix + (
+        "/data", "/out", "participant", "--participant-label", subject, "-w", "/work",
+        "--dummy-scans", "0", "--no-submm-recon",
+        "--output-spaces", "MNI152NLin2009cAsym:res-2", "T1w", "fsnative", "fsaverage6",
+        "--cifti-output", "91k", "--me-output-echos", "--use-syn-sdc", "warn",
+        "--random-seed", "12345", "--skull-strip-fixed-seed", "--skull-strip-t1w", "force",
+        "--notrack", "--md-only-boilerplate", "--skip-bids-validation", "--stop-on-first-crash",
+        "--fs-license-file", "/license.txt", "--nprocs", str(config.slurm.cpus),
+        "--omp-nthreads", "2", "--mem-mb", str(config.slurm.memory_gb * 1024),
+    )
 
 
-def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="network_fmri fmriprep-derivs-run")
-    p.add_argument("--cohort", required=True, choices=list(COHORTS))
-    p.add_argument("--campaign", default=str(CAMPAIGN))
-    p.add_argument("--out", required=True, help="derivative dir, e.g. derivatives/fmriprep")
-    p.add_argument("--keep-zips", action="store_true",
-                   help="keep the fetched zips instead of dropping them after unpacking")
-    args = p.parse_args(argv)
+def verify_fmriprep(config: WorkflowConfig) -> StageResult:
+    """Require all approved roster outputs and reports before the final milestone."""
 
-    src = (Path(args.campaign) / "studies" / f"study-{args.cohort}"
-           / "derivatives" / PIPELINE)
-    zips = sorted(src.glob(f"sub-*_{PIPELINE}*.zip"))
-    if not zips:
-        raise SystemExit(f"no merged {PIPELINE} zips under {src} — merge the cell first")
-    unfetched = [z for z in zips if not z.exists()]
-    if unfetched:
-        raise SystemExit(
-            f"{len(unfetched)}/{len(zips)} zips have no content locally.\n"
-            f"run: datalad get -d {src} {src}/'sub-*_{PIPELINE}*.zip'"
-        )
+    root = config.paths.bids_dir / "derivatives" / "fmriprep"
+    _require_derivative_description(root)
+    missing_outputs = [
+        subject for subject in config.subjects
+        if not (root / f"sub-{subject}").is_dir()
+    ]
+    if missing_outputs:
+        raise StageError("fMRIPrep completion has missing subject outputs: " + ", ".join(missing_outputs))
+    missing_reports = [
+        subject for subject in config.subjects
+        if not (root / f"sub-{subject}.html").is_file()
+    ]
+    if missing_reports:
+        raise StageError("fMRIPrep completion has missing subject reports: " + ", ".join(missing_reports))
+    crashes = _crash_files((root, config.paths.work_dir / "fmriprep"))
+    if crashes:
+        raise StageError("fMRIPrep completion found crash evidence: " + _display(crashes, config.paths.bids_dir))
+    return StageResult(
+        "fmriprep-complete", (root, root / "dataset_description.json"),
+        {"subjects": len(config.subjects)},
+    )
 
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    exe = sevenzip()
-    for z in zips:
-        # The zip's top folder is the pipeline name; extract its contents into out/.
-        subprocess.run([exe, "x", "-y", f"-o{out}", str(z)],
-                       check=True, capture_output=True)
-        print(f"[fmriprep-derivs] {z.name}", flush=True)
-    inner = out / PIPELINE
-    if inner.is_dir():
-        # Flatten <out>/fMRIPrep-25.2.5/* -> <out>/* so the tree is a plain
-        # fMRIPrep layout (sub-*/, sourcedata/freesurfer, dataset_description.json).
-        subprocess.run(["rsync", "-a", f"{inner}/", f"{out}/"], check=True)
-        subprocess.run(["rm", "-rf", str(inner)], check=True)
-    # Directories only: the tree also holds one sub-*_*.html report per session.
-    n = len([p for p in out.glob("sub-*") if p.is_dir()])
-    print(f"[fmriprep-derivs] {n} subjects -> {out}", flush=True)
 
-    if not args.keep_zips:
-        # Only after the unpack succeeded, so a failure never costs the fetch. The drop
-        # is in the campaign dataset, not this one -- a cache eviction, not an output.
-        #
-        # The zips live in a RIA, so verifying the remaining copy needs
-        # git-annex-remote-ora; without it on PATH git-annex reports the confusing
-        # "external special remote protocol error ... <EOF>". It ships in this venv.
-        bindir = str(Path(sys.executable).parent)
-        env = {**os.environ, "PATH": f"{bindir}{os.pathsep}{os.environ.get('PATH', '')}"}
-        r = subprocess.run([f"{bindir}/datalad", "drop", "-d", str(src),
-                            *[str(z) for z in zips]],
-                           capture_output=True, text=True, env=env)
-        if r.returncode:
-            print(f"[fmriprep-derivs] zips left in place ({src}): {r.stderr.strip()}",
-                  flush=True)
-        else:
-            print(f"[fmriprep-derivs] dropped {len(zips)} fetched zips", flush=True)
-    return 0
+def _require_derivative_description(root: Path) -> None:
+    description = root / "dataset_description.json"
+    try:
+        value = json.loads(description.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise StageError(f"fMRIPrep derivative description is missing or malformed: {description}") from error
+    if not isinstance(value, dict) or value.get("DatasetType") != "derivative":
+        raise StageError(f"fMRIPrep derivative description is not a BIDS derivative: {description}")
+
+
+def _crash_files(roots: Iterable[Path]) -> tuple[Path, ...]:
+    return tuple(sorted(
+        path for root in roots if root.is_dir() for path in root.rglob("crash*")
+        if path.is_file() or path.is_dir()
+    ))
+
+
+def _display(paths: Iterable[Path], bids_dir: Path, limit: int = 8) -> str:
+    values = list(paths)
+    shown = [str(path.relative_to(bids_dir)) if path.is_relative_to(bids_dir) else str(path) for path in values[:limit]]
+    suffix = f" (+{len(values) - limit} more)" if len(values) > limit else ""
+    return ", ".join(shown) + suffix
 
 
 def record(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="network_fmri fmriprep-derivs")
-    p.add_argument("--cohort", required=True, choices=list(COHORTS))
-    p.add_argument("--staging", default=DEFAULT_STAGING)
-    p.add_argument("--campaign", default=str(CAMPAIGN))
-    p.add_argument("--out", default="derivatives/fmriprep")
-    p.add_argument("--keep-zips", action="store_true",
-                   help="keep the fetched zips instead of dropping them after unpacking")
-    args = p.parse_args(argv)
+    """Legacy registry target retained until that registry is removed in Task 8."""
 
-    tree = cohort_dataset(args.staging, args.cohort)
-    cmd = [str(Path(sys.executable).parent / "network_fmri"), "fmriprep-derivs-run",
-           "--cohort", args.cohort, "--campaign", args.campaign, "--out", args.out]
-    if args.keep_zips:
-        cmd.append("--keep-zips")
-    env = provenance.datalad_env()
-    env["PATH"] = f"{SEVENZIP_BIN}{os.pathsep}{env.get('PATH', '')}"
-    provenance.run_recorded(
-        tree, cmd,
-        f"network_fmri@{provenance.code_version()}: assemble fMRIPrep derivatives "
-        f"for {args.cohort}",
-        outputs=[args.out], env=env,
-    )
-    return 0
+    del argv
+    raise RuntimeError("legacy fMRIPrep archive assembly is unavailable in the single-dataset workflow")
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+def main(argv: list[str] | None = None) -> int:
+    """Legacy registry target retained until that registry is removed in Task 8."""
+
+    return record(argv)
