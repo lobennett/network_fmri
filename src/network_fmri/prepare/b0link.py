@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 
@@ -13,11 +14,30 @@ from network_fmri.stages import StageError
 
 def link_b0(bids_dir: Path) -> StageResult:
     """Set B0 links atomically and idempotently across a BIDS dataset."""
+    bids_dir = Path(bids_dir)
     try:
-        summary = link_tree(Path(bids_dir))
-    except (OSError, SidecarError, ValueError) as error:
+        _require_b0_input(bids_dir)
+        summary = link_tree(bids_dir)
+    except (OSError, SidecarError, ValueError, json.JSONDecodeError) as error:
         raise StageError(f"B0 linking failed: {error}") from error
-    return StageResult("b0-linked", (Path(bids_dir),), summary)
+    return StageResult("b0-fieldmaps-linked", (bids_dir,), summary)
+
+
+def _require_b0_input(bids_dir: Path) -> None:
+    """Reject missing, non-BIDS, and empty inputs before metadata mutation."""
+    description = bids_dir / "dataset_description.json"
+    if not bids_dir.is_dir() or bids_dir.is_symlink():
+        raise ValueError(f"BIDS directory is missing or unsafe: {bids_dir}")
+    try:
+        metadata = json.loads(description.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"BIDS dataset description is missing or malformed: {description}") from error
+    if not isinstance(metadata, dict):
+        raise ValueError(f"BIDS dataset description is not an object: {description}")
+    if not any(path.is_dir() for path in bids_dir.glob("sub-*/ses-*")):
+        raise ValueError(f"BIDS directory has no subject sessions: {bids_dir}")
+    if not any(bids_dir.glob("sub-*/ses-*/func/*_bold.nii.gz")):
+        raise ValueError(f"BIDS directory has no BOLD scans for B0 linkage: {bids_dir}")
 
 
 def link_tree(bids_dir: Path) -> dict[str, int]:
