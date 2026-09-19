@@ -98,7 +98,8 @@ def _complete_fmriprep(config: WorkflowConfig) -> Path:
         _write(config.paths.bids_dir / f"sub-{subject}/ses-01/anat/sub-{subject}_ses-01_T1w.nii.gz", "raw")
         _write(config.paths.bids_dir / f"sub-{subject}/ses-01/func/sub-{subject}_ses-01_task-rest_bold.nii.gz", "raw")
         _write(root / f"sub-{subject}/anat/sub-{subject}_desc-preproc_T1w.nii.gz", "preprocessed")
-        _write(root / f"sub-{subject}/ses-01/func/sub-{subject}_ses-01_task-rest_desc-preproc_bold.nii.gz", "preprocessed")
+        _write(root / f"sub-{subject}/ses-01/func/sub-{subject}_ses-01_task-rest_space-T1w_desc-preproc_bold.nii.gz", "preprocessed")
+        _write(root / f"sub-{subject}/ses-01/func/sub-{subject}_ses-01_task-rest_space-MNI152NLin2009cAsym_res-2_desc-preproc_bold.nii.gz", "preprocessed")
         _write(root / f"sub-{subject}.html")
         write_subject_receipt(
             receipt_path(root, "fmriprep", subject),
@@ -133,9 +134,9 @@ def test_verification_rejects_crash_evidence(tmp_path):
 def test_verification_rejects_empty_imaging_outputs_and_stale_receipts(tmp_path):
     config = configuration(tmp_path)
     root = _complete_fmriprep(config)
-    bold = root / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_desc-preproc_bold.nii.gz"
+    bold = root / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_space-MNI152NLin2009cAsym_res-2_desc-preproc_bold.nii.gz"
     bold.write_text("")
-    with pytest.raises(StageError, match="preprocessed BOLD"):
+    with pytest.raises(StageError, match="output-space BOLD"):
         verify_fmriprep(config, GitRunner())
 
     bold.write_text("preprocessed")
@@ -150,4 +151,22 @@ def test_verification_rejects_empty_imaging_outputs_and_stale_receipts(tmp_path)
     record["container"]["version"] = "old"
     receipt.write_text(json.dumps(record))
     with pytest.raises(StageError, match="stale or missing subject receipts"):
+        verify_fmriprep(config, GitRunner())
+
+
+def test_verification_requires_both_output_spaces_for_every_multi_echo_input(tmp_path):
+    config = configuration(tmp_path)
+    root = _complete_fmriprep(config)
+    raw = config.paths.bids_dir / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_run-2_echo-2_bold.nii.gz"
+    _write(raw, "raw")
+    _write(
+        root / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_run-2_echo-2_space-T1w_desc-preproc_bold.nii.gz",
+        "preprocessed",
+    )
+    mni = root / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_run-2_echo-2_space-MNI152NLin2009cAsym_res-2_desc-preproc_bold.nii.gz"
+    _write(mni, "preprocessed")
+    assert verify_fmriprep(config, GitRunner()).name == "fmriprep-complete"
+
+    mni.unlink()
+    with pytest.raises(StageError, match="output-space BOLD"):
         verify_fmriprep(config, GitRunner())

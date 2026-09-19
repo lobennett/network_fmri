@@ -14,9 +14,15 @@ from network_fmri.config import (
     WorkflowConfig,
     WorkflowPaths,
 )
-from network_fmri.containers import bind, receipt_path, write_subject_receipt
+from network_fmri.containers import (
+    bind,
+    group_receipt_path,
+    receipt_path,
+    write_subject_receipt,
+)
 from network_fmri.qa.mriqc import (
     mriqc_group_command,
+    mriqc_group_receipt,
     mriqc_participant_command,
     mriqc_subject_receipt,
     verify_mriqc,
@@ -94,7 +100,13 @@ def _complete_mriqc(config: WorkflowConfig) -> Path:
     _write(root / "dataset_description.json", json.dumps({"DatasetType": "derivative"}))
     _write(root / "group_bold.html")
     _write(root / "group_bold.tsv")
+    _write(root / "group_T1w.html")
+    _write(root / "group_T1w.tsv")
     for subject in config.subjects:
+        anatomy = Path(f"sub-{subject}/ses-01/anat/sub-{subject}_ses-01_T1w")
+        _write(bids / anatomy.with_suffix(".nii.gz"))
+        _write(root / anatomy.with_suffix(".json"), "{}")
+        _write(root / anatomy.with_suffix(".html"))
         relative = Path(f"sub-{subject}/ses-01/func/sub-{subject}_ses-01_task-rest_run-1_bold")
         _write(bids / relative.with_suffix(".nii.gz"))
         _write(root / relative.with_suffix(".json"), json.dumps({
@@ -105,6 +117,9 @@ def _complete_mriqc(config: WorkflowConfig) -> Path:
             receipt_path(root, "mriqc", subject),
             mriqc_subject_receipt(config, subject, "a" * 40),
         )
+    write_subject_receipt(
+        group_receipt_path(root, "mriqc"), mriqc_group_receipt(config, "a" * 40)
+    )
     return root
 
 
@@ -146,6 +161,27 @@ def test_verification_rejects_stale_receipts_and_wrong_iqm_provenance(tmp_path):
     iqm = root / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_run-1_bold.json"
     iqm.write_text(json.dumps({"provenance": {"settings": {"fd_thres": 0.2}}}))
     with pytest.raises(StageError, match="fd_thres=0.5"):
+        verify_mriqc(config, GitRunner())
+
+
+def test_anatomical_iqms_need_valid_json_but_no_motion_threshold(tmp_path):
+    config = configuration(tmp_path)
+    root = _complete_mriqc(config)
+    anatomy = root / "sub-s3/ses-01/anat/sub-s3_ses-01_T1w.json"
+    anatomy.write_text("[]")
+    with pytest.raises(StageError, match="IQMs are malformed"):
+        verify_mriqc(config, GitRunner())
+
+    anatomy.write_text("{}")
+    assert verify_mriqc(config, GitRunner()).name == "mriqc-complete"
+
+
+def test_verification_requires_a_current_group_receipt(tmp_path):
+    config = configuration(tmp_path)
+    root = _complete_mriqc(config)
+    group_receipt_path(root, "mriqc").unlink()
+
+    with pytest.raises(StageError, match="group receipt"):
         verify_mriqc(config, GitRunner())
 
 

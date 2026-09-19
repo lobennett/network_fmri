@@ -13,6 +13,7 @@ from network_fmri.containers import (
     apptainer_prefix,
     bind,
     current_datalad_commit,
+    group_receipt_path,
     job_tmpdir,
     receipt_path,
     subject_receipt,
@@ -66,6 +67,17 @@ def mriqc_subject_receipt(config: WorkflowConfig, subject: str, input_commit: st
     )
 
 
+def mriqc_group_receipt(config: WorkflowConfig, input_commit: str) -> dict[str, object]:
+    """Return the receipt a successful MRIQC group worker must write."""
+
+    return subject_receipt(
+        subject="group",
+        input_datalad_commit=input_commit,
+        container=config.mriqc,
+        invocation=mriqc_group_command(config),
+    )
+
+
 def verify_mriqc(config: WorkflowConfig, runner: Runner = subprocess.run) -> StageResult:
     """Require complete IQMs/reports for the exact roster before consolidation.
 
@@ -99,7 +111,7 @@ def verify_mriqc(config: WorkflowConfig, runner: Runner = subprocess.run) -> Sta
         iqm = _derivative_companion(root, config.paths.bids_dir, path, ".json")
         if not iqm.is_file():
             missing_iqms.append(path)
-        elif not _has_approved_fd_threshold(iqm):
+        elif not _valid_iqm(iqm, require_fd_threshold=_nifti_suffix(path) == "bold"):
             invalid_iqms.append(iqm)
     missing_reports = [
         path for path in images if not _derivative_companion(root, config.paths.bids_dir, path, ".html").is_file()
@@ -107,7 +119,7 @@ def verify_mriqc(config: WorkflowConfig, runner: Runner = subprocess.run) -> Sta
     if missing_iqms:
         raise StageError("MRIQC completion has missing IQMs: " + _display(missing_iqms, config.paths.bids_dir))
     if invalid_iqms:
-        raise StageError("MRIQC IQMs lack provenance fd_thres=0.5: " + _display(invalid_iqms, config.paths.bids_dir))
+        raise StageError("MRIQC IQMs are malformed or BOLD provenance lacks fd_thres=0.5: " + _display(invalid_iqms, config.paths.bids_dir))
     if missing_reports:
         raise StageError("MRIQC completion has missing individual reports: " + _display(missing_reports, config.paths.bids_dir))
     missing_group = [
@@ -132,6 +144,16 @@ def verify_mriqc(config: WorkflowConfig, runner: Runner = subprocess.run) -> Sta
             bad_receipts.append(str(error))
     if bad_receipts:
         raise StageError("MRIQC completion has stale or missing subject receipts: " + "; ".join(bad_receipts[:3]))
+    try:
+        verify_subject_receipt(
+            group_receipt_path(root, "mriqc"),
+            subject="group",
+            input_datalad_commit=input_commit,
+            container=config.mriqc,
+            invocation=mriqc_group_command(config),
+        )
+    except ValueError as error:
+        raise StageError(f"MRIQC completion has stale or missing group receipt: {error}") from error
     crashes = _crash_files((root, config.paths.work_dir / "mriqc"))
     if crashes:
         raise StageError("MRIQC completion found crash evidence: " + _display(crashes, config.paths.bids_dir))
@@ -196,11 +218,19 @@ def _stem(path: Path) -> str:
     return path.name.removesuffix(".nii.gz").removesuffix(".nii")
 
 
-def _has_approved_fd_threshold(path: Path) -> bool:
+def _valid_iqm(path: Path, *, require_fd_threshold: bool) -> bool:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            return False
+        if not require_fd_threshold:
+            return True
         threshold = value["provenance"]["settings"]["fd_thres"]
-        return isinstance(threshold, (int, float)) and not isinstance(threshold, bool) and threshold == 0.5
+        return (
+            isinstance(threshold, (int, float))
+            and not isinstance(threshold, bool)
+            and threshold == 0.5
+        )
     except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError):
         return False
 

@@ -58,6 +58,12 @@ def receipt_path(output_root: Path, application: str, subject: str) -> Path:
     return Path(output_root) / "code" / "network_fmri" / "run-receipts" / application / f"sub-{subject}.json"
 
 
+def group_receipt_path(output_root: Path, application: str) -> Path:
+    """Return the receipt path for one dependent group application invocation."""
+
+    return Path(output_root) / "code" / "network_fmri" / "run-receipts" / application / "group.json"
+
+
 def subject_receipt(
     *,
     subject: str,

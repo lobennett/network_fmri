@@ -106,11 +106,11 @@ def verify_fmriprep(config: WorkflowConfig, runner: Runner = subprocess.run) -> 
         raise StageError("fMRIPrep has no eligible BOLD acquisition for roster subjects: " + ", ".join(no_raw_bold))
     missing_bold = [
         path for path in expected_bold
-        if not _preprocessed_bold_path(root, config.paths.bids_dir, path).is_file()
-        or _preprocessed_bold_path(root, config.paths.bids_dir, path).stat().st_size == 0
+        if any(not output.is_file() or output.stat().st_size == 0
+               for output in _preprocessed_bold_paths(root, config.paths.bids_dir, path))
     ]
     if missing_bold:
-        raise StageError("fMRIPrep completion has missing preprocessed BOLD files: " + _display(missing_bold, config.paths.bids_dir))
+        raise StageError("fMRIPrep completion has missing established output-space BOLD files: " + _display(missing_bold, config.paths.bids_dir))
     bad_receipts = []
     for subject in config.subjects:
         path = receipt_path(root, "fmriprep", subject)
@@ -146,8 +146,8 @@ def _require_derivative_description(root: Path) -> None:
 
 
 def _has_preprocessed_anat(root: Path, subject: str) -> bool:
-    candidates = (root / f"sub-{subject}").glob("**/anat/*_desc-preproc_T1w.nii*")
-    return any(path.is_file() and path.stat().st_size > 0 for path in candidates)
+    chosen = root / f"sub-{subject}" / "anat" / f"sub-{subject}_desc-preproc_T1w.nii.gz"
+    return chosen.is_file() and chosen.stat().st_size > 0
 
 
 def _raw_t1w(bids_dir: Path, subjects: Iterable[str]) -> dict[str, tuple[Path, ...]]:
@@ -169,11 +169,16 @@ def _raw_bold(bids_dir: Path, subjects: Iterable[str]) -> tuple[Path, ...]:
     ))
 
 
-def _preprocessed_bold_path(root: Path, bids_dir: Path, raw: Path) -> Path:
+def _preprocessed_bold_paths(root: Path, bids_dir: Path, raw: Path) -> tuple[Path, Path]:
     relative = raw.relative_to(bids_dir)
     stem = raw.name.removesuffix(".nii.gz").removesuffix(".nii")
-    name = stem.removesuffix("_bold") + "_desc-preproc_bold.nii.gz"
-    return root / relative.with_name(name)
+    prefix = stem.removesuffix("_bold")
+    return (
+        root / relative.with_name(prefix + "_space-T1w_desc-preproc_bold.nii.gz"),
+        root / relative.with_name(
+            prefix + "_space-MNI152NLin2009cAsym_res-2_desc-preproc_bold.nii.gz"
+        ),
+    )
 
 
 def _crash_files(roots: Iterable[Path]) -> tuple[Path, ...]:
