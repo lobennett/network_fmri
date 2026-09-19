@@ -213,25 +213,3 @@ def test_save_diagnostic_rejects_a_path_containing_the_configured_token(tmp_path
         save_diagnostic(tmp_path, "mriqc", [tmp_path / "secret-value.log"], runner)
 
     assert runner.calls == []
-
-
-def test_legacy_recording_commands_keep_their_provenance_exports():
-    from network_fmri import provenance
-    from network_fmri.registry import COMMANDS
-
-    assert all(
-        callable(getattr(provenance, name))
-        for name in ("datalad_env", "ensure_dataset", "run_recorded", "subject_commit")
-    )
-    routes = {
-        ("import-subject",),
-        ("merge",),
-        ("fix-sidecars",),
-        ("global-signal",),
-        ("trim",),
-        ("b0link",),
-        ("ingest-beh",),
-        ("mriqc-iqms",),
-        ("fmriprep-derivs",),
-    }
-    assert all(callable(command.load()) for command in COMMANDS if command.route in routes)

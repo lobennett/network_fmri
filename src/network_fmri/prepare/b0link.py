@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
 from pathlib import Path
@@ -123,20 +122,3 @@ def _restore(path: Path, content: bytes) -> None:
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
-
-
-def get_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="network_fmri b0link-run")
-    p.add_argument("--bids-dir", required=True)
-    return p
-
-
-def main(argv: list[str] | None = None) -> int:
-    args = get_parser().parse_args(argv)
-    print(f"[b0link] {link_b0(Path(args.bids_dir)).details}", flush=True)
-    return 0
-
-
-def record(argv: list[str] | None = None) -> int:
-    """Deprecated legacy route retained until the registry is removed in Task 8."""
-    raise RuntimeError("legacy cohort B0 linking is unavailable in the single-dataset workflow")

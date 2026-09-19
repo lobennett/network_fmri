@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from pathlib import Path
 
 from network_fmri.config import WorkflowConfig
@@ -21,18 +20,6 @@ from network_fmri.containers import (
 )
 from network_fmri.models import Runner, StageResult
 from network_fmri.stages import StageError
-
-
-def default_campaign(environ: Mapping[str, str] = os.environ) -> Path:
-    """Return the former campaign root during the planned legacy-surface transition."""
-
-    if configured := environ.get("NETWORK_FMRI_CAMPAIGN"):
-        return Path(configured)
-    return Path(environ.get("SCRATCH", str(Path.home()))) / "mechababs_campaigns" / "r01network"
-
-
-# Imported by legacy command modules that are removed with the old registry in Task 8.
-CAMPAIGN = default_campaign()
 
 
 def mriqc_participant_command(config: WorkflowConfig, subject: str) -> tuple[str, ...]:
@@ -247,16 +234,3 @@ def _display(paths: Iterable[Path], bids_dir: Path, limit: int = 8) -> str:
     shown = [str(path.relative_to(bids_dir)) if path.is_relative_to(bids_dir) else str(path) for path in values[:limit]]
     suffix = f" (+{len(values) - limit} more)" if len(values) > limit else ""
     return ", ".join(shown) + suffix
-
-
-def record(argv: list[str] | None = None) -> int:
-    """Legacy registry target retained until that registry is removed in Task 8."""
-
-    del argv
-    raise RuntimeError("legacy MRIQC archive assembly is unavailable in the single-dataset workflow")
-
-
-def main(argv: list[str] | None = None) -> int:
-    """Legacy registry target retained until that registry is removed in Task 8."""
-
-    return record(argv)

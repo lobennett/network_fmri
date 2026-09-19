@@ -10,7 +10,6 @@ independent, so ``--jobs`` is safe.
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import multiprocessing
@@ -246,24 +245,3 @@ def _require_trim_input(bids_dir: Path) -> None:
         raise StageError(f"BIDS directory has no subject sessions: {bids_dir}")
     if not any(bids_dir.glob("sub-*/ses-*/func/*_bold.nii.gz")):
         raise StageError(f"BIDS directory has no BOLD scans to trim: {bids_dir}")
-
-
-def get_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="network_fmri trim-bold")
-    p.add_argument("--bids-dir", required=True)
-    p.add_argument("--subjects", nargs="+", default=None)
-    p.add_argument("--jobs", type=int, default=1)
-    return p
-
-
-def main(argv: list[str] | None = None) -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    args = get_parser().parse_args(argv)
-    summary = trim_tree(Path(args.bids_dir), args.subjects, args.jobs)
-    print(f"[trim] {summary}", flush=True)
-    return 1 if summary["too_short"] or summary["error"] else 0
-
-
-def record(argv: list[str] | None = None) -> int:
-    """Deprecated legacy route retained until the registry is removed in Task 8."""
-    raise RuntimeError("legacy cohort trim is unavailable in the single-dataset workflow")

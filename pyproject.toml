@@ -3,19 +3,19 @@ name = "network_fmri"
 version = "0.1.0"
 description = "Flywheel -> BIDS curation and pipeline submission for the r01network study"
 readme = "README.md"
-# Bounded: network_glm's pinned stack has no 3.14 wheels.
+# Bounded to the Python version supported by the pinned study packages.
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "datalad>=1.1",
     # provisions git-annex; pip cannot ship the binary
     "datalad-installer>=1.1",
-    "fw-heudiconv",
+    "bids-validator-deno>=1.0",
     "global-signal-plots[plot]",
-    # Owns the behavioural half: events.tsv, truncation QC, behaviour-driven trimming.
+    "network-fw2bids",
+    "nibabel>=5.3",
+    # Owns the behavioural half: events.tsv and truncation QC.
     "network-events",
-    # Owns the GLMs; this repo owns their submission.
-    "network-glm",
-    # Exclusion decisions; this repo owns when they run.
+    # Owns scan-decision evidence and approval validation.
     "network-qa",
 ]
 
@@ -41,11 +41,10 @@ override-dependencies = [
 ]
 
 [tool.uv.sources]
-fw-heudiconv = { git = "https://github.com/lobennett/fw-heudiconv.git", rev = "e7509a4" }
-global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "5d92c33" }
-network_events = { git = "https://github.com/lobennett/network_events.git", rev = "6b9a8b8" }
-network_glm = { git = "https://github.com/lobennett/network_glm.git", rev = "122fa29cd11e724a6cfc8160841bcfc537bb2c82" }
-network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "d401e5f" }
+global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "ee5ad00ad2f51586d0379d2fe5a6a5fa3e2e60d7" }
+network_fw2bids = { git = "https://github.com/lobennett/network_fw2bids.git", rev = "46fc59edbc90a1332b4cbd82796b59336a75f999" }
+network_events = { git = "https://github.com/lobennett/network_events.git", rev = "b011add84891d057464500f978f178019adedcb9" }
+network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "53d097935bf3e75507d19c4a5f5d2ff5ccc269db" }
 
 [build-system]
 requires = ["hatchling"]
