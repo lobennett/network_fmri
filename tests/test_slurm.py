@@ -105,6 +105,23 @@ def test_submission_persists_each_accepted_job_and_failure_state(tmp_path):
     assert updates[-1].jobs == {"one": "101"}
 
 
+def test_malformed_sbatch_output_is_persisted_as_a_failure(tmp_path):
+    updates = []
+
+    class BadOutputRunner:
+        def __call__(self, command, **kwargs):
+            return SimpleNamespace(stdout="not-a-job-id\n")
+
+    with pytest.raises(RuntimeError, match="one"):
+        submit_plan(
+            (PlannedJob("one", ("one",)),), config=config(), log_dir=tmp_path,
+            subject_count=46, runner=BadOutputRunner(), on_update=updates.append,
+        )
+
+    assert updates[-1].status == "failed"
+    assert "no valid job ID" in updates[-1].error
+
+
 def test_missing_dependency_is_rejected_before_submission(tmp_path):
     with pytest.raises(ValueError, match="missing dependency"):
         submit_plan(

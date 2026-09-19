@@ -1,6 +1,10 @@
 """Contracts for the one fixed pipeline graph."""
 
 from pathlib import Path
+from types import SimpleNamespace
+
+import json
+import pytest
 
 import network_fmri.pipeline as pipeline
 from network_fmri.config import (
@@ -41,7 +45,8 @@ def test_graph_has_the_fixed_order_and_human_gate(tmp_path):
     assert names == STAGE_ORDER
     assert names.index("scan-decisions-approved") < names.index("mriqc-curated")
     assert names.index("mriqc-curated") < names.index("fmriprep-array")
-    assert "bids-curated-validated" not in names
+    assert names.index("mriqc-curated") < names.index("bids-curated-validated")
+    assert names.index("bids-curated-validated") < names.index("fmriprep-array")
     assert all(
         job.dependencies == (() if index == 0 else (names[index - 1],))
         for index, job in enumerate(plan)
@@ -122,3 +127,78 @@ def test_dry_submit_does_not_create_the_log_directory(tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline, "submit_plan", submit)
     assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--dry-run"]) == 0
     assert not config.paths.log_dir.exists()
+
+
+def test_curated_validation_is_a_graph_node_without_a_second_milestone(tmp_path, monkeypatch):
+    config = configuration(tmp_path)
+    monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
+    monkeypatch.setattr(
+        pipeline, "_run_stage", lambda *_: StageResult("bids-curated-validated", (tmp_path / "report.json",)),
+    )
+    saved = []
+    monkeypatch.setattr(pipeline, "save_stage_result", lambda *args, **kwargs: saved.append(args))
+
+    assert pipeline.stage_main(["bids-curated-validated", str(tmp_path / "workflow.toml")]) == 0
+    assert saved == []
+
+
+def test_normal_submit_refuses_an_existing_partial_record_and_resume_skips_it(tmp_path, monkeypatch):
+    config = configuration(tmp_path)
+    pipeline.write_record(
+        pipeline.record_path(config),
+        SubmissionRecord(jobs={"fw2bids-array": "123"}, status="failed", error="scheduler error"),
+    )
+    monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
+    with pytest.raises(RuntimeError, match="--resume"):
+        pipeline.main(["submit", str(tmp_path / "workflow.toml")])
+
+    selected = []
+    monkeypatch.setattr(
+        pipeline, "submit_plan",
+        lambda jobs, **kwargs: selected.extend(job.name for job in jobs) or SubmissionRecord(),
+    )
+    assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"]) == 0
+    assert "fw2bids-array" not in selected
+    assert selected[0] == "bids-assembled"
+
+
+def test_status_exposes_submission_status_and_error(tmp_path, monkeypatch, capsys):
+    config = configuration(tmp_path)
+    pipeline.write_record(
+        pipeline.record_path(config),
+        SubmissionRecord(jobs={"fw2bids-array": "123"}, status="failed", error="bad output"),
+    )
+    monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
+
+    assert pipeline.main(["status", str(tmp_path / "workflow.toml")]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "status\tfailed", "error\tbad output", "fw2bids-array\t123",
+    ]
+
+
+def test_resume_requires_a_verified_committed_approval_receipt(tmp_path, monkeypatch):
+    config = configuration(tmp_path)
+    pipeline.write_record(
+        pipeline.record_path(config), SubmissionRecord(jobs={"scan-decisions-generated": "123"}),
+    )
+    monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
+    called = []
+    monkeypatch.setattr(pipeline, "require_committed_approval", lambda _: called.append(True))
+    monkeypatch.setattr(pipeline, "submit_plan", lambda *args, **kwargs: SubmissionRecord(dry_run=True))
+
+    assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"]) == 0
+    assert called == [True]
+
+
+def test_committed_approval_requires_a_receipt_present_in_head(tmp_path, monkeypatch):
+    config = configuration(tmp_path)
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        if command[0] == "network-qa":
+            return SimpleNamespace(stdout="")
+        return SimpleNamespace(stdout=json.dumps({"stage": "scan-decisions-approved", "status": "success"}))
+
+    pipeline.require_committed_approval(config, runner)
+    assert calls[1][:2] == ["git", "-C"]

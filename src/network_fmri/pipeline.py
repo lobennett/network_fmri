@@ -19,8 +19,8 @@ STAGE_ORDER = (
     "gs-pretrim", "dummy-volumes-trimmed", "bids-events-generated",
     "gs-posttrim", "b0-fieldmaps-linked", "bids-precuration-validated",
     "mriqc-array", "mriqc-complete", "scan-decisions-generated",
-    "scan-decisions-approved", "mriqc-curated", "fmriprep-array",
-    "fmriprep-complete",
+    "scan-decisions-approved", "mriqc-curated", "bids-curated-validated",
+    "fmriprep-array", "fmriprep-complete",
 )
 
 _FIRST_SUBMISSION_END = "scan-decisions-generated"
@@ -110,6 +110,28 @@ def require_approved_decisions(config: WorkflowConfig, runner=subprocess.run) ->
         ) from error
 
 
+def require_committed_approval(config: WorkflowConfig, runner=subprocess.run) -> None:
+    """Require both a current approval seal and its committed milestone receipt."""
+
+    require_approved_decisions(config, runner)
+    from network_fmri.milestones import receipt_path
+
+    receipt = receipt_path(config.paths.bids_dir, "scan-decisions-approved")
+    relative = receipt.relative_to(config.paths.bids_dir).as_posix()
+    try:
+        completed = runner(
+            ["git", "-C", str(config.paths.bids_dir), "show", f"HEAD:{relative}"],
+            check=True, capture_output=True, text=True,
+        )
+        value = json.loads(completed.stdout)
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
+        raise RuntimeError(
+            "scan decisions are sealed but their approval milestone is not committed"
+        ) from error
+    if not isinstance(value, dict) or value.get("stage") != "scan-decisions-approved" or value.get("status") != "success":
+        raise RuntimeError("committed scan-decision approval milestone is malformed")
+
+
 def record_path(config: WorkflowConfig) -> Path:
     return config.paths.log_dir / "pipeline-submission.json"
 
@@ -170,6 +192,12 @@ def _print_plan(plan: tuple[PlannedJob, ...]) -> None:
         print(f"{job.name}{array} after={after}: {' '.join(job.command)}")
 
 
+def _unsubmitted(
+    plan: tuple[PlannedJob, ...], existing_jobs: dict[str, str],
+) -> tuple[PlannedJob, ...]:
+    return tuple(job for job in plan if job.name not in existing_jobs)
+
+
 def main(argv: list[str] | None = None) -> int:
     supplied = list(argv or ())
     if supplied in (["-h"], ["--help"]):
@@ -183,18 +211,28 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "status":
         record = read_record(record_path(config))
+        print(f"status\t{record.status}")
+        if record.error:
+            print(f"error\t{record.error}")
         for name in STAGE_ORDER:
             if job_id := record.jobs.get(name):
                 print(f"{name}\t{job_id}")
         return 0
 
-    existing: dict[str, str] = {}
+    previous = _existing_record(config)
+    if previous is not None and not args.resume:
+        raise RuntimeError(
+            "a pipeline submission record already exists; use 'pipeline status' or '--resume'"
+        )
+    existing: dict[str, str] = previous.jobs if previous is not None else {}
     complete: tuple[str, ...] = ()
     if args.resume:
-        require_approved_decisions(config)
-        existing = read_record(record_path(config)).jobs
-        selected = post_approval_submission(plan)
-        complete = ("scan-decisions-approved",)
+        if "scan-decisions-generated" in existing:
+            require_committed_approval(config)
+            selected = _unsubmitted(post_approval_submission(plan), existing)
+            complete = ("scan-decisions-approved",)
+        else:
+            selected = _unsubmitted(initial_submission(plan), existing)
     else:
         selected = initial_submission(plan)
     if not args.dry_run:
@@ -211,6 +249,11 @@ def main(argv: list[str] | None = None) -> int:
         state = "would submit" if args.dry_run else f"submitted {record.jobs[name]}"
         print(f"{name}: {state}\n  {' '.join(command)}")
     return 0
+
+
+def _existing_record(config: WorkflowConfig) -> SubmissionRecord | None:
+    path = record_path(config)
+    return read_record(path) if path.exists() else None
 
 
 def stage_main(argv: list[str] | None = None) -> int:
@@ -234,7 +277,7 @@ def stage_main(argv: list[str] | None = None) -> int:
             [error.result.report, error.result.log],
         )
         raise
-    if args.stage not in array_stages:
+    if args.stage not in array_stages | {"bids-curated-validated"}:
         save_stage_result(config.paths.bids_dir, result, config=config)
     return 0
 
@@ -300,6 +343,10 @@ def _run_stage(config: WorkflowConfig, name: str, array_index: int | None):
     if name == "mriqc-curated":
         manifest = config.paths.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
         return apply_curation(config.paths.bids_dir, manifest)
+    if name == "bids-curated-validated":
+        return _validation_result(
+            "bids-curated-validated", validate_bids(config.paths.bids_dir, "curated"),
+        )
     if name == "fmriprep-array":
         subject = _array_subject(config, array_index)
         subprocess.run(fmriprep_participant_command(config, subject), check=True)

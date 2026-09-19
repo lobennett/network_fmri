@@ -140,7 +140,8 @@ def submit_plan(
             continue
         try:
             completed = runner(command, check=True, capture_output=True, text=True)
-        except (OSError, subprocess.CalledProcessError) as error:
+            job_id = _parse_job_id(getattr(completed, "stdout", ""))
+        except (OSError, subprocess.CalledProcessError, RuntimeError) as error:
             failed = SubmissionRecord(
                 jobs=jobs.copy(), commands=commands.copy(), status="failed",
                 error=f"{type(error).__name__}: {error}",
@@ -148,8 +149,8 @@ def submit_plan(
             if on_update:
                 on_update(failed)
             raise RuntimeError(f"sbatch submission failed for {job.name}") from error
-        jobs[job.name] = _parse_job_id(getattr(completed, "stdout", ""))
-        dependency_jobs[job.name] = jobs[job.name]
+        jobs[job.name] = job_id
+        dependency_jobs[job.name] = job_id
         if on_update:
             on_update(SubmissionRecord(
                 jobs=jobs.copy(), commands=commands.copy(), status="submitting",
