@@ -43,6 +43,15 @@ class ReceiptVisibleRunner(RecordingRunner):
         return SimpleNamespace(stdout="abc123\n")
 
 
+class FailingHeadRunner(RecordingRunner):
+    def __call__(self, args, **kwargs):
+        command = [str(argument) for argument in args]
+        self.calls.append(command)
+        if command[:2] == ["git", "-C"]:
+            raise subprocess.CalledProcessError(1, command)
+        return SimpleNamespace(stdout="")
+
+
 def receipt(stage: str):
     from network_fmri.milestones import MilestoneReceipt
 
@@ -139,6 +148,22 @@ def test_failed_milestone_save_preserves_an_existing_receipt(tmp_path):
         save_milestone(tmp_path, receipt("bids-assembled"), FailingSaveRunner())
 
     assert path.read_bytes() == old_bytes
+
+
+def test_failed_head_verification_keeps_the_saved_receipt(tmp_path):
+    from network_fmri.milestones import receipt_path, save_milestone
+
+    path = receipt_path(tmp_path, "bids-assembled")
+    runner = FailingHeadRunner()
+
+    with pytest.raises(subprocess.CalledProcessError):
+        save_milestone(tmp_path, receipt("bids-assembled"), runner)
+
+    assert runner.calls == [
+        ["datalad", "save", "-d", str(tmp_path), "-m", "bids-assembled"],
+        ["git", "-C", str(tmp_path), "rev-parse", "--verify", "HEAD"],
+    ]
+    assert json.loads(path.read_text())["status"] == "success"
 
 
 def test_save_diagnostic_saves_only_supplied_paths_without_a_receipt(tmp_path):

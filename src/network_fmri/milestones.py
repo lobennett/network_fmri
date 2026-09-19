@@ -85,13 +85,13 @@ def save_milestone(
             ["datalad", "save", "-d", str(bids_dir), "-m", receipt.stage],
             check=True,
         )
-        return git_head(bids_dir, runner)
     except Exception:
         if prior is None:
             path.unlink(missing_ok=True)
         else:
             _write_bytes_atomic(path, prior)
         raise
+    return git_head(bids_dir, runner)
 
 
 def save_diagnostic(
