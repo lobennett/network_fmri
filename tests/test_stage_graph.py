@@ -295,6 +295,25 @@ def test_resume_refuses_to_duplicate_an_active_slurm_stage(tmp_path, monkeypatch
         pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume"], runner=active)
 
 
+@pytest.mark.parametrize("state", [
+    "SIGNALING", "STAGE_OUT", "STOPPED", "REQUEUE_FED", "REQUEUE_HOLD", "RESV_DEL_HOLD",
+])
+def test_resume_fails_closed_for_nonterminal_scheduler_states(tmp_path, monkeypatch, state):
+    config = configuration(tmp_path)
+    pipeline.write_record(
+        pipeline.record_path(config), SubmissionRecord(jobs={"fw2bids-array": "123"}),
+    )
+    monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
+    monkeypatch.setattr(pipeline, "submit_plan", lambda *_args, **_kwargs: pytest.fail("must not resubmit transitional work"))
+
+    def transitional(command, **_kwargs):
+        assert command[0] == "sacct"
+        return SimpleNamespace(stdout=state + "\n")
+
+    with pytest.raises(RuntimeError, match="active Slurm stages.*fw2bids-array"):
+        pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume"], runner=transitional)
+
+
 @pytest.mark.parametrize("sacct_output", [None, ""])
 def test_resume_fails_closed_when_scheduler_state_cannot_be_verified(tmp_path, monkeypatch, sacct_output):
     config = configuration(tmp_path)

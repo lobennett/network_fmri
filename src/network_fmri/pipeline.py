@@ -26,6 +26,11 @@ STAGE_ORDER = (
 
 _FIRST_SUBMISSION_END = "scan-decisions-generated"
 _POST_APPROVAL_START = "mriqc-curated"
+_TERMINAL_FAILURE_STATES = frozenset({
+    "FAILED", "CANCELLED", "TIMEOUT", "OUT_OF_MEMORY", "NODE_FAIL", "PREEMPTED",
+    "BOOT_FAIL", "DEADLINE", "DEPENDENCY_NEVER_SATISFIED", "REVOKED", "SPECIAL_EXIT",
+    "INVALID_DEPEND", "LAUNCH_FAILED",
+})
 
 
 class ResumeError(RuntimeError):
@@ -445,14 +450,20 @@ def _array_job_completed(job_id: str | None, runner) -> bool:
 
 
 def _active_stages(record: SubmissionRecord | None, runner) -> tuple[str, ...]:
-    """Return submitted stages which Slurm still owns, never duplicating them."""
+    """Return submitted stages whose state is not safely terminal.
+
+    Only ``COMPLETED`` and Slurm's explicit terminal failure states may advance a
+    resume decision. New or transitional scheduler states therefore fail closed.
+    """
 
     if record is None:
         return ()
-    active_states = {"PENDING", "RUNNING", "CONFIGURING", "COMPLETING", "SUSPENDED", "REQUEUED", "RESIZING"}
     return tuple(
         name for name, job_id in record.jobs.items()
-        if any(state in active_states for state in _job_states(job_id, runner))
+        if any(
+            state != "COMPLETED" and state not in _TERMINAL_FAILURE_STATES
+            for state in _job_states(job_id, runner)
+        )
     )
 
 
