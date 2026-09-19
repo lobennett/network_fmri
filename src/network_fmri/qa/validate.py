@@ -1,11 +1,13 @@
-"""Run the BIDS Validator and retain its evidence for every outcome."""
+"""Run the BIDS Validator and retain fresh evidence for every outcome."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,7 +27,7 @@ class ValidationResult:
 
 
 class ValidationError(RuntimeError):
-    """The validator reported errors after its diagnostics were persisted."""
+    """The validator did not produce a valid, successful report."""
 
     def __init__(self, result: ValidationResult):
         self.result = result
@@ -40,10 +42,12 @@ def validate_bids(
     label: str,
     runner: Runner = subprocess.run,
 ) -> ValidationResult:
-    """Validate a dataset, retaining JSON and text diagnostics before failing.
+    """Validate a dataset and atomically publish fresh report and log artifacts.
 
-    The validator itself owns the detailed JSON report. A marked fallback is
-    written only when the executable failed before creating its requested file.
+    The validator writes to a same-directory temporary file. A previous report can
+    therefore never make a failed or incomplete later invocation appear valid. If
+    the program does not write a JSON object, a labelled diagnostic JSON replaces
+    the old report and the stage fails even when the process exit code was zero.
     """
 
     if not _LABEL.fullmatch(label):
@@ -53,17 +57,39 @@ def validate_bids(
     output_dir.mkdir(parents=True, exist_ok=True)
     report = output_dir / f"desc-{label}_validation.json"
     log = report.with_suffix(".log")
-    command = [
-        "bids-validator", str(bids_dir), "--outfile", str(report), "--format",
-        "json_pp", "--prune",
-    ]
-    returncode, stdout, stderr = _invoke(command, runner)
-    _ensure_report(report, label)
-    _write_log(log, stdout, stderr)
-    result = ValidationResult(label, report, log, returncode)
-    if returncode:
+    temporary_report = _temporary_path(output_dir, f".{report.name}.")
+    temporary_log = _temporary_path(output_dir, f".{log.name}.")
+    try:
+        command = [
+            "bids-validator", str(bids_dir), "--outfile", str(temporary_report),
+            "--format", "json_pp", "--prune",
+        ]
+        returncode, stdout, stderr = _invoke(command, runner)
+        output_error = _report_error(temporary_report)
+        if output_error:
+            _write_json(temporary_report, {
+                "label": label,
+                "status": output_error,
+                "detail": "bids-validator did not produce a fresh JSON object",
+            })
+        _write_text(temporary_log, _join_output(stdout, stderr))
+        os.replace(temporary_report, report)
+        os.replace(temporary_log, log)
+    finally:
+        temporary_report.unlink(missing_ok=True)
+        temporary_log.unlink(missing_ok=True)
+    result = ValidationResult(label, report, log, returncode or (1 if output_error else 0))
+    if result.returncode:
         raise ValidationError(result)
     return result
+
+
+def _temporary_path(directory: Path, prefix: str) -> Path:
+    descriptor, name = tempfile.mkstemp(dir=directory, prefix=prefix, suffix=".tmp")
+    os.close(descriptor)
+    path = Path(name)
+    path.unlink()
+    return path
 
 
 def _invoke(command: list[str], runner: Runner) -> tuple[int, str, str]:
@@ -78,6 +104,14 @@ def _invoke(command: list[str], runner: Runner) -> tuple[int, str, str]:
     ), _as_text(getattr(completed, "stderr", ""))
 
 
+def _report_error(path: Path) -> str | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return "validator-output-missing"
+    return None if isinstance(value, dict) else "validator-output-invalid"
+
+
 def _as_text(value: object) -> str:
     if value is None:
         return ""
@@ -86,19 +120,16 @@ def _as_text(value: object) -> str:
     return str(value)
 
 
-def _ensure_report(path: Path, label: str) -> None:
-    if path.is_file():
-        return
-    fallback = {
-        "label": label,
-        "status": "validator-output-missing",
-        "detail": "bids-validator did not create the requested JSON output",
-    }
-    path.write_text(json.dumps(fallback, indent=2) + "\n", encoding="utf-8")
+def _join_output(stdout: str, stderr: str) -> str:
+    return stdout + ("\n" if stdout and stderr else "") + stderr
 
 
-def _write_log(path: Path, stdout: str, stderr: str) -> None:
-    path.write_text(stdout + ("\n" if stdout and stderr else "") + stderr, encoding="utf-8")
+def _write_json(path: Path, value: dict[str, str]) -> None:
+    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+
+def _write_text(path: Path, value: str) -> None:
+    path.write_text(value, encoding="utf-8")
 
 
 def get_parser() -> argparse.ArgumentParser:

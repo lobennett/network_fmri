@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -33,10 +34,11 @@ def test_validator_failure_keeps_json_and_log_diagnostics(tmp_path):
     assert result.log == log
     assert json.loads(report.read_text())["status"] == "validator-output-missing"
     assert "invalid BIDS" in log.read_text()
-    assert runner.calls == [[
-        "bids-validator", str(tmp_path), "--outfile", str(report),
-        "--format", "json_pp", "--prune",
-    ]]
+    command, = runner.calls
+    assert command[:3] == ["bids-validator", str(tmp_path), "--outfile"]
+    assert Path(command[3]).parent == report.parent
+    assert Path(command[3]) != report
+    assert command[4:] == ["--format", "json_pp", "--prune"]
 
 
 def test_validator_success_preserves_validator_output(tmp_path):
@@ -44,8 +46,8 @@ def test_validator_success_preserves_validator_output(tmp_path):
 
     class WritingRunner(Runner):
         def __call__(self, args, **kwargs):
-            report.parent.mkdir(parents=True, exist_ok=True)
-            report.write_text('{"issues": {}}\n')
+            temporary_report = Path(args[args.index("--outfile") + 1])
+            temporary_report.write_text('{"issues": {}}\n')
             return super().__call__(args, **kwargs)
 
     result = validate_bids(tmp_path, "curated", WritingRunner(stdout="valid"))
@@ -53,6 +55,17 @@ def test_validator_success_preserves_validator_output(tmp_path):
     assert result.returncode == 0
     assert json.loads(report.read_text()) == {"issues": {}}
     assert result.log.read_text() == "valid"
+
+
+def test_validator_never_reuses_a_stale_report_when_new_output_is_missing(tmp_path):
+    report = tmp_path / "derivatives" / "bids-validator" / "desc-curated_validation.json"
+    report.parent.mkdir(parents=True)
+    report.write_text('{"old": true}\n')
+
+    with pytest.raises(ValidationError):
+        validate_bids(tmp_path, "curated", Runner(returncode=0))
+
+    assert json.loads(report.read_text())["status"] == "validator-output-missing"
 
 
 def test_validator_rejects_unsafe_label_without_writing(tmp_path):
