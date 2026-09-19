@@ -297,6 +297,7 @@ def test_resume_refuses_to_duplicate_an_active_slurm_stage(tmp_path, monkeypatch
 
 @pytest.mark.parametrize("state", [
     "SIGNALING", "STAGE_OUT", "STOPPED", "REQUEUE_FED", "REQUEUE_HOLD", "RESV_DEL_HOLD",
+    "PREEMPTED", "REVOKED", "SPECIAL_EXIT",
 ])
 def test_resume_fails_closed_for_nonterminal_scheduler_states(tmp_path, monkeypatch, state):
     config = configuration(tmp_path)
