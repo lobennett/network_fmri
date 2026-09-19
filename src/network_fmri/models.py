@@ -6,9 +6,10 @@ import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 
+@runtime_checkable
 class Runner(Protocol):
     """The callable subset of :func:`subprocess.run` used by stage services."""
 

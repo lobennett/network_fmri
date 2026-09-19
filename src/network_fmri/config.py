@@ -126,7 +126,13 @@ def _parse_paths(raw: dict[str, Any]) -> WorkflowPaths:
         templateflow_dir=_path(raw, "templateflow_dir", "paths"),
         freesurfer_license=_path(raw, "freesurfer_license", "paths"),
     )
-    runtime = (paths.bids_dir, paths.parts_dir, paths.work_dir, paths.log_dir)
+    # Keep operators' configured paths intact for commands and receipts.  Canonicalize
+    # only the comparison identities so ``..`` aliases and existing symlinks cannot
+    # direct two runtime roles to the same location.
+    runtime = tuple(
+        path.resolve(strict=False)
+        for path in (paths.bids_dir, paths.parts_dir, paths.work_dir, paths.log_dir)
+    )
     if len(set(runtime)) != len(runtime):
         raise ValueError("paths.bids_dir, paths.parts_dir, paths.work_dir, and paths.log_dir must be distinct")
     return paths
