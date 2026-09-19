@@ -1,66 +1,108 @@
-"""Link each session's B0 field map to the BOLD runs it corrects.
-
-fMRIPrep/SDCFlows groups a field map, its magnitude and the BOLD runs it corrects by a
-shared ``B0FieldIdentifier``, so without this there is no distortion correction. Every
-session here has exactly one Hz field map, which is what makes a per-session identifier
-sufficient.
-
-Runs after ``trim`` and before MRIQC.
-"""
+"""Link each session's field-map metadata to its functional acquisitions."""
 
 from __future__ import annotations
 
 import argparse
-import logging
-import sys
+import os
 from pathlib import Path
 
-from network_fmri.prepare.sidecar import path_for, update
+from network_fmri.models import StageResult
+from network_fmri.prepare.sidecar import SidecarError, path_for, read, write
+from network_fmri.stages import StageError
 
-log = logging.getLogger(__name__)
+
+def link_b0(bids_dir: Path) -> StageResult:
+    """Set B0 links atomically and idempotently across a BIDS dataset."""
+    try:
+        summary = link_tree(Path(bids_dir))
+    except (OSError, SidecarError, ValueError) as error:
+        raise StageError(f"B0 linking failed: {error}") from error
+    return StageResult("b0-linked", (Path(bids_dir),), summary)
 
 
-def link_tree(bids_dir: Path) -> dict:
-    """Stamp ``B0Field*`` across a cohort tree.
+def link_tree(bids_dir: Path) -> dict[str, int]:
+    """Stamp B0 metadata after validating every affected sidecar.
 
-    Identifier is ``<subject>_<ses>`` (e.g. ``s1035_ses-01``): it goes on the field map and
-    its magnitude as ``B0FieldIdentifier``, and on every BOLD in the session as
-    ``B0FieldSource``. A session with BOLD but no field map gets no SDC and is counted; a
-    field map with no BOLD is counted and skipped.
+    The complete update is planned before any file changes.  If a later atomic
+    write fails, originals written earlier in this pass are restored.  A second
+    successful invocation therefore has no changes to make.
     """
+    plans: dict[Path, dict[str, object]] = {}
     summary = {"sessions": 0, "bold": 0, "fmap": 0, "no_fmap": 0, "orphan_fmap": 0}
 
-    for ses in sorted(bids_dir.glob("sub-*/ses-*")):
-        if not ses.is_dir():
+    for session in sorted(bids_dir.glob("sub-*/ses-*")):
+        if not session.is_dir():
             continue
-        fmaps = sorted(ses.glob("fmap/*_fieldmap.nii.gz"))
-        bolds = sorted(ses.glob("func/*_bold.nii.gz"))
+        fieldmaps = sorted(session.glob("fmap/*_fieldmap.nii.gz"))
+        bolds = sorted(session.glob("func/*_bold.nii.gz"))
 
-        if len(fmaps) > 1:
-            # Asserted never: the fmap template hardcodes run-1, so a second field map
-            # would silently overwrite the first.
-            raise ValueError(f"{ses}: {len(fmaps)} field maps, expected exactly one")
-        if not fmaps:
+        if len(fieldmaps) > 1:
+            raise ValueError(f"{session}: {len(fieldmaps)} field maps, expected exactly one")
+        if not fieldmaps:
             if bolds:
                 summary["no_fmap"] += 1
-                log.warning("%s: BOLD present but no field map — no SDC", ses)
             continue
         if not bolds:
             summary["orphan_fmap"] += 1
-            log.warning("%s: field map present but no BOLD — skipped", ses)
             continue
 
-        ident = f"{ses.parent.name.removeprefix('sub-')}_{ses.name}"
-        magnitude = fmaps[0].with_name(fmaps[0].name.replace("_fieldmap.", "_magnitude."))
-        for nii in (fmaps[0], magnitude):
-            if update(path_for(nii), B0FieldIdentifier=ident):
-                summary["fmap"] += 1
+        identifier = f"{session.parent.name.removeprefix('sub-')}_{session.name}"
+        fieldmap = fieldmaps[0]
+        # Magnitude images are linked when exported; fieldmap-only exports are
+        # valid and still receive the required identifier.
+        for nifti in (fieldmap, *sorted(session.glob("fmap/*_magnitude*.nii.gz"))):
+            _plan(plans, path_for(nifti), B0FieldIdentifier=identifier)
         for nii in bolds:
-            if update(path_for(nii), B0FieldSource=ident):
-                summary["bold"] += 1
+            _plan(plans, path_for(nii), B0FieldSource=identifier)
         summary["sessions"] += 1
 
+    changed = _publish_plans(plans)
+    for fields in changed.values():
+        if "B0FieldSource" in fields:
+            summary["bold"] += 1
+        else:
+            summary["fmap"] += 1
     return summary
+
+
+def _plan(plans: dict[Path, dict[str, object]], path: Path, **fields: object) -> None:
+    """Validate a sidecar and add fields to its complete planned contents."""
+    data = plans.get(path)
+    if data is None:
+        data = read(path).copy()
+        plans[path] = data
+    data.update(fields)
+
+
+def _publish_plans(plans: dict[Path, dict[str, object]]) -> dict[Path, dict[str, object]]:
+    """Publish planned sidecars, restoring originals when one write fails."""
+    originals = {path: path.read_bytes() for path in plans}
+    original_data = {path: read(path) for path in plans}
+    changed = {
+        path: {key: value for key, value in data.items() if original_data[path].get(key) != value}
+        for path, data in plans.items()
+    }
+    changed = {path: fields for path, fields in changed.items() if fields}
+    written: list[Path] = []
+    try:
+        for path in sorted(changed):
+            write(path, plans[path])
+            written.append(path)
+    except Exception:
+        for path in reversed(written):
+            _restore(path, originals[path])
+        raise
+    return changed
+
+
+def _restore(path: Path, content: bytes) -> None:
+    """Restore one original sidecar through a same-directory atomic rename."""
+    temporary = path.with_name(path.name + ".restore.tmp")
+    try:
+        temporary.write_bytes(content)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def get_parser() -> argparse.ArgumentParser:
@@ -70,31 +112,11 @@ def get_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = get_parser().parse_args(argv)
-    print(f"[b0link] {link_tree(Path(args.bids_dir))}", flush=True)
+    print(f"[b0link] {link_b0(Path(args.bids_dir)).details}", flush=True)
     return 0
 
 
 def record(argv: list[str] | None = None) -> int:
-    """Record a B0 field-map linking pass over the cohort dataset."""
-    from network_fmri import provenance
-    from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, cohort_dataset
-
-    p = argparse.ArgumentParser(prog="network_fmri b0link")
-    p.add_argument("--cohort", required=True, choices=list(COHORTS))
-    p.add_argument("--staging", default=DEFAULT_STAGING)
-    args = p.parse_args(argv)
-
-    tree = cohort_dataset(args.staging, args.cohort)
-    provenance.run_recorded(
-        tree,
-        [str(Path(sys.executable).parent / "network_fmri"), "b0link-run", "--bids-dir", "."],
-        f"network_fmri@{provenance.code_version()}: link B0 field maps in {args.cohort}",
-        outputs=[], env=provenance.datalad_env(),
-    )
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    """Deprecated legacy route retained until the registry is removed in Task 8."""
+    raise RuntimeError("legacy cohort B0 linking is unavailable in the single-dataset workflow")

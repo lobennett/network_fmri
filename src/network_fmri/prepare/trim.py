@@ -13,10 +13,11 @@ from __future__ import annotations
 import argparse
 import logging
 import multiprocessing
-import sys
 from pathlib import Path
 
+from network_fmri.models import StageResult
 from network_fmri.prepare.sidecar import path_for, read, update
+from network_fmri.stages import StageError
 
 log = logging.getLogger(__name__)
 
@@ -32,8 +33,14 @@ def trim_one(nifti_path: Path) -> str:
 
     try:
         sidecar = read(json_path)
-        if sidecar.get("NumberOfVolumesDiscardedByUser") == N_DUMMY:
+        discarded = sidecar.get("NumberOfVolumesDiscardedByUser")
+        if discarded == N_DUMMY:
             return "already"
+        if discarded is not None:
+            raise ValueError(
+                "NumberOfVolumesDiscardedByUser is "
+                f"{discarded!r}, expected {N_DUMMY!r} for an already trimmed scan"
+            )
 
         img = nib.load(str(nifti_path))
         n_vols = img.shape[3] if len(img.shape) > 3 else 1
@@ -82,6 +89,22 @@ def trim_tree(bids_dir: Path, subjects: list[str] | None = None, jobs: int = 1) 
     return summary
 
 
+def trim_dataset(bids_dir: Path, jobs: int = 1) -> StageResult:
+    """Trim exactly seven volumes from every BOLD, or fail the stage.
+
+    ``too_short`` is evidence of a broken source acquisition, not a successful
+    no-op.  The caller therefore gets one clear stage error for any unreadable,
+    malformed, or insufficiently long BOLD file.
+    """
+    if jobs < 1:
+        raise StageError("trim jobs must be positive")
+    summary = trim_tree(Path(bids_dir), jobs=jobs)
+    failures = summary["too_short"] + summary["error"]
+    if failures:
+        raise StageError(f"trim failed for {failures} BOLD file(s): {summary}")
+    return StageResult("dummy-volumes-trimmed", (Path(bids_dir),), summary)
+
+
 def get_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="network_fmri trim-bold")
     p.add_argument("--bids-dir", required=True)
@@ -95,36 +118,9 @@ def main(argv: list[str] | None = None) -> int:
     args = get_parser().parse_args(argv)
     summary = trim_tree(Path(args.bids_dir), args.subjects, args.jobs)
     print(f"[trim] {summary}", flush=True)
-    return 1 if summary["error"] else 0
+    return 1 if summary["too_short"] or summary["error"] else 0
 
 
 def record(argv: list[str] | None = None) -> int:
-    """Record an in-place trim of the cohort's BOLD volumes.
-
-    Outputs are not declared: `datalad run` unlocks declared outputs, which for annexed
-    NIfTIs means copying ~100 GB out of the annex. Trimming replaces each file by rename,
-    so the default save-everything behaviour is enough.
-    """
-    from network_fmri import provenance
-    from network_fmri.cohorts import COHORTS, DEFAULT_STAGING, cohort_dataset
-
-    p = argparse.ArgumentParser(prog="network_fmri trim")
-    p.add_argument("--cohort", required=True, choices=list(COHORTS))
-    p.add_argument("--staging", default=DEFAULT_STAGING)
-    p.add_argument("--jobs", type=int, default=4)
-    args = p.parse_args(argv)
-
-    tree = cohort_dataset(args.staging, args.cohort)
-    provenance.run_recorded(
-        tree,
-        [str(Path(sys.executable).parent / "network_fmri"), "trim-bold",
-         "--bids-dir", ".", "--jobs", str(args.jobs)],
-        f"network_fmri@{provenance.code_version()}: trim {N_DUMMY} dummy volumes "
-        f"from {args.cohort}",
-        outputs=[], env=provenance.datalad_env(),
-    )
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    """Deprecated legacy route retained until the registry is removed in Task 8."""
+    raise RuntimeError("legacy cohort trim is unavailable in the single-dataset workflow")
