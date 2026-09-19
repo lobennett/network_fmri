@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -116,20 +117,49 @@ def require_committed_approval(config: WorkflowConfig, runner=subprocess.run) ->
     require_approved_decisions(config, runner)
     from network_fmri.milestones import receipt_path
 
-    receipt = receipt_path(config.paths.bids_dir, "scan-decisions-approved")
-    relative = receipt.relative_to(config.paths.bids_dir).as_posix()
+    bids_dir = config.paths.bids_dir
+    receipt = receipt_path(bids_dir, "scan-decisions-approved")
+    manifest = bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
+    metadata = manifest.with_suffix(".meta.json")
     try:
-        completed = runner(
-            ["git", "-C", str(config.paths.bids_dir), "show", f"HEAD:{relative}"],
-            check=True, capture_output=True, text=True,
-        )
-        value = json.loads(completed.stdout)
-    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
+        value = json.loads(_head_file(bids_dir, receipt, runner).decode("utf-8"))
+        committed_manifest = _head_file(bids_dir, manifest, runner)
+        committed_metadata = _head_file(bids_dir, metadata, runner)
+        working_manifest = manifest.read_bytes()
+        working_metadata = metadata.read_bytes()
+    except (OSError, subprocess.CalledProcessError, UnicodeError, json.JSONDecodeError) as error:
         raise RuntimeError(
             "scan decisions are sealed but their approval milestone is not committed"
         ) from error
     if not isinstance(value, dict) or value.get("stage") != "scan-decisions-approved" or value.get("status") != "success":
         raise RuntimeError("committed scan-decision approval milestone is malformed")
+    validation = value.get("validation")
+    expected = {
+        "manifest_sha256": _sha256(committed_manifest),
+        "metadata_sha256": _sha256(committed_metadata),
+    }
+    if not isinstance(validation, dict) or any(validation.get(key) != digest for key, digest in expected.items()):
+        raise RuntimeError("committed scan-decision approval hashes do not match HEAD")
+    if _sha256(working_manifest) != expected["manifest_sha256"] or _sha256(working_metadata) != expected["metadata_sha256"]:
+        raise RuntimeError("working scan decisions differ from the committed approval milestone")
+
+
+def _head_file(bids_dir: Path, path: Path, runner) -> bytes:
+    relative = path.relative_to(bids_dir).as_posix()
+    completed = runner(
+        ["git", "-C", str(bids_dir), "show", f"HEAD:{relative}"],
+        check=True, capture_output=True,
+    )
+    value = completed.stdout
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, str):  # Keeps lightweight Runner test doubles usable.
+        return value.encode("utf-8")
+    raise UnicodeError(f"Git did not return bytes for {relative}")
+
+
+def _sha256(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
 
 
 def record_path(config: WorkflowConfig) -> Path:
@@ -228,7 +258,8 @@ def main(argv: list[str] | None = None) -> int:
     complete: tuple[str, ...] = ()
     if args.resume:
         if "scan-decisions-generated" in existing:
-            require_committed_approval(config)
+            if "mriqc-curated" not in existing:
+                require_committed_approval(config)
             selected = _unsubmitted(post_approval_submission(plan), existing)
             complete = ("scan-decisions-approved",)
         else:
@@ -402,9 +433,26 @@ def save_stage_result(
         outputs={"paths": [str(path) for path in result.outputs]},
         versions=versions,
         jobs={"slurm_job_id": os.environ.get("SLURM_JOB_ID", "")},
-        validation=result.details,
+        validation=_receipt_validation(result),
     )
     save_milestone(bids_dir, receipt)
+
+
+def _receipt_validation(result) -> dict[str, object]:
+    validation = dict(result.details)
+    if result.name != "scan-decisions-approved":
+        return validation
+    if len(result.outputs) != 2:
+        raise ValueError("scan-decision approval must declare manifest and metadata outputs")
+    manifest, metadata = result.outputs
+    try:
+        validation.update({
+            "manifest_sha256": _sha256(Path(manifest).read_bytes()),
+            "metadata_sha256": _sha256(Path(metadata).read_bytes()),
+        })
+    except OSError as error:
+        raise ValueError("scan-decision approval outputs are unavailable for receipt") from error
+    return validation
 
 
 def _receipt_versions(config: WorkflowConfig | None) -> dict[str, object]:

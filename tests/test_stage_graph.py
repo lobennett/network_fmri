@@ -96,6 +96,27 @@ def test_milestone_receipt_carries_input_package_and_container_provenance(tmp_pa
     assert receipt.versions["fmriprep"]["version"] == "25.2.5"
 
 
+def test_approval_milestone_binds_the_exact_manifest_and_metadata_bytes(tmp_path, monkeypatch):
+    config = configuration(tmp_path)
+    manifest = config.paths.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
+    metadata = manifest.with_suffix(".meta.json")
+    manifest.parent.mkdir(parents=True)
+    manifest.write_bytes(b"decision\nkeep\n")
+    metadata.write_bytes(b'{"approved": true}\n')
+    captured = []
+    monkeypatch.setattr("network_fmri.pipeline._input_datalad_commit", lambda _: "a" * 40)
+    monkeypatch.setattr("network_fmri.milestones.save_milestone", lambda bids, receipt: captured.append(receipt))
+
+    save_stage_result(
+        config.paths.bids_dir,
+        StageResult("scan-decisions-approved", (manifest, metadata)), config=config,
+    )
+
+    validation = captured[0].validation
+    assert validation["manifest_sha256"] == pipeline._sha256(manifest.read_bytes())
+    assert validation["metadata_sha256"] == pipeline._sha256(metadata.read_bytes())
+
+
 def test_real_submit_creates_logs_and_persists_each_callback(tmp_path, monkeypatch):
     config = configuration(tmp_path)
     updates = []
@@ -190,15 +211,90 @@ def test_resume_requires_a_verified_committed_approval_receipt(tmp_path, monkeyp
     assert called == [True]
 
 
+def test_post_curation_resume_uses_the_recorded_gate_without_revalidating(tmp_path, monkeypatch):
+    config = configuration(tmp_path)
+    pipeline.write_record(
+        pipeline.record_path(config),
+        SubmissionRecord(jobs={"scan-decisions-generated": "123", "mriqc-curated": "456"}),
+    )
+    monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
+    monkeypatch.setattr(
+        pipeline, "require_committed_approval",
+        lambda _: pytest.fail("a later resume must not revalidate the completed curation gate"),
+    )
+    selected = []
+    monkeypatch.setattr(
+        pipeline, "submit_plan",
+        lambda jobs, **kwargs: selected.extend(job.name for job in jobs) or SubmissionRecord(dry_run=True),
+    )
+
+    assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"]) == 0
+    assert selected[0] == "bids-curated-validated"
+
+
 def test_committed_approval_requires_a_receipt_present_in_head(tmp_path, monkeypatch):
     config = configuration(tmp_path)
+    manifest = config.paths.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
+    metadata = manifest.with_suffix(".meta.json")
+    manifest.parent.mkdir(parents=True)
+    manifest_bytes = b"decision\nkeep\n"
+    metadata_bytes = b'{"approved": true}\n'
+    manifest.write_bytes(manifest_bytes)
+    metadata.write_bytes(metadata_bytes)
+    receipt = {
+        "stage": "scan-decisions-approved",
+        "status": "success",
+        "validation": {
+            "manifest_sha256": pipeline._sha256(manifest_bytes),
+            "metadata_sha256": pipeline._sha256(metadata_bytes),
+        },
+    }
     calls = []
 
     def runner(command, **kwargs):
         calls.append(command)
         if command[0] == "network-qa":
             return SimpleNamespace(stdout="")
-        return SimpleNamespace(stdout=json.dumps({"stage": "scan-decisions-approved", "status": "success"}))
+        target = command[-1].split(":", 1)[1]
+        output = {
+            "code/network_fmri/milestones/scan-decisions-approved.json": json.dumps(receipt),
+            "code/network_fmri/scan_decisions.tsv": manifest_bytes,
+            "code/network_fmri/scan_decisions.meta.json": metadata_bytes,
+        }[target]
+        return SimpleNamespace(stdout=output)
 
     pipeline.require_committed_approval(config, runner)
     assert calls[1][:2] == ["git", "-C"]
+
+
+def test_committed_receipt_rejects_a_new_uncommitted_seal(tmp_path):
+    config = configuration(tmp_path)
+    manifest = config.paths.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
+    metadata = manifest.with_suffix(".meta.json")
+    manifest.parent.mkdir(parents=True)
+    committed_manifest = b"decision\nkeep\n"
+    metadata_bytes = b'{"approved": true}\n'
+    manifest.write_bytes(b"decision\ndrop\n")
+    metadata.write_bytes(metadata_bytes)
+    receipt = {
+        "stage": "scan-decisions-approved",
+        "status": "success",
+        "validation": {
+            "manifest_sha256": pipeline._sha256(committed_manifest),
+            "metadata_sha256": pipeline._sha256(metadata_bytes),
+        },
+    }
+
+    def runner(command, **kwargs):
+        if command[0] == "network-qa":
+            return SimpleNamespace(stdout="")
+        target = command[-1].split(":", 1)[1]
+        output = {
+            "code/network_fmri/milestones/scan-decisions-approved.json": json.dumps(receipt),
+            "code/network_fmri/scan_decisions.tsv": committed_manifest,
+            "code/network_fmri/scan_decisions.meta.json": metadata_bytes,
+        }[target]
+        return SimpleNamespace(stdout=output)
+
+    with pytest.raises(RuntimeError, match="working scan decisions differ"):
+        pipeline.require_committed_approval(config, runner)
