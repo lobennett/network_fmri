@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,12 @@ from network_fmri.config import (
     WorkflowConfig,
     WorkflowPaths,
 )
-from network_fmri.qa.fmriprep import fmriprep_participant_command, verify_fmriprep
+from network_fmri.containers import receipt_path, write_subject_receipt
+from network_fmri.qa.fmriprep import (
+    fmriprep_participant_command,
+    fmriprep_subject_receipt,
+    verify_fmriprep,
+)
 from network_fmri.stages import StageError
 
 
@@ -61,8 +67,16 @@ def test_participant_command_preserves_the_trimmed_dataset_contract(tmp_path, mo
     )
     assert option(command, "--fs-license-file") == "/license.txt"
     assert "--skip-bids-validation" in command
+    assert option(command, "--omp-nthreads") == "2"
     assert f"{config.paths.freesurfer_license}:/license.txt:ro" in command
     assert f"{tmp_path / 'node-tmp'}:/tmp" in command
+
+
+def test_participant_command_never_oversubscribes_a_one_cpu_job(tmp_path):
+    config = configuration(tmp_path)
+    config = replace(config, slurm=SlurmConfig("normal", 1, 32, 720, 4))
+
+    assert option(fmriprep_participant_command(config, "s3"), "--omp-nthreads") == "1"
 
 
 def _write(path: Path, content: str = "") -> Path:
@@ -71,12 +85,25 @@ def _write(path: Path, content: str = "") -> Path:
     return path
 
 
+class GitRunner:
+    def __call__(self, args, **kwargs):
+        assert args[:2] == ["git", "-C"]
+        return type("Completed", (), {"stdout": "a" * 40 + "\n"})()
+
+
 def _complete_fmriprep(config: WorkflowConfig) -> Path:
     root = config.paths.bids_dir / "derivatives" / "fmriprep"
     _write(root / "dataset_description.json", json.dumps({"DatasetType": "derivative"}))
     for subject in config.subjects:
-        _write(root / f"sub-{subject}/ses-01/func/sub-{subject}_ses-01_task-rest_desc-preproc_bold.nii.gz")
+        _write(config.paths.bids_dir / f"sub-{subject}/ses-01/anat/sub-{subject}_ses-01_T1w.nii.gz", "raw")
+        _write(config.paths.bids_dir / f"sub-{subject}/ses-01/func/sub-{subject}_ses-01_task-rest_bold.nii.gz", "raw")
+        _write(root / f"sub-{subject}/anat/sub-{subject}_desc-preproc_T1w.nii.gz", "preprocessed")
+        _write(root / f"sub-{subject}/ses-01/func/sub-{subject}_ses-01_task-rest_desc-preproc_bold.nii.gz", "preprocessed")
         _write(root / f"sub-{subject}.html")
+        write_subject_receipt(
+            receipt_path(root, "fmriprep", subject),
+            fmriprep_subject_receipt(config, subject, "a" * 40),
+        )
     return root
 
 
@@ -84,14 +111,14 @@ def test_verification_requires_each_subject_report_description_and_no_crashes(tm
     config = configuration(tmp_path)
     root = _complete_fmriprep(config)
 
-    result = verify_fmriprep(config)
+    result = verify_fmriprep(config, GitRunner())
     assert result.name == "fmriprep-complete"
     assert result.outputs == (root, root / "dataset_description.json")
     assert result.details["subjects"] == 46
 
     (root / "sub-s2.html").unlink()
     with pytest.raises(StageError, match="missing subject reports"):
-        verify_fmriprep(config)
+        verify_fmriprep(config, GitRunner())
 
 
 def test_verification_rejects_crash_evidence(tmp_path):
@@ -100,4 +127,27 @@ def test_verification_rejects_crash_evidence(tmp_path):
     _write(config.paths.work_dir / "fmriprep" / "s3" / "crash-123.txt")
 
     with pytest.raises(StageError, match="crash"):
-        verify_fmriprep(config)
+        verify_fmriprep(config, GitRunner())
+
+
+def test_verification_rejects_empty_imaging_outputs_and_stale_receipts(tmp_path):
+    config = configuration(tmp_path)
+    root = _complete_fmriprep(config)
+    bold = root / "sub-s3/ses-01/func/sub-s3_ses-01_task-rest_desc-preproc_bold.nii.gz"
+    bold.write_text("")
+    with pytest.raises(StageError, match="preprocessed BOLD"):
+        verify_fmriprep(config, GitRunner())
+
+    bold.write_text("preprocessed")
+    anatomy = root / "sub-s3/anat/sub-s3_desc-preproc_T1w.nii.gz"
+    anatomy.unlink()
+    with pytest.raises(StageError, match="preprocessed T1w anatomy"):
+        verify_fmriprep(config, GitRunner())
+
+    anatomy.write_text("preprocessed")
+    receipt = receipt_path(root, "fmriprep", "s3")
+    record = json.loads(receipt.read_text())
+    record["container"]["version"] = "old"
+    receipt.write_text(json.dumps(record))
+    with pytest.raises(StageError, match="stale or missing subject receipts"):
+        verify_fmriprep(config, GitRunner())
