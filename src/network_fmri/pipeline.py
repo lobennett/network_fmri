@@ -28,6 +28,10 @@ _FIRST_SUBMISSION_END = "scan-decisions-generated"
 _POST_APPROVAL_START = "mriqc-curated"
 
 
+class ResumeError(RuntimeError):
+    """Scheduler state cannot safely support a resume decision."""
+
+
 def build_plan(
     config: WorkflowConfig, *, config_path: Path | None = None,
     pilot_subject: str | None = None,
@@ -465,13 +469,29 @@ def _job_states(job_id: str | None, runner) -> tuple[str, ...]:
             ["sacct", "--jobs", job_id, "--format=State", "--noheader", "--parsable2"],
             check=True, capture_output=True, text=True,
         )
-        states = tuple(
-            line.split("|", 1)[0].split()[0]
-            for line in str(result.stdout).splitlines() if line.strip()
+        states = _state_lines(getattr(result, "stdout", ""))
+    except (OSError, subprocess.CalledProcessError, AttributeError, IndexError) as error:
+        raise ResumeError(f"cannot verify Slurm state for job {job_id} with sacct") from error
+    if states:
+        return states
+    try:
+        result = runner(
+            ["squeue", "--jobs", job_id, "--noheader", "--format=%T"],
+            check=True, capture_output=True, text=True,
         )
-    except (OSError, subprocess.CalledProcessError, AttributeError, IndexError):
-        return ()
+        states = _state_lines(getattr(result, "stdout", ""))
+    except (OSError, subprocess.CalledProcessError, AttributeError, IndexError) as error:
+        raise ResumeError(f"cannot verify Slurm state for job {job_id} with squeue") from error
+    if not states:
+        raise ResumeError(f"Slurm returned no state for recorded job {job_id}")
     return states
+
+
+def _state_lines(output: object) -> tuple[str, ...]:
+    return tuple(
+        line.split("|", 1)[0].split()[0]
+        for line in str(output).splitlines() if line.strip()
+    )
 
 
 def pilot_config(config: WorkflowConfig, subject: str) -> WorkflowConfig:

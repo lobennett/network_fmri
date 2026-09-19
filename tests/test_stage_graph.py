@@ -195,7 +195,8 @@ def test_resume_resubmits_a_failed_array_and_all_of_its_descendants(tmp_path, mo
         pipeline, "submit_plan",
         lambda jobs, **kwargs: selected.extend(job.name for job in jobs) or SubmissionRecord(),
     )
-    assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"]) == 0
+    failed = lambda *_args, **_kwargs: SimpleNamespace(stdout="FAILED\n")
+    assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"], runner=failed) == 0
     assert selected[0] == "fw2bids-array"
 
 
@@ -223,7 +224,8 @@ def test_resume_does_not_treat_a_queued_decision_job_as_approval(tmp_path, monke
     monkeypatch.setattr(pipeline, "require_committed_approval", lambda _: called.append(True))
     monkeypatch.setattr(pipeline, "submit_plan", lambda *args, **kwargs: SubmissionRecord(dry_run=True))
 
-    assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"]) == 0
+    failed = lambda *_args, **_kwargs: SimpleNamespace(stdout="FAILED\n")
+    assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"], runner=failed) == 0
     assert called == []
 
 
@@ -293,6 +295,28 @@ def test_resume_refuses_to_duplicate_an_active_slurm_stage(tmp_path, monkeypatch
         pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume"], runner=active)
 
 
+@pytest.mark.parametrize("sacct_output", [None, ""])
+def test_resume_fails_closed_when_scheduler_state_cannot_be_verified(tmp_path, monkeypatch, sacct_output):
+    config = configuration(tmp_path)
+    pipeline.write_record(
+        pipeline.record_path(config), SubmissionRecord(jobs={"fw2bids-array": "123"}),
+    )
+    monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
+    monkeypatch.setattr(pipeline, "submit_plan", lambda *_args, **_kwargs: pytest.fail("must not resubmit unknown work"))
+
+    def unknown(command, **_kwargs):
+        if command[0] == "sacct" and sacct_output is None:
+            raise OSError("accounting unavailable")
+        if command[0] == "sacct":
+            return SimpleNamespace(stdout=sacct_output)
+        if command[0] == "squeue":
+            return SimpleNamespace(stdout="")
+        raise AssertionError(command)
+
+    with pytest.raises(pipeline.ResumeError, match="cannot verify|returned no state"):
+        pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume"], runner=unknown)
+
+
 def test_resume_does_not_trust_a_queued_curation_job_without_a_milestone(tmp_path, monkeypatch):
     config = configuration(tmp_path)
     pipeline.write_record(
@@ -310,7 +334,8 @@ def test_resume_does_not_trust_a_queued_curation_job_without_a_milestone(tmp_pat
         lambda jobs, **kwargs: selected.extend(job.name for job in jobs) or SubmissionRecord(dry_run=True),
     )
 
-    assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"]) == 0
+    failed = lambda *_args, **_kwargs: SimpleNamespace(stdout="FAILED\n")
+    assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"], runner=failed) == 0
     assert selected[0] == "fw2bids-array"
 
 
