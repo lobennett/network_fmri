@@ -1,45 +1,33 @@
-# Copy this file, choose the cohort and two Oak result paths, then run:
-#   network_fmri workflow plan config/workflow.local.toml
-#
-# The file is configuration and provenance, not a shell script. Environment variables
-# are expanded, but every resulting path must be absolute.
-schema_version = 1
-cohort = "discovery"
-project = "r01network"
-staging = "${SCRATCH}/network_fmri"
-campaign = "${SCRATCH}/mechababs_campaigns/r01network"
+# Copy this file to a reviewed local location before submitting the one 46-subject run.
+# All runtime paths are absolute. FLYWHEEL_API_TOKEN remains in the environment.
+subjects_file = "/oak/stanford/groups/russpold/r01network/subjects-46.txt"
+flywheel_project = "r01network"
+
+[paths]
+bids_dir = "/scratch/groups/russpold/network_fmri/bids"
+parts_dir = "/scratch/groups/russpold/network_fmri/parts"
+work_dir = "/scratch/groups/russpold/network_fmri/work"
+log_dir = "/scratch/groups/russpold/network_fmri/logs"
+templateflow_dir = "/home/groups/russpold/templateflow"
+freesurfer_license = "/home/groups/russpold/license.txt"
+
+[behavior]
+source = "/oak/stanford/groups/russpold/r01network/canonical-behavior"
+# Pin the reviewed canonical behavioral DataLad commit before running.
+commit = "0000000000000000000000000000000000000000"
+
+[mriqc]
+image = "/home/groups/russpold/singularity_images/mriqc_24.0.2.sif"
+version = "24.0.2"
+
+[fmriprep]
+image = "/oak/stanford/groups/russpold/shared/containers/fmriprep-25.2.5.sif"
+version = "25.2.5"
+
+[slurm]
 partition = "russpold,normal"
-export_throttle = 3
-campaign_batch = 1
-
-# Safe default: plan Flywheel work without tagging or exporting. Set true only for the
-# reviewed production run.
-live = false
-
-[integrations]
-# Additional directories containing v1 TOML manifests.
-directories = []
-# Explicit activation is grouped by the lifecycle profile that will run the package.
-bids = []
-post_fmriprep = []
-analysis = []
-
-[model]
-# Large derivatives belong on Oak, not in a home directory.
-level1_dir = "/oak/stanford/groups/your-group/network_fmri/discovery/level1"
-level2_dir = "/oak/stanford/groups/your-group/network_fmri/discovery/level2"
-tasks = "base" # base, dual, or all
-space = "fsaverage6" # MNI, T1w, surface (fsnative), or fsaverage6
-# Omit smoothing_fwhm for no smoothing; add it only after scientific review.
-min_runs = 2
-confounds_mode = "full"
-
-# Emit residual time series in addition to contrasts. Finalization can reuse completed
-# run fits with either value; code, settings, inputs, and outputs must still match.
-residuals = true
-skip_qc_plots = true
-num_permutations = 5000
-
-# Escape hatches for supported sibling-package flags not governed above.
-level1_extra_args = []
-level2_extra_args = []
+account = "russpold"
+cpus = 8
+memory_gb = 32
+time_minutes = 720
+array_concurrency = 4
