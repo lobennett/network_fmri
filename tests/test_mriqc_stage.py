@@ -64,6 +64,7 @@ def test_participant_command_uses_approved_motion_contract_and_safe_binds(tmp_pa
     command = mriqc_participant_command(config, "s3")
 
     assert command[:4] == ("apptainer", "exec", "--cleanenv", "--containall")
+    assert command[command.index(str(config.mriqc.image)) + 1] == "mriqc"
     assert command[-1] == "--no-datalad-get"
     assert option(command, "--fd_thres") == "0.5"
     assert option(command, "--n_cpus") == "8"
@@ -73,12 +74,14 @@ def test_participant_command_uses_approved_motion_contract_and_safe_binds(tmp_pa
     assert f"{config.paths.bids_dir}:/data:ro" in command
     assert f"{config.paths.templateflow_dir}:/templateflow:ro" in command
     assert f"{tmp_path / 'node-tmp'}:/tmp" in command
+    assert (config.paths.bids_dir / "derivatives" / "mriqc").is_dir()
+    assert (config.paths.work_dir / "mriqc" / "s3").is_dir()
 
 
 def test_group_command_uses_the_same_isolated_container_contract(tmp_path):
     command = mriqc_group_command(configuration(tmp_path))
 
-    assert command[-5:] == ("/data", "/out", "group", "--no-sub", "--no-datalad-get")
+    assert command[-6:] == ("mriqc", "/data", "/out", "group", "--no-sub", "--no-datalad-get")
     assert "--participant-label" not in command
 
 
@@ -106,13 +109,13 @@ def _complete_mriqc(config: WorkflowConfig) -> Path:
         anatomy = Path(f"sub-{subject}/ses-01/anat/sub-{subject}_ses-01_T1w")
         _write(bids / anatomy.with_suffix(".nii.gz"))
         _write(root / anatomy.with_suffix(".json"), "{}")
-        _write(root / anatomy.with_suffix(".html"))
+        _write(root / f"{anatomy.name}.html")
         relative = Path(f"sub-{subject}/ses-01/func/sub-{subject}_ses-01_task-rest_run-1_bold")
         _write(bids / relative.with_suffix(".nii.gz"))
         _write(root / relative.with_suffix(".json"), json.dumps({
             "provenance": {"settings": {"fd_thres": 0.5}},
         }))
-        _write(root / relative.with_suffix(".html"))
+        _write(root / f"{relative.name}.html")
         write_subject_receipt(
             receipt_path(root, "mriqc", subject),
             mriqc_subject_receipt(config, subject, "a" * 40),

@@ -15,6 +15,7 @@ from network_fmri.pipeline import (
     save_stage_result,
 )
 from network_fmri.models import StageResult
+from network_fmri.qa.validate import ValidationError, ValidationResult
 from network_fmri.slurm import submit_plan
 from network_fmri.slurm import SubmissionRecord
 
@@ -163,7 +164,23 @@ def test_curated_validation_is_a_graph_node_without_a_second_milestone(tmp_path,
     assert saved == []
 
 
-def test_normal_submit_refuses_an_existing_partial_record_and_resume_skips_it(tmp_path, monkeypatch):
+def test_curated_validation_failure_saves_its_rolled_back_diagnostics(tmp_path, monkeypatch):
+    config = configuration(tmp_path)
+    report, log = tmp_path / "report.json", tmp_path / "report.log"
+    report.write_text("{}")
+    log.write_text("failure")
+    error = ValidationError(ValidationResult("curated", report, log, 1))
+    monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
+    monkeypatch.setattr(pipeline, "_run_stage", lambda *_args, **_kwargs: (_ for _ in ()).throw(error))
+    saved = []
+    monkeypatch.setattr("network_fmri.milestones.save_diagnostic", lambda *args, **kwargs: saved.append(args))
+
+    with pytest.raises(ValidationError):
+        pipeline.stage_main(["mriqc-curated", str(tmp_path / "workflow.toml")])
+    assert saved == [(config.paths.bids_dir, "mriqc-curated", [report, log])]
+
+
+def test_resume_resubmits_a_failed_array_and_all_of_its_descendants(tmp_path, monkeypatch):
     config = configuration(tmp_path)
     pipeline.write_record(
         pipeline.record_path(config),
@@ -179,8 +196,7 @@ def test_normal_submit_refuses_an_existing_partial_record_and_resume_skips_it(tm
         lambda jobs, **kwargs: selected.extend(job.name for job in jobs) or SubmissionRecord(),
     )
     assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"]) == 0
-    assert "fw2bids-array" not in selected
-    assert selected[0] == "bids-assembled"
+    assert selected[0] == "fw2bids-array"
 
 
 def test_status_exposes_submission_status_and_error(tmp_path, monkeypatch, capsys):
@@ -197,7 +213,7 @@ def test_status_exposes_submission_status_and_error(tmp_path, monkeypatch, capsy
     ]
 
 
-def test_resume_requires_a_verified_committed_approval_receipt(tmp_path, monkeypatch):
+def test_resume_does_not_treat_a_queued_decision_job_as_approval(tmp_path, monkeypatch):
     config = configuration(tmp_path)
     pipeline.write_record(
         pipeline.record_path(config), SubmissionRecord(jobs={"scan-decisions-generated": "123"}),
@@ -208,10 +224,39 @@ def test_resume_requires_a_verified_committed_approval_receipt(tmp_path, monkeyp
     monkeypatch.setattr(pipeline, "submit_plan", lambda *args, **kwargs: SubmissionRecord(dry_run=True))
 
     assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"]) == 0
-    assert called == [True]
+    assert called == []
 
 
-def test_post_curation_resume_uses_the_recorded_gate_without_revalidating(tmp_path, monkeypatch):
+def test_resume_starts_at_the_first_missing_milestone_after_verified_array_work(tmp_path, monkeypatch):
+    config = configuration(tmp_path)
+    config.paths.parts_dir.mkdir()
+    for subject in config.subjects:
+        (config.paths.parts_dir / subject).mkdir()
+    for stage in ("bids-assembled",):
+        path = config.paths.bids_dir / "code" / "network_fmri" / "milestones" / f"{stage}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"stage": stage, "status": "success"}))
+    pipeline.write_record(
+        pipeline.record_path(config),
+        SubmissionRecord(jobs={"fw2bids-array": "123", "bids-assembled": "124"}),
+    )
+    monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
+    selected = []
+
+    def runner(command, **_kwargs):
+        if command[0] == "sacct":
+            return SimpleNamespace(stdout="COMPLETED\n")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(
+        pipeline, "submit_plan",
+        lambda jobs, **kwargs: selected.extend(job.name for job in jobs) or SubmissionRecord(dry_run=True),
+    )
+    assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"], runner=runner) == 0
+    assert selected[0] == "behavioral-sourcedata-ingested"
+
+
+def test_resume_does_not_trust_a_queued_curation_job_without_a_milestone(tmp_path, monkeypatch):
     config = configuration(tmp_path)
     pipeline.write_record(
         pipeline.record_path(config),
@@ -220,7 +265,7 @@ def test_post_curation_resume_uses_the_recorded_gate_without_revalidating(tmp_pa
     monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
     monkeypatch.setattr(
         pipeline, "require_committed_approval",
-        lambda _: pytest.fail("a later resume must not revalidate the completed curation gate"),
+        lambda _: pytest.fail("queued jobs are not completion evidence"),
     )
     selected = []
     monkeypatch.setattr(
@@ -229,7 +274,7 @@ def test_post_curation_resume_uses_the_recorded_gate_without_revalidating(tmp_pa
     )
 
     assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"]) == 0
-    assert selected[0] == "bids-curated-validated"
+    assert selected[0] == "fw2bids-array"
 
 
 def test_committed_approval_requires_a_receipt_present_in_head(tmp_path, monkeypatch):

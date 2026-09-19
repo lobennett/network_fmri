@@ -7,6 +7,7 @@ import pytest
 
 import network_fmri.curation as curation
 from network_fmri.curation import apply_curation
+from network_fmri.qa.validate import ValidationError
 from network_fmri.stages import StageError
 
 
@@ -18,7 +19,7 @@ class Runner:
     def __call__(self, args, **kwargs):
         command = [str(value) for value in args]
         self.calls.append(command)
-        if command[0] == "bids-validator":
+        if command[0] == "bids-validator-deno":
             outfile = Path(command[command.index("--outfile") + 1])
             outfile.parent.mkdir(parents=True, exist_ok=True)
             outfile.write_text('{"issues": {}}\n')
@@ -85,7 +86,7 @@ def test_drop_removes_echo_bundle_events_and_sidecars_but_keeps_raw_behavior(tmp
     assert not event_qc.exists()
     assert behavior.is_file()
     assert runner.calls[0][:3] == ["network-qa", "decisions", "validate"]
-    assert runner.calls[-1][0] == "bids-validator"
+    assert runner.calls[-1][0] == "bids-validator-deno"
 
 
 def test_curation_rejects_missing_bundle_before_any_mutation(tmp_path):
@@ -121,7 +122,7 @@ def test_curation_restores_bundle_and_b0_metadata_when_validation_fails(tmp_path
     kept_sidecar = _write(func / f"{kept}.json", "{}")
     manifest = _manifest(tmp_path / "code" / "network_fmri" / "scan_decisions.tsv")
 
-    with pytest.raises(StageError, match="validation failed"):
+    with pytest.raises(ValidationError):
         apply_curation(tmp_path, manifest, Runner(validator_returncode=1))
 
     assert len(list(func.glob(f"{stem}*bold.nii.gz"))) == 3

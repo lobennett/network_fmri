@@ -61,7 +61,7 @@ def validate_bids(
     temporary_log = _temporary_path(output_dir, f".{log.name}.")
     try:
         command = [
-            "bids-validator", str(bids_dir), "--outfile", str(temporary_report),
+            "bids-validator-deno", str(bids_dir), "--outfile", str(temporary_report),
             "--format", "json_pp", "--prune",
         ]
         returncode, stdout, stderr = _invoke(command, runner)
@@ -70,7 +70,7 @@ def validate_bids(
             _write_json(temporary_report, {
                 "label": label,
                 "status": output_error,
-                "detail": "bids-validator did not produce a fresh JSON object",
+                "detail": "bids-validator-deno did not produce a fresh JSON object",
             })
         _write_text(temporary_log, _join_output(stdout, stderr))
         os.replace(temporary_report, report)

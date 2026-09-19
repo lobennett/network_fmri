@@ -10,6 +10,7 @@ from typing import Any
 
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _SUBJECT = re.compile(r"^s[0-9]+$")
+_FLYWHEEL_PROJECT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9_-]*$")
 
 
 @dataclass(frozen=True)
@@ -97,7 +98,7 @@ def parse_config(raw: dict[str, Any], *, base: Path) -> WorkflowConfig:
         paths=paths,
         subjects_file=subjects_file,
         subjects=subjects,
-        flywheel_project=_nonempty_string(raw, "flywheel_project", "top-level"),
+        flywheel_project=_flywheel_project(raw),
         behavior=_parse_behavior(_table(raw, "behavior", "top-level")),
         mriqc=_parse_container(_table(raw, "mriqc", "top-level"), "mriqc"),
         fmriprep=_parse_container(_table(raw, "fmriprep", "top-level"), "fmriprep"),
@@ -136,6 +137,13 @@ def _parse_paths(raw: dict[str, Any]) -> WorkflowPaths:
     if len(set(runtime)) != len(runtime):
         raise ValueError("paths.bids_dir, paths.parts_dir, paths.work_dir, and paths.log_dir must be distinct")
     return paths
+
+
+def _flywheel_project(raw: dict[str, Any]) -> str:
+    value = _nonempty_string(raw, "flywheel_project", "top-level")
+    if not _FLYWHEEL_PROJECT.fullmatch(value):
+        raise ValueError("flywheel_project must use the full group/project form")
+    return value
 
 
 def _parse_behavior(raw: dict[str, Any]) -> BehaviorSource:

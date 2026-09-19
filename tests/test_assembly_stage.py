@@ -92,6 +92,7 @@ def test_assembly_uses_an_immutable_roster_snapshot_for_upstream_atomic_assembly
     assert command[command.index("--parts") + 1] == str(config.paths.parts_dir)
     assert command[command.index("--output") + 1] == str(config.paths.bids_dir)
     assert not manifest.exists(), "the snapshot is removed after the assembly invocation"
+    assert runner.calls[1] == ["datalad", "create", "-c", "text2git", "--force", str(config.paths.bids_dir)]
 
 
 def test_assembly_refuses_partial_or_extra_part_rosters(tmp_path):

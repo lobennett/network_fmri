@@ -84,6 +84,7 @@ def assemble_dataset(
         _run_checked(command, runner)
     finally:
         manifest.unlink(missing_ok=True)
+    _initialize_datalad_dataset(destination, runner)
     return StageResult(
         "bids-assembled",
         (destination,),
@@ -149,6 +150,18 @@ def _run_checked(command: list[str], runner: Runner) -> None:
         runner(command, check=True)
     except (OSError, subprocess.CalledProcessError) as error:
         raise StageError(f"source stage command failed: {command[0]}") from error
+
+
+def _initialize_datalad_dataset(destination: Path, runner: Runner) -> None:
+    """Turn the newly published plain BIDS tree into the dataset serial stages save."""
+
+    try:
+        runner(
+            ["datalad", "create", "-c", "text2git", "--force", str(destination)],
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise StageError(f"could not initialize DataLad dataset at {destination}") from error
 
 
 def _reject_token_in_command(command: list[str]) -> None:

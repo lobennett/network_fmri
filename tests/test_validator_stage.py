@@ -1,10 +1,22 @@
 import json
+import shutil
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from network_fmri.qa.validate import ValidationError, validate_bids
+
+
+def test_installed_bids_validator_deno_entrypoint_smoke():
+    """The frozen Linux environment must expose the validator command we invoke."""
+
+    executable = shutil.which("bids-validator-deno")
+    if executable is None:
+        pytest.skip("bids-validator-deno is installed only in the reviewed Linux environment")
+    completed = subprocess.run([executable, "--version"], check=False, capture_output=True, text=True)
+    assert completed.returncode == 0
 
 
 class Runner:
@@ -35,7 +47,7 @@ def test_validator_failure_keeps_json_and_log_diagnostics(tmp_path):
     assert json.loads(report.read_text())["status"] == "validator-output-missing"
     assert "invalid BIDS" in log.read_text()
     command, = runner.calls
-    assert command[:3] == ["bids-validator", str(tmp_path), "--outfile"]
+    assert command[:3] == ["bids-validator-deno", str(tmp_path), "--outfile"]
     assert Path(command[3]).parent == report.parent
     assert Path(command[3]) != report
     assert command[4:] == ["--format", "json_pp", "--prune"]

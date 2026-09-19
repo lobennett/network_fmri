@@ -52,8 +52,8 @@ uv run --frozen network-fmri pipeline submit /path/to/workflow.toml --resume
 ```
 
 Use the configured log directory and `squeue --me` to monitor Slurm. The submission
-record records accepted job IDs, so `--resume` can recover from a scheduler failure
-without resubmitting completed nodes. Validator logs remain in
+record records accepted job IDs, while `--resume` verifies serial milestones, array
+receipts, and Slurm completion before recovering from a scheduler failure. Validator logs remain in
 `derivatives/bids-validator/`, including validation failures.
 
 Before curation, confirm a durable DataLad annex remote has all raw content. Curation

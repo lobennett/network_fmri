@@ -283,18 +283,35 @@ def main(argv: list[str] | None = None, *, runner=None) -> int:
     existing: dict[str, str] = previous.jobs if previous is not None else {}
     complete: tuple[str, ...] = ()
     if args.resume:
-        if "scan-decisions-generated" in existing:
-            if "mriqc-curated" not in existing:
+        completed = _completed_prefix(config, plan, previous, command_runner)
+        first_missing = len(completed)
+        approval_index = STAGE_ORDER.index("scan-decisions-approved")
+        generated_index = STAGE_ORDER.index("scan-decisions-generated")
+        if first_missing <= generated_index:
+            selected = initial_submission(plan)[first_missing:]
+        else:
+            # A queued scan-decisions-generated job is never an approval.  The
+            # committed manifest receipt is independently checked before curation.
+            if first_missing == approval_index:
                 if runner is None:
                     require_committed_approval(config)
                 else:
                     require_committed_approval(config, command_runner)
-            selected = _unsubmitted(post_approval_submission(plan), existing)
-            complete = ("scan-decisions-approved",)
-        else:
-            selected = _unsubmitted(initial_submission(plan), existing)
+                completed = _completed_prefix(config, plan, previous, command_runner)
+                first_missing = len(completed)
+            if first_missing <= approval_index:
+                raise RuntimeError("scan decisions are not approved and committed")
+            if runner is None:
+                require_committed_approval(config)
+            else:
+                require_committed_approval(config, command_runner)
+            selected = plan[first_missing:]
+        existing = {name: job_id for name, job_id in existing.items() if name in completed}
+        complete = tuple(completed)
     else:
         selected = initial_submission(plan)
+    if not selected:
+        return 0
     if not args.dry_run:
         config.paths.log_dir.mkdir(parents=True, exist_ok=True)
     record = submit_plan(
@@ -320,6 +337,107 @@ def main(argv: list[str] | None = None, *, runner=None) -> int:
 def _existing_record(config: WorkflowConfig) -> SubmissionRecord | None:
     path = record_path(config)
     return read_record(path) if path.exists() else None
+
+
+def _completed_prefix(
+    config: WorkflowConfig,
+    plan: tuple[PlannedJob, ...],
+    record: SubmissionRecord | None,
+    runner,
+) -> tuple[str, ...]:
+    """Return only the contiguous stages proved complete by durable evidence.
+
+    Scheduler IDs document an attempted submission, not success.  Serial work is
+    trusted only after its milestone receipt; array work also needs its worker
+    outputs/receipts and a completed Slurm array.  A failed or dependency-cancelled
+    node therefore causes it and every descendant to be submitted again.
+    """
+
+    record = record or SubmissionRecord()
+    complete: list[str] = []
+    for job in plan:
+        if not _stage_completed(config, job, record, runner):
+            break
+        complete.append(job.name)
+    return tuple(complete)
+
+
+def _stage_completed(config: WorkflowConfig, job: PlannedJob, record: SubmissionRecord, runner) -> bool:
+    from network_fmri.milestones import receipt_path
+
+    if job.name == "fw2bids-array":
+        return _array_job_completed(record.jobs.get(job.name), runner) and _part_roster_exists(config)
+    if job.name == "mriqc-array":
+        return _array_job_completed(record.jobs.get(job.name), runner) and _worker_receipts_exist(
+            config.paths.bids_dir / "derivatives" / "mriqc", "mriqc", config.subjects,
+        )
+    if job.name == "fmriprep-array":
+        return _array_job_completed(record.jobs.get(job.name), runner) and _worker_receipts_exist(
+            config.paths.bids_dir / "derivatives" / "fmriprep", "fmriprep", config.subjects,
+        )
+    if job.name == "bids-curated-validated":
+        report = config.paths.bids_dir / "derivatives" / "bids-validator" / "desc-curated_validation.json"
+        return _valid_json_object(report) and report.with_suffix(".log").is_file()
+    if job.name == "scan-decisions-approved":
+        try:
+            require_committed_approval(config, runner)
+        except RuntimeError:
+            return False
+        return True
+    return _successful_milestone(receipt_path(config.paths.bids_dir, job.name), job.name)
+
+
+def _successful_milestone(path: Path, stage: str) -> bool:
+    try:
+        value = json.loads(path.read_text())
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    return isinstance(value, dict) and value.get("stage") == stage and value.get("status") == "success"
+
+
+def _valid_json_object(path: Path) -> bool:
+    try:
+        return isinstance(json.loads(path.read_text()), dict)
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+
+
+def _part_roster_exists(config: WorkflowConfig) -> bool:
+    try:
+        return (
+            config.paths.parts_dir.is_dir()
+            and {entry.name for entry in config.paths.parts_dir.iterdir()} == set(config.subjects)
+            and all((config.paths.parts_dir / subject).is_dir() for subject in config.subjects)
+        )
+    except OSError:
+        return False
+
+
+def _worker_receipts_exist(root: Path, application: str, subjects: tuple[str, ...]) -> bool:
+    from network_fmri.containers import receipt_path
+
+    for subject in subjects:
+        try:
+            receipt = json.loads(receipt_path(root, application, subject).read_text())
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return False
+        if not isinstance(receipt, dict) or receipt.get("status") != "success" or receipt.get("subject") != subject:
+            return False
+    return True
+
+
+def _array_job_completed(job_id: str | None, runner) -> bool:
+    if not job_id:
+        return False
+    try:
+        result = runner(
+            ["sacct", "--jobs", job_id, "--format=State", "--noheader", "--parsable2"],
+            check=True, capture_output=True, text=True,
+        )
+        states = [line.split("|", 1)[0].split()[0] for line in str(result.stdout).splitlines() if line.strip()]
+    except (OSError, subprocess.CalledProcessError, AttributeError, IndexError):
+        return False
+    return bool(states) and all(state == "COMPLETED" for state in states)
 
 
 def pilot_config(config: WorkflowConfig, subject: str) -> WorkflowConfig:

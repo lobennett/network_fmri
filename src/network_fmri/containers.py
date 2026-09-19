@@ -52,6 +52,13 @@ def apptainer_prefix(
     return tuple(command)
 
 
+def prepare_bids_app_paths(output_root: Path, work_root: Path) -> None:
+    """Create writable bind sources before Apptainer resolves them on a compute node."""
+
+    Path(output_root).mkdir(parents=True, exist_ok=True)
+    Path(work_root).mkdir(parents=True, exist_ok=True)
+
+
 def receipt_path(output_root: Path, application: str, subject: str) -> Path:
     """Return the private run receipt location inside an application derivative."""
 

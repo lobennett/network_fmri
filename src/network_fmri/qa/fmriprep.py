@@ -13,6 +13,7 @@ from network_fmri.containers import (
     bind,
     current_datalad_commit,
     job_tmpdir,
+    prepare_bids_app_paths,
     receipt_path,
     subject_receipt,
     verify_subject_receipt,
@@ -28,6 +29,7 @@ def fmriprep_participant_command(config: WorkflowConfig, subject: str) -> tuple[
         raise StageError(f"fMRIPrep subject {subject!r} is outside the exact roster")
     root = config.paths.bids_dir / "derivatives" / "fmriprep"
     work = config.paths.work_dir / "fmriprep" / subject
+    prepare_bids_app_paths(root, work)
     prefix = apptainer_prefix(
         config.fmriprep,
         binds=(
@@ -41,7 +43,7 @@ def fmriprep_participant_command(config: WorkflowConfig, subject: str) -> tuple[
         environment=(("TEMPLATEFLOW_HOME", "/templateflow"),),
     )
     return prefix + (
-        "/data", "/out", "participant", "--participant-label", subject, "-w", "/work",
+        "fmriprep", "/data", "/out", "participant", "--participant-label", subject, "-w", "/work",
         "--dummy-scans", "0", "--no-submm-recon",
         "--output-spaces", "MNI152NLin2009cAsym:res-2", "T1w", "fsnative", "fsaverage6",
         "--cifti-output", "91k", "--me-output-echos", "--use-syn-sdc", "warn",

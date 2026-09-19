@@ -1,7 +1,7 @@
 # Copy this file to a reviewed local location before submitting the one 46-subject run.
 # All runtime paths are absolute. FLYWHEEL_API_TOKEN remains in the environment.
 subjects_file = "/oak/stanford/groups/russpold/r01network/subjects-46.txt"
-flywheel_project = "r01network"
+flywheel_project = "russpold/r01network"
 
 [paths]
 bids_dir = "/scratch/groups/russpold/network_fmri/bids"

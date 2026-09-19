@@ -40,7 +40,7 @@ def write_config(
     path = tmp_path / "workflow.toml"
     path.write_text(
         f'''subjects_file = "{subjects_file}"
-flywheel_project = "r01network"
+flywheel_project = "russpold/r01network"
 
 [paths]
 {chr(10).join(f'{key} = "{value}"' for key, value in workflow_paths.items())}
@@ -82,6 +82,16 @@ def test_rejects_short_behavior_commit(tmp_path):
     path = write_config(tmp_path, behavior_commit="445eba8")
 
     with pytest.raises(ValueError, match="40-character"):
+        WorkflowConfig.load(path)
+
+
+@pytest.mark.parametrize("value", ["r01network", "group/", "/project", "group/project/extra"])
+def test_rejects_noncanonical_flywheel_project(tmp_path, value):
+    from network_fmri.config import WorkflowConfig
+
+    path = write_config(tmp_path)
+    path.write_text(path.read_text().replace("russpold/r01network", value))
+    with pytest.raises(ValueError, match="group/project"):
         WorkflowConfig.load(path)
 
 

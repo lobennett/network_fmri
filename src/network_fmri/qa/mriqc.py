@@ -14,6 +14,7 @@ from network_fmri.containers import (
     current_datalad_commit,
     group_receipt_path,
     job_tmpdir,
+    prepare_bids_app_paths,
     receipt_path,
     subject_receipt,
     verify_subject_receipt,
@@ -27,7 +28,7 @@ def mriqc_participant_command(config: WorkflowConfig, subject: str) -> tuple[str
 
     _require_subject(config, subject)
     return _prefix(config, subject) + (
-        "/data", "/out", "participant", "--participant-label", subject,
+        "mriqc", "/data", "/out", "participant", "--participant-label", subject,
         "-w", "/work", "--n_cpus", str(config.slurm.cpus),
         "--mem_gb", str(config.slurm.memory_gb), "--fd_thres", "0.5",
         "--no-sub", "--no-datalad-get",
@@ -38,7 +39,7 @@ def mriqc_group_command(config: WorkflowConfig) -> tuple[str, ...]:
     """Build the dependent MRIQC group-report call."""
 
     return _prefix(config, "group") + (
-        "/data", "/out", "group", "--no-sub", "--no-datalad-get",
+        "mriqc", "/data", "/out", "group", "--no-sub", "--no-datalad-get",
     )
 
 
@@ -100,9 +101,7 @@ def verify_mriqc(config: WorkflowConfig, runner: Runner = subprocess.run) -> Sta
             missing_iqms.append(path)
         elif not _valid_iqm(iqm, require_fd_threshold=_nifti_suffix(path) == "bold"):
             invalid_iqms.append(iqm)
-    missing_reports = [
-        path for path in images if not _derivative_companion(root, config.paths.bids_dir, path, ".html").is_file()
-    ]
+    missing_reports = [path for path in images if not _report_path(root, path).is_file()]
     if missing_iqms:
         raise StageError("MRIQC completion has missing IQMs: " + _display(missing_iqms, config.paths.bids_dir))
     if invalid_iqms:
@@ -153,6 +152,7 @@ def verify_mriqc(config: WorkflowConfig, runner: Runner = subprocess.run) -> Sta
 def _prefix(config: WorkflowConfig, worker: str) -> tuple[str, ...]:
     root = config.paths.bids_dir / "derivatives" / "mriqc"
     work = config.paths.work_dir / "mriqc" / worker
+    prepare_bids_app_paths(root, work)
     return apptainer_prefix(
         config.mriqc,
         binds=(
@@ -194,6 +194,12 @@ def _raw_images(bids_dir: Path, subjects: Iterable[str]) -> tuple[Path, ...]:
 def _derivative_companion(root: Path, bids_dir: Path, raw: Path, suffix: str) -> Path:
     relative = raw.relative_to(bids_dir)
     return root / relative.with_name(_stem(raw) + suffix)
+
+
+def _report_path(root: Path, raw: Path) -> Path:
+    """MRIQC 24 writes per-image HTML reports at the derivative root."""
+
+    return root / f"{_stem(raw)}.html"
 
 
 def _nifti_suffix(path: Path) -> str | None:

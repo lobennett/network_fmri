@@ -58,6 +58,7 @@ def test_participant_command_preserves_the_trimmed_dataset_contract(tmp_path, mo
     command = fmriprep_participant_command(config, "s3")
 
     assert command[:4] == ("apptainer", "exec", "--cleanenv", "--containall")
+    assert command[command.index(str(config.fmriprep.image)) + 1] == "fmriprep"
     assert option(command, "--dummy-scans") == "0"
     assert "--no-submm-recon" in command
     assert option(command, "--random-seed") == "12345"
@@ -70,6 +71,8 @@ def test_participant_command_preserves_the_trimmed_dataset_contract(tmp_path, mo
     assert option(command, "--omp-nthreads") == "2"
     assert f"{config.paths.freesurfer_license}:/license.txt:ro" in command
     assert f"{tmp_path / 'node-tmp'}:/tmp" in command
+    assert (config.paths.bids_dir / "derivatives" / "fmriprep").is_dir()
+    assert (config.paths.work_dir / "fmriprep" / "s3").is_dir()
 
 
 def test_participant_command_never_oversubscribes_a_one_cpu_job(tmp_path):

@@ -121,9 +121,11 @@ def apply_curation(
     try:
         b0 = _rebuild_b0(bids_dir)
         validation = validate_bids(bids_dir, "curated", runner)
-    except ValidationError as error:
+    except ValidationError:
         _rollback(transaction, metadata)
-        raise StageError(f"curated BIDS validation failed; see {error.result.report}") from error
+        # Preserve the validator's result so the stage boundary can save its fresh
+        # report and log after the raw-tree rollback.
+        raise
     except Exception:
         _rollback(transaction, metadata)
         raise

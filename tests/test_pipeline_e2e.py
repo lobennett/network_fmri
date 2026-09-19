@@ -102,7 +102,7 @@ class FakeApplications:
             Path(command[command.index("--out-tsv") + 1]).write_text("scan\tmean\nrun\t0\n")
             Path(command[command.index("--out-pdf") + 1]).write_bytes(b"%PDF")
             return SimpleNamespace(stdout="")
-        if command[0] == "bids-validator":
+        if command[0] == "bids-validator-deno":
             Path(command[command.index("--outfile") + 1]).write_text("{}\n")
             return SimpleNamespace(stdout="", stderr="", returncode=0)
         if command[:3] == ("network-qa", "decisions", "generate"):
@@ -119,6 +119,8 @@ class FakeApplications:
         if command[0] == "apptainer":
             self._run_container(command)
             return SimpleNamespace(stdout="")
+        if command[:2] == ("datalad", "create"):
+            return SimpleNamespace(stdout="")
         if command[:2] == ("datalad", "save"):
             self.milestones.append(command[command.index("-m") + 1])
             self.committed = {
@@ -133,6 +135,8 @@ class FakeApplications:
             return SimpleNamespace(stdout=self.head + "\n")
         if command[:4] == ("git", "-C", str(self.bids_dir), "show"):
             return SimpleNamespace(stdout=self.committed[command[-1].split(":", 1)[1]])
+        if command[0] == "sacct":
+            return SimpleNamespace(stdout="COMPLETED\n")
         raise AssertionError(f"unexpected external command: {command}")
 
     def _behavior_git(self, command: tuple[str, ...]):
@@ -189,7 +193,7 @@ class FakeApplications:
             target.parent.mkdir(parents=True, exist_ok=True)
             value = {"provenance": {"settings": {"fd_thres": 0.5}}} if suffix == "bold" else {}
             target.write_text(json.dumps(value))
-            target.with_suffix(".html").write_text("report")
+            (root / f"{stem}.html").write_text("report")
 
     def _write_mriqc_group(self) -> None:
         root = self.bids_dir / "derivatives" / "mriqc"
@@ -249,6 +253,10 @@ def test_synthetic_pilot_executes_assembly_through_fmriprep(tmp_path, monkeypatc
     for name in pipeline.STAGE_ORDER[:12]:
         _stage(name, config_path, apps)
     _stage("scan-decisions-approved", config_path, apps)
+
+    created = apps.calls.index(("datalad", "create", "-c", "text2git", "--force", str(config.paths.bids_dir)))
+    first_save = next(index for index, command in enumerate(apps.calls) if command[:2] == ("datalad", "save"))
+    assert created < first_save
 
     receipt = json.loads(
         apps.committed[receipt_path(config.paths.bids_dir, "scan-decisions-approved").relative_to(config.paths.bids_dir).as_posix()]
