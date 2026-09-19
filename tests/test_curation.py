@@ -7,7 +7,6 @@ scans exist and what they are called, and nothing downstream would fail.
 import pytest
 
 from network_fmri.fw2bids.acquisitions import NON_FUNC, map_acquisition
-from network_fmri.fw2bids.qa_reject import MARKER, REJECTS, suffix_labels
 from network_fmri.fw2bids.sessions import SUBJECT_ALIASES, normalize, timeline
 
 
@@ -34,32 +33,6 @@ class TestMapAcquisition:
     ])
     def test_skipped_acquisitions(self, label):
         assert map_acquisition(label) is None
-
-    def test_qa_reject_marker_blocks_any_label(self):
-        """The anat exclusion gate. Losing this re-imports every rejected scan."""
-        for label in ("NEW Sag_MPRAGE_T1", "T2w CUBE PROMO .8mm sag", "task-flanker_bold"):
-            assert map_acquisition(label) is not None
-            assert map_acquisition(label + MARKER) is None
-
-
-class TestRejectList:
-    def test_targets_are_well_formed(self):
-        for target in REJECTS:
-            sub, ses, suffix = target.split("/")
-            assert sub.startswith("s") and ses.isdigit() and len(ses) == 2
-            assert suffix in {"T1w", "T2w"}
-
-    def test_marking_is_idempotent(self):
-        """suffix_labels must match already-marked labels, or a replay double-marks."""
-        labels = suffix_labels("T1w")
-        base = {lab for lab in labels if not lab.endswith(MARKER)}
-        assert base, "no unmarked T1w label"
-        assert all(lab + MARKER in labels for lab in base)
-
-    def test_every_reject_suffix_is_a_known_anat(self):
-        suffixes = {e.get("suffix") for e in NON_FUNC.values()}
-        assert {t.split("/")[2] for t in REJECTS} <= suffixes
-
 
 class TestSessionNumbering:
     def _rec(self, label, ts):

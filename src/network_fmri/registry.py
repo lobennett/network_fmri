@@ -476,6 +476,10 @@ COMMANDS: tuple[CommandSpec, ...] = (
     CommandSpec(
         ("validate",), "network_fmri.qa.validate:main", "run the BIDS validator"
     ),
+    CommandSpec(
+        ("decisions",), "network_fmri.stages.decisions:main",
+        "generate or approve scan decisions",
+    ),
     CommandSpec(("check",), "network_fmri.qa.check:main", "check study invariants"),
     CommandSpec(
         ("global-signal",),
@@ -500,11 +504,6 @@ COMMANDS: tuple[CommandSpec, ...] = (
         ("ingest-beh",),
         "network_fmri.behavior.ingest:record",
         "ingest behavioural data",
-    ),
-    CommandSpec(
-        ("qa-reject",),
-        "network_fmri.fw2bids.qa_reject:main",
-        "mark rejected source scans",
     ),
     CommandSpec(
         ("qa-motion",), "network_fmri.qa.exclusions:motion", "compile motion exclusions"

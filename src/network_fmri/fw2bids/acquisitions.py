@@ -10,11 +10,6 @@ import re
 
 CANONICAL_FUNC = re.compile(r"^task-(?P<task>[A-Za-z0-9]+)_bold(?:_\d+|_run_\d+)?$")
 
-# QA-failed scans get this appended to their Flywheel label, so they are never curated.
-# Keyed at the source because the heuristic cannot see the session (SeqInfo's
-# accession_number is None), and a subject-level skip would drop the kept scan too.
-QA_REJECT = re.compile(r"_qa-reject$")
-
 TASKS = {
     # single
     "rest", "cuedTS", "spatialTS", "directedForgetting", "flanker", "goNogo",
@@ -63,7 +58,7 @@ SKIP_ACQUISITIONS = {
 
 def map_acquisition(label: str) -> dict[str, str] | None:
     """Acquisition label -> BIDS entities, or ``None`` to leave the series alone."""
-    if label in SKIP_ACQUISITIONS or QA_REJECT.search(label):
+    if label in SKIP_ACQUISITIONS:
         return None
     m = CANONICAL_FUNC.match(label)
     if m and m["task"] in TASKS:
