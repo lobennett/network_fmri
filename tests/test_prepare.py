@@ -99,7 +99,7 @@ def test_trim_rolls_back_nifti_when_sidecar_publication_fails(tmp_path, monkeypa
     replace = os.replace
 
     def fail_sidecar_publish(source, destination):
-        if Path(destination) == sidecar and str(source).endswith(".trim.json"):
+        if Path(destination) == sidecar and str(source).endswith(".trim.pending.json"):
             raise OSError("sidecar filesystem error")
         return replace(source, destination)
 
@@ -109,6 +109,71 @@ def test_trim_rolls_back_nifti_when_sidecar_publication_fails(tmp_path, monkeypa
     assert bold.read_bytes() == original_nifti
     assert read(sidecar) == {"RepetitionTime": 1.49}
     assert not list(bold.parent.glob(".*.trim.*"))
+
+
+def test_trim_recovers_interrupted_nifti_before_retrying(tmp_path, monkeypatch):
+    bold = _trim_input(tmp_path)
+    sidecar = bold.with_name(bold.name.replace(".nii.gz", ".json"))
+    _write(sidecar, {"RepetitionTime": 1.49})
+    paths = trim._transaction_paths(bold, sidecar)
+    # Simulate a process death after the shortened NIfTI replaced its live
+    # file, but before its sidecar acquired NumberOfVolumesDiscardedByUser.
+    bold.write_bytes(b"shortened-nifti")
+    paths.nifti_backup.write_bytes(b"original-nifti")
+    paths.marker.write_text(json.dumps({
+        "nifti_backup": paths.nifti_backup.name,
+        "sidecar_backup": paths.sidecar_backup.name,
+    }))
+    observed = []
+
+    class FakeImage:
+        shape = (2, 2, 2, 10)
+
+        @property
+        def slicer(self):
+            return self
+
+        def __getitem__(self, item):
+            return self
+
+    image = FakeImage()
+    fake_nib = SimpleNamespace(
+        load=lambda path: (observed.append(Path(path).read_bytes()) or image),
+        save=lambda _, path: Path(path).write_bytes(b"trimmed-nifti"),
+    )
+    monkeypatch.setitem(sys.modules, "nibabel", fake_nib)
+
+    assert trim.trim_one(bold) == "trimmed"
+    assert observed == [b"original-nifti"]
+    assert read(sidecar)["NumberOfVolumesDiscardedByUser"] == 7
+    assert not paths.marker.exists()
+    assert not paths.nifti_backup.exists()
+    assert not paths.sidecar_backup.exists()
+
+
+def test_trim_keeps_recovery_material_when_restart_restore_fails(tmp_path, monkeypatch):
+    bold = _trim_input(tmp_path)
+    sidecar = bold.with_name(bold.name.replace(".nii.gz", ".json"))
+    _write(sidecar, {"RepetitionTime": 1.49})
+    paths = trim._transaction_paths(bold, sidecar)
+    bold.write_bytes(b"shortened-nifti")
+    paths.nifti_backup.write_bytes(b"original-nifti")
+    paths.marker.write_text(json.dumps({
+        "nifti_backup": paths.nifti_backup.name,
+        "sidecar_backup": paths.sidecar_backup.name,
+    }))
+    replace = os.replace
+
+    def fail_restore(source, destination):
+        if Path(destination) == bold and str(source).endswith(".trim.restore.pending"):
+            raise OSError("restore filesystem error")
+        return replace(source, destination)
+
+    monkeypatch.setattr(trim.os, "replace", fail_restore)
+
+    assert trim.trim_one(bold) == "error"
+    assert paths.marker.exists()
+    assert paths.nifti_backup.read_bytes() == b"original-nifti"
 
 
 def test_b0_link_validates_every_sidecar_before_publishing(tmp_path):
