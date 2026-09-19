@@ -256,6 +256,43 @@ def test_resume_starts_at_the_first_missing_milestone_after_verified_array_work(
     assert selected[0] == "behavioral-sourcedata-ingested"
 
 
+def test_resume_does_not_accept_failed_curated_validator_artifacts_as_success(tmp_path):
+    config = configuration(tmp_path)
+    report = config.paths.bids_dir / "derivatives" / "bids-validator" / "desc-curated_validation.json"
+    report.parent.mkdir(parents=True)
+    report.write_text("{}")
+    report.with_suffix(".log").write_text("validator failed")
+    job = next(job for job in build_plan(config) if job.name == "bids-curated-validated")
+    record = SubmissionRecord(jobs={job.name: "123"})
+
+    def failed(command, **_kwargs):
+        assert command[0] == "sacct"
+        return SimpleNamespace(stdout="FAILED\n")
+
+    def completed(command, **_kwargs):
+        assert command[0] == "sacct"
+        return SimpleNamespace(stdout="COMPLETED\n")
+
+    assert not pipeline._stage_completed(config, job, record, failed)
+    assert pipeline._stage_completed(config, job, record, completed)
+
+
+def test_resume_refuses_to_duplicate_an_active_slurm_stage(tmp_path, monkeypatch):
+    config = configuration(tmp_path)
+    pipeline.write_record(
+        pipeline.record_path(config), SubmissionRecord(jobs={"fw2bids-array": "123"}),
+    )
+    monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
+    monkeypatch.setattr(pipeline, "submit_plan", lambda *_args, **_kwargs: pytest.fail("must not resubmit active work"))
+
+    def active(command, **_kwargs):
+        assert command[0] == "sacct"
+        return SimpleNamespace(stdout="RUNNING\n")
+
+    with pytest.raises(RuntimeError, match="active Slurm stages.*fw2bids-array"):
+        pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume"], runner=active)
+
+
 def test_resume_does_not_trust_a_queued_curation_job_without_a_milestone(tmp_path, monkeypatch):
     config = configuration(tmp_path)
     pipeline.write_record(

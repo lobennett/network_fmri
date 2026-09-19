@@ -283,6 +283,11 @@ def main(argv: list[str] | None = None, *, runner=None) -> int:
     existing: dict[str, str] = previous.jobs if previous is not None else {}
     complete: tuple[str, ...] = ()
     if args.resume:
+        active = _active_stages(previous, command_runner)
+        if active:
+            raise RuntimeError(
+                "pipeline has active Slurm stages; wait before resuming: " + ", ".join(active)
+            )
         completed = _completed_prefix(config, plan, previous, command_runner)
         first_missing = len(completed)
         approval_index = STAGE_ORDER.index("scan-decisions-approved")
@@ -377,7 +382,11 @@ def _stage_completed(config: WorkflowConfig, job: PlannedJob, record: Submission
         )
     if job.name == "bids-curated-validated":
         report = config.paths.bids_dir / "derivatives" / "bids-validator" / "desc-curated_validation.json"
-        return _valid_json_object(report) and report.with_suffix(".log").is_file()
+        return (
+            _job_completed(record.jobs.get(job.name), runner)
+            and _valid_json_object(report)
+            and report.with_suffix(".log").is_file()
+        )
     if job.name == "scan-decisions-approved":
         try:
             require_committed_approval(config, runner)
@@ -427,17 +436,42 @@ def _worker_receipts_exist(root: Path, application: str, subjects: tuple[str, ..
 
 
 def _array_job_completed(job_id: str | None, runner) -> bool:
+    states = _job_states(job_id, runner)
+    return bool(states) and all(state == "COMPLETED" for state in states)
+
+
+def _active_stages(record: SubmissionRecord | None, runner) -> tuple[str, ...]:
+    """Return submitted stages which Slurm still owns, never duplicating them."""
+
+    if record is None:
+        return ()
+    active_states = {"PENDING", "RUNNING", "CONFIGURING", "COMPLETING", "SUSPENDED", "REQUEUED", "RESIZING"}
+    return tuple(
+        name for name, job_id in record.jobs.items()
+        if any(state in active_states for state in _job_states(job_id, runner))
+    )
+
+
+def _job_completed(job_id: str | None, runner) -> bool:
+    states = _job_states(job_id, runner)
+    return bool(states) and all(state == "COMPLETED" for state in states)
+
+
+def _job_states(job_id: str | None, runner) -> tuple[str, ...]:
     if not job_id:
-        return False
+        return ()
     try:
         result = runner(
             ["sacct", "--jobs", job_id, "--format=State", "--noheader", "--parsable2"],
             check=True, capture_output=True, text=True,
         )
-        states = [line.split("|", 1)[0].split()[0] for line in str(result.stdout).splitlines() if line.strip()]
+        states = tuple(
+            line.split("|", 1)[0].split()[0]
+            for line in str(result.stdout).splitlines() if line.strip()
+        )
     except (OSError, subprocess.CalledProcessError, AttributeError, IndexError):
-        return False
-    return bool(states) and all(state == "COMPLETED" for state in states)
+        return ()
+    return states
 
 
 def pilot_config(config: WorkflowConfig, subject: str) -> WorkflowConfig:
