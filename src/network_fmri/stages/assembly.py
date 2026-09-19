@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Sequence
 
@@ -58,22 +59,30 @@ def assemble_dataset(
     to the finalizer.
     """
 
+    _require_fixed_roster(config.subjects)
     _require_complete_part_roster(config.paths.parts_dir, config.subjects)
     destination = config.paths.bids_dir
     if destination.exists() or destination.is_symlink():
         raise StageError(f"BIDS destination already exists: {destination}")
-    command = [
-        sys.executable,
-        "-m",
-        "network_fw2bids._assembly",
-        "--subjects",
-        str(config.subjects_file),
-        "--parts",
-        str(config.paths.parts_dir),
-        "--output",
-        str(destination),
-    ]
-    _run_checked(command, runner)
+    # The configured roster is parsed at workflow startup.  Give the child an
+    # immutable snapshot instead of reopening the operator-editable source file
+    # after this wrapper has verified the parts.
+    manifest = _write_roster_manifest(config.subjects)
+    try:
+        command = [
+            sys.executable,
+            "-m",
+            "network_fw2bids._assembly",
+            "--subjects",
+            str(manifest),
+            "--parts",
+            str(config.paths.parts_dir),
+            "--output",
+            str(destination),
+        ]
+        _run_checked(command, runner)
+    finally:
+        manifest.unlink(missing_ok=True)
     return StageResult(
         "bids-assembled",
         (destination,),
@@ -84,6 +93,27 @@ def assemble_dataset(
 def _require_roster_subject(config: WorkflowConfig, subject: str) -> None:
     if subject not in config.subjects:
         raise StageError(f"subject is not in the configured 46-subject roster: {subject}")
+
+
+def _require_fixed_roster(subjects: Sequence[str]) -> None:
+    if len(subjects) != 46 or len(set(subjects)) != 46:
+        raise StageError("configured roster must contain exactly 46 unique subjects")
+
+
+def _write_roster_manifest(subjects: Sequence[str]) -> Path:
+    """Write a durable, immutable-in-practice child manifest for one assembly call."""
+
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        prefix="network-fw2bids-subjects-",
+        suffix=".txt",
+        delete=False,
+    ) as handle:
+        handle.write("\n".join(subjects) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+        return Path(handle.name)
 
 
 def _require_complete_part_roster(parts_dir: Path, subjects: Sequence[str]) -> None:

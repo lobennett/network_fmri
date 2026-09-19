@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,9 +18,13 @@ from network_fmri.stages.assembly import assemble_dataset, convert_subject
 class RecordingRunner:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
+        self.roster_snapshot: list[str] | None = None
 
     def __call__(self, args, **kwargs):
-        self.calls.append([str(value) for value in args])
+        command = [str(value) for value in args]
+        self.calls.append(command)
+        if "--subjects" in command:
+            self.roster_snapshot = Path(command[command.index("--subjects") + 1]).read_text().splitlines()
         return SimpleNamespace(stdout="")
 
 
@@ -68,7 +73,7 @@ def test_conversion_rejects_a_subject_outside_the_exact_roster(tmp_path):
         convert_subject(configuration(tmp_path), "s999", RecordingRunner())
 
 
-def test_assembly_requires_exact_part_roster_and_uses_upstream_atomic_assembler(tmp_path):
+def test_assembly_uses_an_immutable_roster_snapshot_for_upstream_atomic_assembly(tmp_path):
     config = configuration(tmp_path)
     config.paths.parts_dir.mkdir()
     for subject in config.subjects:
@@ -79,19 +84,14 @@ def test_assembly_requires_exact_part_roster_and_uses_upstream_atomic_assembler(
 
     assert result.name == "bids-assembled"
     assert result.details["subject_count"] == 46
-    assert runner.calls == [
-        [
-            __import__("sys").executable,
-            "-m",
-            "network_fw2bids._assembly",
-            "--subjects",
-            str(config.subjects_file),
-            "--parts",
-            str(config.paths.parts_dir),
-            "--output",
-            str(config.paths.bids_dir),
-        ]
-    ]
+    command = runner.calls[0]
+    assert command[:3] == [sys.executable, "-m", "network_fw2bids._assembly"]
+    manifest = Path(command[command.index("--subjects") + 1])
+    assert runner.roster_snapshot == list(config.subjects)
+    assert manifest != config.subjects_file
+    assert command[command.index("--parts") + 1] == str(config.paths.parts_dir)
+    assert command[command.index("--output") + 1] == str(config.paths.bids_dir)
+    assert not manifest.exists(), "the snapshot is removed after the assembly invocation"
 
 
 def test_assembly_refuses_partial_or_extra_part_rosters(tmp_path):
@@ -102,4 +102,12 @@ def test_assembly_refuses_partial_or_extra_part_rosters(tmp_path):
     (config.paths.parts_dir / "s999").mkdir()
 
     with pytest.raises(StageError, match="missing s46; unexpected s999"):
+        assemble_dataset(config, RecordingRunner())
+
+
+def test_assembly_rejects_a_directly_constructed_non_46_subject_config(tmp_path):
+    config = configuration(tmp_path)
+    object.__setattr__(config, "subjects", config.subjects[:-1])
+
+    with pytest.raises(StageError, match="exactly 46"):
         assemble_dataset(config, RecordingRunner())
