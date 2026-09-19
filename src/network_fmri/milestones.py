@@ -80,11 +80,11 @@ def save_milestone(
     path = receipt_path(bids_dir, receipt.stage)
     prior = path.read_bytes() if path.exists() else None
     try:
+        write_json_atomic(path, payload)
         runner(
             ["datalad", "save", "-d", str(bids_dir), "-m", receipt.stage],
             check=True,
         )
-        write_json_atomic(path, payload)
         return git_head(bids_dir, runner)
     except Exception:
         if prior is None:

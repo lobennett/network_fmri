@@ -28,6 +28,21 @@ class FailingSaveRunner(RecordingRunner):
         return SimpleNamespace(stdout="abc123\n")
 
 
+class ReceiptVisibleRunner(RecordingRunner):
+    def __init__(self, path: Path) -> None:
+        super().__init__()
+        self.path = path
+        self.receipt_at_save: str | None = None
+
+    def __call__(self, args, **kwargs):
+        command = [str(argument) for argument in args]
+        self.calls.append(command)
+        if command[:2] == ["datalad", "save"]:
+            self.receipt_at_save = self.path.read_text()
+            return SimpleNamespace(stdout="")
+        return SimpleNamespace(stdout="abc123\n")
+
+
 def receipt(stage: str):
     from network_fmri.milestones import MilestoneReceipt
 
@@ -43,9 +58,10 @@ def receipt(stage: str):
 
 
 def test_save_milestone_writes_complete_receipt_and_one_explicit_save(tmp_path):
-    from network_fmri.milestones import save_milestone
+    from network_fmri.milestones import receipt_path, save_milestone
 
-    runner = RecordingRunner()
+    path = receipt_path(tmp_path, "bids-assembled")
+    runner = ReceiptVisibleRunner(path)
     commit = save_milestone(tmp_path, receipt("bids-assembled"), runner)
 
     assert commit == "abc123"
@@ -53,9 +69,7 @@ def test_save_milestone_writes_complete_receipt_and_one_explicit_save(tmp_path):
         ["datalad", "save", "-d", str(tmp_path), "-m", "bids-assembled"],
         ["git", "-C", str(tmp_path), "rev-parse", "--verify", "HEAD"],
     ]
-    assert json.loads(
-        (tmp_path / "code" / "network_fmri" / "milestones" / "bids-assembled.json").read_text()
-    ) == {
+    assert json.loads(runner.receipt_at_save or "") == {
         "inputs": {"bids": "raw-commit"},
         "jobs": {"assemble": "12345"},
         "outputs": {"dataset": "bids"},
@@ -64,6 +78,7 @@ def test_save_milestone_writes_complete_receipt_and_one_explicit_save(tmp_path):
         "validation": {"bids": "valid"},
         "versions": {"network_fmri": "a" * 40},
     }
+    assert path.read_text() == runner.receipt_at_save
 
 
 def test_save_milestone_rejects_the_configured_token_before_writing(tmp_path, monkeypatch):
