@@ -7,7 +7,7 @@ import hashlib
 import json
 import os
 import subprocess
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -65,8 +65,8 @@ def build_plan(
 def _validate_plan(plan: tuple[PlannedJob, ...], config: WorkflowConfig) -> None:
     if tuple(job.name for job in plan) != STAGE_ORDER:
         raise ValueError("pipeline plan does not match the fixed stage order")
-    if len(config.subjects) != 46:
-        raise ValueError("pipeline requires exactly 46 configured subjects")
+    if len(config.subjects) not in {1, 46}:
+        raise ValueError("pipeline requires 46 configured subjects or one selected pilot subject")
     for index, job in enumerate(plan):
         expected = () if index == 0 else (STAGE_ORDER[index - 1],)
         if job.dependencies != expected:
@@ -199,6 +199,8 @@ def get_parser() -> argparse.ArgumentParser:
     for name in ("plan", "submit", "status"):
         command = commands.add_parser(name)
         command.add_argument("config", type=Path)
+        if name in {"plan", "submit"}:
+            command.add_argument("--pilot-subject")
         if name == "submit":
             command.add_argument("--resume", action="store_true")
             command.add_argument("--dry-run", action="store_true")
@@ -228,13 +230,16 @@ def _unsubmitted(
     return tuple(job for job in plan if job.name not in existing_jobs)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, runner=None) -> int:
     supplied = list(argv or ())
     if supplied in (["-h"], ["--help"]):
         get_parser().print_help()
         return 0
     args = get_parser().parse_args(supplied)
+    command_runner = runner or subprocess.run
     config = WorkflowConfig.load(args.config)
+    if getattr(args, "pilot_subject", None):
+        config = pilot_config(config, args.pilot_subject)
     plan = build_plan(config, config_path=args.config)
     if args.command == "plan":
         _print_plan(plan)
@@ -259,7 +264,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.resume:
         if "scan-decisions-generated" in existing:
             if "mriqc-curated" not in existing:
-                require_committed_approval(config)
+                if runner is None:
+                    require_committed_approval(config)
+                else:
+                    require_committed_approval(config, command_runner)
             selected = _unsubmitted(post_approval_submission(plan), existing)
             complete = ("scan-decisions-approved",)
         else:
@@ -271,6 +279,7 @@ def main(argv: list[str] | None = None) -> int:
     record = submit_plan(
         selected, dry_run=args.dry_run,
         existing_jobs=existing, externally_completed=complete,
+        runner=command_runner,
         on_update=(
             (lambda current: write_record(record_path(config), current))
             if not args.dry_run else None
@@ -285,6 +294,18 @@ def main(argv: list[str] | None = None) -> int:
 def _existing_record(config: WorkflowConfig) -> SubmissionRecord | None:
     path = record_path(config)
     return read_record(path) if path.exists() else None
+
+
+def pilot_config(config: WorkflowConfig, subject: str) -> WorkflowConfig:
+    """Derive a one-subject disposable pilot from a validated full-sample config.
+
+    Loading still requires the reviewed 46-subject roster.  The CLI may then select
+    one member only for a pilot whose runtime paths have been changed in a copied TOML.
+    """
+
+    if subject not in config.subjects:
+        raise ValueError(f"pilot subject is not in the configured 46-subject roster: {subject}")
+    return replace(config, subjects=(subject,))
 
 
 def stage_main(argv: list[str] | None = None) -> int:
@@ -410,16 +431,20 @@ def _validation_result(name: str, validation):
 
 
 def save_stage_result(
-    bids_dir: Path, result, *, config: WorkflowConfig | None = None,
+    bids_dir: Path, result, *, config: WorkflowConfig | None = None, runner=None,
 ) -> None:
     """Create the sole DataLad save for a serial, successful graph node."""
 
     from network_fmri.milestones import MilestoneReceipt, save_milestone
 
     versions = _receipt_versions(config)
+    input_commit = (
+        _input_datalad_commit(bids_dir)
+        if runner is None else _input_datalad_commit(bids_dir, runner)
+    )
     inputs = {
         "bids_dir": str(bids_dir),
-        "input_datalad_commit": _input_datalad_commit(bids_dir),
+        "input_datalad_commit": input_commit,
     }
     if config is not None:
         inputs.update({
@@ -435,7 +460,10 @@ def save_stage_result(
         jobs={"slurm_job_id": os.environ.get("SLURM_JOB_ID", "")},
         validation=_receipt_validation(result),
     )
-    save_milestone(bids_dir, receipt)
+    if runner is None:
+        save_milestone(bids_dir, receipt)
+    else:
+        save_milestone(bids_dir, receipt, runner)
 
 
 def _receipt_validation(result) -> dict[str, object]:
@@ -485,10 +513,10 @@ def _package_version(distribution: str) -> str:
         return "not-installed"
 
 
-def _input_datalad_commit(bids_dir: Path) -> str:
+def _input_datalad_commit(bids_dir: Path, runner=subprocess.run) -> str:
     from network_fmri.milestones import git_head
 
-    return git_head(bids_dir)
+    return git_head(bids_dir, runner)
 
 
 def _validation_error_type():

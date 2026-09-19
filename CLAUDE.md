@@ -2,46 +2,37 @@
 
 ## Start here
 
-Read [README.md](README.md) for the pipeline overview, then
-[docs/AGENT-ONBOARDING.md](docs/AGENT-ONBOARDING.md) for the Sherlock environment,
-canonical paths, operating workflow, and known failure modes.
-
-Use the focused references when relevant:
-
-- [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md) for data exclusions and scientific decisions;
-- [docs/GLM-DIAGNOSTICS.md](docs/GLM-DIAGNOSTICS.md) for RT arms, sparsity, and reliability;
-- [docs/campaign/README.md](docs/campaign/README.md) for MRIQC, fMRIPrep, and XCP-D;
-- [docs/EXTENDING.md](docs/EXTENDING.md) for adding a package at a versioned lifecycle boundary;
-- [CONTRIBUTING.md](CONTRIBUTING.md) for development and verification.
+Read [README.md](README.md) for the fixed pipeline and
+[docs/SHERLOCK.md](docs/SHERLOCK.md) for cluster operations. Read
+[docs/SCAN-NOTES.md](docs/SCAN-NOTES.md) before changing scientific decisions or source
+data handling, and [CONTRIBUTING.md](CONTRIBUTING.md) before changing dependencies or
+development workflow.
 
 ## Non-negotiables
 
-- This host is Sherlock. `/etc/claude-code/CLAUDE.md` is authoritative. Run heavy work
-  through Slurm, and verify modules, partitions, and storage rather than guessing.
-- Do not assume a checkout location. Confirm the repository root, branch, worktree,
-  and imported `network_fmri.__file__` before editing or testing.
-- Inspect `git status` first and preserve unrelated changes.
-- Use a scratch venv, `uv sync --frozen`, and `uv run --frozen pytest`. Verify installed sibling
-  package commits against `pyproject.toml` before trusting a green suite.
-- Run `network_fmri campaign -- iterate --dry-run` before every campaign advance. One
-  tick may affect cells in every cohort.
-- A failed Slurm job may have committed its output. Check the target DataLad history
-  before repeating an expensive stage.
-- Prefer source fixes over downstream exceptions. Keep code comments about current
-  behavior; record history and rationale in commits and the focused reference docs.
+- The reviewed runtime configuration always names exactly 46 unique subjects and builds
+  one BIDS dataset. Do not add discovery, validation, or excluded cohort layouts.
+- A one-subject operational pilot must start from a copied, validated 46-subject TOML,
+  use distinct pilot paths, and select one roster member with `--pilot-subject`.
+- Keep `FLYWHEEL_API_TOKEN` in the worker environment. Never put it in a config, command,
+  receipt, or log.
+- Array workers never save the shared DataLad dataset. Serial stages use explicit
+  `datalad save` milestones; do not wrap stages in DataLad command recording.
+- The initial graph stops at `scan-decisions-generated`. Resume only after the reviewed
+  manifest is sealed and its approval receipt is committed.
+- Do not assume a checkout location. Inspect `git status`, the branch/worktree, and the
+  imported `network_fmri.__file__` before editing or testing.
+- On Sherlock, use a scratch environment with `uv sync --frozen` and
+  `uv run --frozen pytest`. Verify installed sibling revisions against `pyproject.toml`.
 
 ## Keep documentation current
-
-Update documentation in the same commit as the behavior it describes:
 
 | Change | Update |
 |---|---|
 | User-facing command, stage, or output | `README.md` |
-| Setup, path, environment, workflow, or diagnosed failure | `docs/AGENT-ONBOARDING.md` |
-| Exclusion or scientific preprocessing decision | `docs/SCAN-NOTES.md` |
-| Campaign config or vendored patch | `docs/campaign/` |
-| Lifecycle integration contract | `docs/EXTENDING.md` |
-| Development workflow | `CONTRIBUTING.md` |
+| Sherlock setup, pilot, submission, or recovery | `docs/SHERLOCK.md` |
+| Scan, behavioral, or preprocessing decision | `docs/SCAN-NOTES.md` |
+| Dependency or development workflow | `CONTRIBUTING.md` |
 
-Delete stale claims. Live job state belongs in Slurm, campaign status, execution records,
-and dataset history—not in a timeless guide.
+Delete stale claims. Live job state belongs in Slurm, submission records, milestone
+receipts, and DataLad history.

@@ -33,9 +33,21 @@ container paths, dataset path, roster, and Slurm resources before the pilot.
 
 ## Pilot, approval, and resume
 
-Run a small operational pilot in a separate configuration and dataset location before
-the full 46-subject submission. Confirm Flywheel access, container binds, DataLad annex
-content, validator diagnostics, and Slurm logs.
+Run a bounded one-subject operational pilot before the full submission. Copy the reviewed
+configuration, keep its validated 46-subject roster, and change every runtime path under
+`[paths]` to a dedicated pilot location. Then choose one roster member explicitly:
+
+```bash
+uv run --frozen network-fmri pipeline submit /path/to/pilot-workflow.toml \
+  --pilot-subject s03 --dry-run
+uv run --frozen network-fmri pipeline submit /path/to/pilot-workflow.toml \
+  --pilot-subject s03
+```
+
+The `--pilot-subject` option derives a one-subject run from the validated full roster; it
+does not accept a reduced roster or share the full-run BIDS, parts, work, or log paths.
+Confirm Flywheel access, container binds, DataLad annex content, validator diagnostics,
+and Slurm logs before the full 46-subject submission.
 
 The initial submission ends at `scan-decisions-generated`. Inspect and resolve every row
 requiring review in `code/network_fmri/scan_decisions.tsv`, then seal it with:

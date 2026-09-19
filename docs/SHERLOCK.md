@@ -15,7 +15,21 @@ uv run --frozen network-fmri pipeline submit /path/to/workflow.toml --dry-run
 Do not put the token in a TOML file, shell history, Slurm command, receipt, or log.
 `network-fw2bids` reads it from the worker environment.
 
-For the full run, submit the initial graph after the dry run and a separate pilot:
+Before the full run, create a copy of the reviewed TOML with a separate pilot BIDS,
+parts, work, and log location. Keep its reviewed 46-subject roster; the pilot selector
+derives one allowed subject from that roster:
+
+```bash
+uv run --frozen network-fmri pipeline submit /path/to/pilot-workflow.toml \
+  --pilot-subject s03 --dry-run
+uv run --frozen network-fmri pipeline submit /path/to/pilot-workflow.toml \
+  --pilot-subject s03
+```
+
+Inspect the pilot's Flywheel access, container binds, DataLad saves, validator output,
+and Slurm logs. It must never share paths with the full run.
+
+For the full run, submit the initial graph after that pilot:
 
 ```bash
 uv run --frozen network-fmri pipeline submit /path/to/workflow.toml
