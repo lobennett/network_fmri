@@ -35,7 +35,8 @@ def main(argv: list[str] | None = None) -> int:
         return pipeline.stage_main(args[1:])
     parsed = get_parser().parse_args(args)
     if parsed.command == "decisions":
-        validate_decisions(parsed.bids_dir)
+        result = validate_decisions(parsed.bids_dir)
+        pipeline.save_stage_result(parsed.bids_dir, result)
         return 0
     manifest = parsed.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
     apply_curation(parsed.bids_dir, manifest)

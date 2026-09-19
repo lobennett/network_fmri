@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import shlex
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
@@ -48,6 +49,8 @@ class SubmissionRecord:
     jobs: dict[str, str] = field(default_factory=dict)
     commands: dict[str, tuple[str, ...]] = field(default_factory=dict)
     dry_run: bool = False
+    status: str = "submitted"
+    error: str | None = None
 
 
 def sbatch_command(
@@ -80,7 +83,7 @@ def sbatch_command(
     command.extend((
         "--output", str(log_dir / f"{log_pattern}.out"),
         "--error", str(log_dir / f"{log_pattern}.err"),
-        "--wrap", shlex.join(job.command),
+        "--wrap", _shell_wrap(job.command),
     ))
     return tuple(command)
 
@@ -95,6 +98,7 @@ def submit_plan(
     subject_count: int | None = None,
     existing_jobs: dict[str, str] | None = None,
     externally_completed: Iterable[str] = (),
+    on_update: Callable[[SubmissionRecord], None] | None = None,
 ) -> SubmissionRecord:
     """Submit dependent jobs, or return their commands without mutation.
 
@@ -132,15 +136,37 @@ def submit_plan(
         )
         commands[job.name] = command
         if dry_run:
-            dependency_jobs[job.name] = f"<dry-run:{job.name}>"
+            dependency_jobs[job.name] = "0"
             continue
         try:
             completed = runner(command, check=True, capture_output=True, text=True)
         except (OSError, subprocess.CalledProcessError) as error:
+            failed = SubmissionRecord(
+                jobs=jobs.copy(), commands=commands.copy(), status="failed",
+                error=f"{type(error).__name__}: {error}",
+            )
+            if on_update:
+                on_update(failed)
             raise RuntimeError(f"sbatch submission failed for {job.name}") from error
         jobs[job.name] = _parse_job_id(getattr(completed, "stdout", ""))
         dependency_jobs[job.name] = jobs[job.name]
-    return SubmissionRecord(jobs=jobs, commands=commands, dry_run=dry_run)
+        if on_update:
+            on_update(SubmissionRecord(
+                jobs=jobs.copy(), commands=commands.copy(), status="submitting",
+            ))
+    record = SubmissionRecord(jobs=jobs, commands=commands, dry_run=dry_run)
+    if on_update and not dry_run:
+        on_update(record)
+    return record
+
+
+def _shell_wrap(command: tuple[str, ...]) -> str:
+    """Quote literal argv while preserving Slurm's one required array expansion."""
+
+    return " ".join(
+        token if token == "${SLURM_ARRAY_TASK_ID}" else shlex.quote(token)
+        for token in command
+    )
 
 
 def _parse_job_id(stdout: object) -> str:

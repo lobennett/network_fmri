@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 from dataclasses import asdict
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from network_fmri.config import WorkflowConfig
@@ -18,8 +19,8 @@ STAGE_ORDER = (
     "gs-pretrim", "dummy-volumes-trimmed", "bids-events-generated",
     "gs-posttrim", "b0-fieldmaps-linked", "bids-precuration-validated",
     "mriqc-array", "mriqc-complete", "scan-decisions-generated",
-    "scan-decisions-approved", "mriqc-curated", "bids-curated-validated",
-    "fmriprep-array", "fmriprep-complete",
+    "scan-decisions-approved", "mriqc-curated", "fmriprep-array",
+    "fmriprep-complete",
 )
 
 _FIRST_SUBMISSION_END = "scan-decisions-generated"
@@ -135,6 +136,8 @@ def read_record(path: Path) -> SubmissionRecord:
         jobs={str(name): str(job_id) for name, job_id in jobs.items()},
         commands={str(name): tuple(map(str, command)) for name, command in commands.items()},
         dry_run=bool(value.get("dry_run", False)),
+        status=str(value.get("status", "submitted")),
+        error=value.get("error"),
     )
 
 
@@ -194,12 +197,16 @@ def main(argv: list[str] | None = None) -> int:
         complete = ("scan-decisions-approved",)
     else:
         selected = initial_submission(plan)
+    if not args.dry_run:
+        config.paths.log_dir.mkdir(parents=True, exist_ok=True)
     record = submit_plan(
         selected, dry_run=args.dry_run,
         existing_jobs=existing, externally_completed=complete,
+        on_update=(
+            (lambda current: write_record(record_path(config), current))
+            if not args.dry_run else None
+        ),
     )
-    if not args.dry_run:
-        write_record(record_path(config), record)
     for name, command in record.commands.items():
         state = "would submit" if args.dry_run else f"submitted {record.jobs[name]}"
         print(f"{name}: {state}\n  {' '.join(command)}")
@@ -227,8 +234,8 @@ def stage_main(argv: list[str] | None = None) -> int:
             [error.result.report, error.result.log],
         )
         raise
-    if args.stage not in array_stages and args.stage != "scan-decisions-approved":
-        _save_stage_result(config, result)
+    if args.stage not in array_stages:
+        save_stage_result(config.paths.bids_dir, result, config=config)
     return 0
 
 
@@ -293,8 +300,6 @@ def _run_stage(config: WorkflowConfig, name: str, array_index: int | None):
     if name == "mriqc-curated":
         manifest = config.paths.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
         return apply_curation(config.paths.bids_dir, manifest)
-    if name == "bids-curated-validated":
-        return _validation_result("bids-curated-validated", validate_bids(config.paths.bids_dir, "curated"))
     if name == "fmriprep-array":
         subject = _array_subject(config, array_index)
         subprocess.run(fmriprep_participant_command(config, subject), check=True)
@@ -326,21 +331,69 @@ def _validation_result(name: str, validation):
     return StageResult(name, (validation.report, validation.log), {"label": validation.label})
 
 
-def _save_stage_result(config: WorkflowConfig, result) -> None:
+def save_stage_result(
+    bids_dir: Path, result, *, config: WorkflowConfig | None = None,
+) -> None:
     """Create the sole DataLad save for a serial, successful graph node."""
 
     from network_fmri.milestones import MilestoneReceipt, save_milestone
 
+    versions = _receipt_versions(config)
+    inputs = {
+        "bids_dir": str(bids_dir),
+        "input_datalad_commit": _input_datalad_commit(bids_dir),
+    }
+    if config is not None:
+        inputs.update({
+            "behavior_source": str(config.behavior.source),
+            "behavior_commit": config.behavior.commit,
+        })
     receipt = MilestoneReceipt(
         stage=result.name,
         status="success",
-        inputs={},
+        inputs=inputs,
         outputs={"paths": [str(path) for path in result.outputs]},
-        versions={},
+        versions=versions,
         jobs={"slurm_job_id": os.environ.get("SLURM_JOB_ID", "")},
         validation=result.details,
     )
-    save_milestone(config.paths.bids_dir, receipt)
+    save_milestone(bids_dir, receipt)
+
+
+def _receipt_versions(config: WorkflowConfig | None) -> dict[str, object]:
+    """Record package and configured-container identities without credentials."""
+
+    from network_fmri import __version__
+    from network_fmri.provenance import code_revision
+
+    versions: dict[str, object] = {
+        "network_fmri": __version__,
+        "network_fmri_revision": code_revision(),
+        "network_fw2bids": _package_version("network-fw2bids"),
+        "network_events": _package_version("network-events"),
+        "network_qa": _package_version("network-qa"),
+    }
+    if config is not None:
+        versions.update({
+            "mriqc": {"image": str(config.mriqc.image), "version": config.mriqc.version},
+            "fmriprep": {
+                "image": str(config.fmriprep.image), "version": config.fmriprep.version,
+            },
+        })
+    return versions
+
+
+def _package_version(distribution: str) -> str:
+    try:
+        return version(distribution)
+    except PackageNotFoundError:
+        return "not-installed"
+
+
+def _input_datalad_commit(bids_dir: Path) -> str:
+    from network_fmri.milestones import git_head
+
+    return git_head(bids_dir)
 
 
 def _validation_error_type():

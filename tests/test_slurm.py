@@ -34,6 +34,20 @@ def test_array_submission_uses_parsable_afterok_throttle_and_task_logs(tmp_path)
     assert "--account" in command and "lab" in command
 
 
+def test_array_index_is_expanded_by_slurm_shell_not_quoted_as_a_literal(tmp_path):
+    command = sbatch_command(
+        PlannedJob(
+            "convert", ("network-fmri", "_stage", "convert", "workflow.toml", "--array-index", "${SLURM_ARRAY_TASK_ID}"),
+            array=True,
+        ),
+        config(), tmp_path, subject_count=46,
+    )
+
+    wrapped = command[command.index("--wrap") + 1]
+    assert "${SLURM_ARRAY_TASK_ID}" in wrapped
+    assert "'${SLURM_ARRAY_TASK_ID}'" not in wrapped
+
+
 def test_submit_wires_returned_ids_into_afterok_dependencies(tmp_path):
     runner = Runner()
     plan = (
@@ -59,6 +73,36 @@ def test_dry_run_never_invokes_sbatch_or_creates_a_job_id(tmp_path):
     assert runner.calls == []
     assert record.jobs == {}
     assert record.dry_run is True
+
+
+def test_dry_run_uses_a_valid_numeric_dependency_placeholder(tmp_path):
+    record = submit_plan(
+        (PlannedJob("one", ("one",)), PlannedJob("two", ("two",), dependencies=("one",))),
+        dry_run=True, config=config(), log_dir=tmp_path, subject_count=46,
+    )
+
+    assert "--dependency=afterok:0" in record.commands["two"]
+
+
+def test_submission_persists_each_accepted_job_and_failure_state(tmp_path):
+    updates = []
+
+    class FailingRunner(Runner):
+        def __call__(self, command, **kwargs):
+            if self.calls:
+                raise OSError("scheduler unavailable")
+            return super().__call__(command, **kwargs)
+
+    with pytest.raises(RuntimeError, match="two"):
+        submit_plan(
+            (PlannedJob("one", ("one",)), PlannedJob("two", ("two",), dependencies=("one",))),
+            config=config(), log_dir=tmp_path, subject_count=46,
+            runner=FailingRunner(), on_update=updates.append,
+        )
+
+    assert updates[0].jobs == {"one": "101"}
+    assert updates[-1].status == "failed"
+    assert updates[-1].jobs == {"one": "101"}
 
 
 def test_missing_dependency_is_rejected_before_submission(tmp_path):

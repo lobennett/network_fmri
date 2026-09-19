@@ -20,6 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
+network-fmri = "network_fmri.cli:main"
 network_fmri = "network_fmri.cli:main"
 
 [dependency-groups]

@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from network_fmri import cli
+from network_fmri.models import StageResult
 
 
 def test_help_lists_the_small_public_surface(capsys):
@@ -17,10 +18,19 @@ def test_help_lists_the_small_public_surface(capsys):
 
 def test_decisions_validate_calls_the_sealing_stage(tmp_path, monkeypatch):
     observed: list[Path] = []
-    monkeypatch.setattr(cli, "validate_decisions", lambda path: observed.append(path))
+    result = StageResult("scan-decisions-approved", (tmp_path / "manifest.tsv",))
+    monkeypatch.setattr(
+        cli, "validate_decisions", lambda path: observed.append(path) or result,
+    )
+    saved: list[tuple[Path, object]] = []
+    monkeypatch.setattr(
+        cli.pipeline, "save_stage_result", lambda bids, stage: saved.append((bids, stage)),
+    )
 
     assert cli.main(["decisions", "validate", str(tmp_path / "bids")]) == 0
     assert observed == [tmp_path / "bids"]
+    assert saved == [(tmp_path / "bids", result)]
+    assert saved[0][1].name == "scan-decisions-approved"
 
 
 def test_curate_uses_only_the_governed_manifest_path(tmp_path, monkeypatch):
