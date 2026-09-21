@@ -11,10 +11,13 @@ log_dir = "/scratch/groups/russpold/network_fmri/logs"
 templateflow_dir = "/home/groups/russpold/templateflow"
 freesurfer_license = "/home/groups/russpold/license.txt"
 
-[behavior]
+[behavior.in_scanner]
 source = "/oak/stanford/groups/russpold/data/network_grant/behavioral_data/canonical"
-# Pin the reviewed canonical behavioral DataLad commit before running.
 commit = "8edc76d2bc36c175195d384953c5f1834e6a2e51"
+
+[behavior.out_of_scanner]
+source = "/oak/stanford/groups/russpold/data/network_grant/behavioral_data/canonical_out_of_scanner"
+commit = "c2e14a7b0d437c3fd8b38a7b701a820d8acaea44"
 
 [mriqc]
 image = "/home/groups/russpold/singularity_images/mriqc_24.0.2.sif"

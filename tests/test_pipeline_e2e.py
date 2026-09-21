@@ -11,13 +11,12 @@ import pytest
 
 import network_fmri.pipeline as pipeline
 from network_fmri.config import (
-    BehaviorSource, ContainerConfig, SlurmConfig, VerifiedContainerConfig, WorkflowConfig, WorkflowPaths,
+    BehaviorSource, BehaviorSources, ContainerConfig, SlurmConfig, VerifiedContainerConfig, WorkflowConfig, WorkflowPaths,
 )
 from network_fmri.milestones import receipt_path
 from network_fmri.qa.fmriprep import (
     _native_echo_preprocessed_bold_path, _standard_preprocessed_bold_paths,
 )
-from network_fmri.stages import behavior
 
 
 def _config(tmp_path: Path) -> WorkflowConfig:
@@ -25,8 +24,9 @@ def _config(tmp_path: Path) -> WorkflowConfig:
     subjects_file = tmp_path / "subjects-46.txt"
     subjects_file.write_text("\n".join(subjects) + "\n")
     behavior = tmp_path / "behavior"
+    out_of_scanner = tmp_path / "out-of-scanner"
     behavior.mkdir()
-    (behavior / "raw.csv").write_text("trial\n1\n")
+    out_of_scanner.mkdir()
     return WorkflowConfig(
         paths=WorkflowPaths(
             bids_dir=tmp_path / "bids", parts_dir=tmp_path / "parts",
@@ -35,7 +35,10 @@ def _config(tmp_path: Path) -> WorkflowConfig:
             freesurfer_license=tmp_path / "license.txt",
         ),
         subjects_file=subjects_file, subjects=subjects, flywheel_project="russpold/r01network",
-        behavior=BehaviorSource(behavior, "a" * 40),
+        behavior=BehaviorSources(
+            BehaviorSource(behavior, "a" * 40),
+            BehaviorSource(out_of_scanner, "b" * 40),
+        ),
         mriqc=ContainerConfig(tmp_path / "mriqc.sif", "24.0.2"),
         fmriprep=ContainerConfig(tmp_path / "fmriprep.sif", "25.2.5"),
         pydeface=VerifiedContainerConfig(tmp_path / "pydeface.sif", "2.1.0", "a" * 64),
@@ -78,6 +81,7 @@ class FakeApplications:
         self.committed: dict[str, bytes] = {}
         self.head = "0" * 40
         self.next_job = 1
+        self.subdataset_heads: dict[str, str] = {}
 
     def __call__(self, command, **_kwargs):
         command = tuple(map(str, command))
@@ -123,6 +127,20 @@ class FakeApplications:
             return SimpleNamespace(stdout="")
         if command[:2] == ("datalad", "create"):
             return SimpleNamespace(stdout="")
+        if command[:2] == ("datalad", "clone"):
+            source, destination = command[-2:]
+            path = Path(destination)
+            path.mkdir(parents=True)
+            (path / ".git").write_text("gitdir\n")
+            configured = (
+                self.config.behavior.in_scanner
+                if source == str(self.config.behavior.in_scanner.source)
+                else self.config.behavior.out_of_scanner
+            )
+            self.subdataset_heads[destination] = configured.commit
+            return SimpleNamespace(stdout="")
+        if command[:2] == ("datalad", "get"):
+            return SimpleNamespace(stdout="")
         if command[:2] == ("datalad", "save"):
             self.milestones.append(command[command.index("-m") + 1])
             self.committed = {
@@ -131,8 +149,13 @@ class FakeApplications:
             }
             self.head = f"{len(self.milestones):040x}"
             return SimpleNamespace(stdout="")
-        if command[:3] == ("git", "-C", str(self.config.behavior.source)):
+        if command[:3] in {
+            ("git", "-C", str(self.config.behavior.in_scanner.source)),
+            ("git", "-C", str(self.config.behavior.out_of_scanner.source)),
+        }:
             return self._behavior_git(command)
+        if command[:2] == ("git", "-C") and command[2] in self.subdataset_heads:
+            return SimpleNamespace(stdout=self.subdataset_heads[command[2]] + "\n")
         if command[:4] == ("git", "-C", str(self.bids_dir), "rev-parse"):
             return SimpleNamespace(stdout=self.head + "\n")
         if command[:4] == ("git", "-C", str(self.bids_dir), "show"):
@@ -142,12 +165,16 @@ class FakeApplications:
         raise AssertionError(f"unexpected external command: {command}")
 
     def _behavior_git(self, command: tuple[str, ...]):
-        if command[3:5] == ("rev-parse", "--verify"):
-            return SimpleNamespace(stdout=self.config.behavior.commit + "\n")
+        if command[3] == "rev-parse":
+            source = Path(command[2])
+            configured = (
+                self.config.behavior.in_scanner
+                if source == self.config.behavior.in_scanner.source
+                else self.config.behavior.out_of_scanner
+            )
+            return SimpleNamespace(stdout=configured.commit + "\n")
         if command[3] == "status":
             return SimpleNamespace(stdout="")
-        if command[3] == "ls-tree":
-            return SimpleNamespace(stdout=b"raw.csv\0")
         raise AssertionError(f"unexpected behavioral Git command: {command}")
 
     def _assemble(self, destination: Path, subjects: tuple[str, ...]) -> None:
@@ -267,7 +294,6 @@ def test_synthetic_pilot_executes_assembly_through_fmriprep(tmp_path, monkeypatc
     monkeypatch.setitem(sys.modules, "nibabel", _SyntheticNibabel)
     # The upstream publisher is an integration boundary; use the same exclusive
     # directory move that the tiny synthetic tree needs without importing it.
-    monkeypatch.setattr(behavior, "_publish_no_replace", lambda staged, destination: staged.replace(destination))
 
     assert pipeline.main(["submit", str(config_path), "--pilot-subject", "s7"], runner=apps) == 0
     initial = pipeline.read_record(pipeline.record_path(config))

@@ -15,6 +15,7 @@ def write_config(
     tmp_path: Path,
     *,
     behavior_commit: str = "a" * 40,
+    out_of_scanner_commit: str = "b" * 40,
     pydeface_image: Path | None = None,
     pydeface_sha256: str = "a" * 64,
     subjects: list[str] | None = None,
@@ -49,9 +50,13 @@ flywheel_project = "russpold/r01network"
 [paths]
 {chr(10).join(f'{key} = "{value}"' for key, value in workflow_paths.items())}
 
-[behavior]
+[behavior.in_scanner]
 source = "{tmp_path / 'canonical-behavior'}"
 commit = "{behavior_commit}"
+
+[behavior.out_of_scanner]
+source = "{tmp_path / 'canonical-out-of-scanner'}"
+commit = "{out_of_scanner_commit}"
 
 [mriqc]
 image = "{tmp_path / 'mriqc.sif'}"
@@ -83,6 +88,8 @@ def test_loads_single_dataset_configuration(tmp_path):
     assert config.mriqc.version == "24.0.2"
     assert config.fmriprep.version == "25.2.5"
     assert config.subjects == tuple(f"s{number}" for number in range(1, 47))
+    assert config.behavior.in_scanner.commit == "a" * 40
+    assert config.behavior.out_of_scanner.commit == "b" * 40
 
 
 def test_loads_pinned_pydeface_container(tmp_path):
@@ -118,6 +125,15 @@ def test_rejects_short_behavior_commit(tmp_path):
     from network_fmri.config import WorkflowConfig
 
     path = write_config(tmp_path, behavior_commit="445eba8")
+
+    with pytest.raises(ValueError, match="40-character"):
+        WorkflowConfig.load(path)
+
+
+def test_rejects_short_out_of_scanner_commit(tmp_path):
+    from network_fmri.config import WorkflowConfig
+
+    path = write_config(tmp_path, out_of_scanner_commit="445eba8")
 
     with pytest.raises(ValueError, match="40-character"):
         WorkflowConfig.load(path)

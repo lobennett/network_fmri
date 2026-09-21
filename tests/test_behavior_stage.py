@@ -5,58 +5,61 @@ from types import SimpleNamespace
 import pytest
 
 from network_fmri.config import (
-    BehaviorSource,
-    ContainerConfig,
-    SlurmConfig,
-    VerifiedContainerConfig,
-    WorkflowConfig,
-    WorkflowPaths,
+    BehaviorSource, BehaviorSources, ContainerConfig, SlurmConfig,
+    VerifiedContainerConfig, WorkflowConfig, WorkflowPaths,
 )
 from network_fmri.stages import StageError
-from network_fmri.stages import behavior
-from network_fmri.stages.behavior import copy_content, ingest_behavior
+from network_fmri.stages.behavior import ingest_behavior
 
 
-class GitRunner:
-    def __init__(self, head: str, paths: tuple[str, ...] = ()) -> None:
-        self.head = head
-        self.paths = paths
+class Runner:
+    def __init__(self, source_heads: dict[Path, str]) -> None:
+        self.heads = {str(path): head for path, head in source_heads.items()}
         self.calls: list[list[str]] = []
-        self.fail_audit = False
-        self.status = ""
+        self.status: dict[str, str] = {}
 
     def __call__(self, args, **kwargs):
         command = [str(value) for value in args]
         self.calls.append(command)
         if command[:2] == ["git", "-C"]:
+            repository = command[2]
             if "status" in command:
-                return SimpleNamespace(stdout=self.status)
-            if "ls-tree" in command:
-                return SimpleNamespace(stdout=("\0".join(self.paths) + "\0").encode())
-            return SimpleNamespace(stdout=self.head + "\n")
-        if command[:2] == ["network-events", "audit"] and self.fail_audit:
-            raise __import__("subprocess").CalledProcessError(2, command)
+                return SimpleNamespace(stdout=self.status.get(repository, ""))
+            if "ls-files" in command:
+                path = command[-1]
+                destination = str(Path(repository) / path)
+                head = self.heads.get(destination, "")
+                return SimpleNamespace(stdout=f"160000 {head} 0\t{path}\n" if head else "")
+            return SimpleNamespace(stdout=self.heads.get(repository, "") + "\n")
+        if command[:2] == ["datalad", "clone"]:
+            source, destination = command[-2:]
+            Path(destination).mkdir(parents=True)
+            (Path(destination) / ".git").write_text("gitdir\n")
+            self.heads[destination] = self.heads[source]
         return SimpleNamespace(stdout="")
 
 
-def configuration(tmp_path: Path, source: Path) -> WorkflowConfig:
+def configuration(tmp_path: Path) -> WorkflowConfig:
     paths = WorkflowPaths(
-        bids_dir=tmp_path / "bids",
-        parts_dir=tmp_path / "parts",
-        work_dir=tmp_path / "work",
-        log_dir=tmp_path / "logs",
+        bids_dir=tmp_path / "bids", parts_dir=tmp_path / "parts",
+        work_dir=tmp_path / "work", log_dir=tmp_path / "logs",
         templateflow_dir=tmp_path / "templateflow",
         freesurfer_license=tmp_path / "license.txt",
     )
+    paths.bids_dir.mkdir()
     subjects = tuple(f"s{number}" for number in range(1, 47))
     subjects_file = tmp_path / "subjects.txt"
     subjects_file.write_text("\n".join(subjects) + "\n")
+    sources = BehaviorSources(
+        in_scanner=BehaviorSource(tmp_path / "in-scanner", "a" * 40),
+        out_of_scanner=BehaviorSource(tmp_path / "out-of-scanner", "b" * 40),
+    )
+    for source in (sources.in_scanner.source, sources.out_of_scanner.source):
+        source.mkdir()
+        (source / ".git").mkdir()
     return WorkflowConfig(
-        paths=paths,
-        subjects_file=subjects_file,
-        subjects=subjects,
-        flywheel_project="russpold/r01network",
-        behavior=BehaviorSource(source, "a" * 40),
+        paths=paths, subjects_file=subjects_file, subjects=subjects,
+        flywheel_project="russpold/r01network", behavior=sources,
         mriqc=ContainerConfig(tmp_path / "mriqc.sif", "24.0.2"),
         fmriprep=ContainerConfig(tmp_path / "fmriprep.sif", "25.2.5"),
         pydeface=VerifiedContainerConfig(tmp_path / "pydeface.sif", "2.1.0", "a" * 64),
@@ -64,172 +67,83 @@ def configuration(tmp_path: Path, source: Path) -> WorkflowConfig:
     )
 
 
-def canonical_source(tmp_path: Path) -> Path:
-    source = tmp_path / "canonical-behavior"
-    file = source / "sub-s1" / "ses-01" / "beh" / "sub-s1_ses-01_task-test_run-1_beh.csv"
-    file.parent.mkdir(parents=True)
-    file.write_text("onset\n1\n")
-    (source / "behavioral_exceptions.tsv").write_text("subject\tsession\ttask\trun\treason\n")
-    (source / ".git").mkdir()
-    (source / ".git" / "config").write_text("do not copy\n")
-    return source
+def runner_for(config: WorkflowConfig) -> Runner:
+    return Runner({
+        config.behavior.in_scanner.source: "a" * 40,
+        config.behavior.out_of_scanner.source: "b" * 40,
+    })
 
 
-def tracked_paths(source: Path) -> tuple[str, ...]:
-    return tuple(
-        str(path.relative_to(source))
-        for path in sorted(source.rglob("*"))
-        if path.is_file() and ".git" not in path.parts
-    )
-
-
-def publish_with_rename(staged: Path, destination: Path) -> None:
-    staged.rename(destination)
-
-
-def test_ingest_refuses_wrong_canonical_commit(tmp_path):
-    source = canonical_source(tmp_path)
-    runner = GitRunner("f" * 40, tracked_paths(source))
-
-    with pytest.raises(StageError, match="canonical behavior commit"):
-        ingest_behavior(configuration(tmp_path, source), runner)
-
-    assert not (tmp_path / "bids" / "sourcedata" / "behavioral").exists()
-
-
-def test_ingest_dereferences_committed_content_audits_staged_tree_and_records_commit(tmp_path, monkeypatch):
-    source = canonical_source(tmp_path)
-    original = source / "sub-s1" / "ses-01" / "beh" / "sub-s1_ses-01_task-test_run-1_beh.csv"
-    external = tmp_path / "annex-content.csv"
-    external.write_text(original.read_text())
-    original.unlink()
-    original.symlink_to(external)
-    config = configuration(tmp_path, source)
-    runner = GitRunner("a" * 40, tracked_paths(source))
-    monkeypatch.setattr(behavior, "_publish_no_replace", publish_with_rename)
+def test_ingest_installs_both_pinned_subdatasets_and_audits_in_scanner(tmp_path):
+    config = configuration(tmp_path)
+    runner = runner_for(config)
 
     result = ingest_behavior(config, runner)
 
-    destination = config.paths.bids_dir / "sourcedata" / "behavioral"
-    copied = destination / original.relative_to(source)
-    assert copied.read_text() == "onset\n1\n"
-    assert not copied.is_symlink()
-    assert not (destination / ".git").exists()
-    audit_command = runner.calls[-1]
-    assert audit_command[:4] == [
-        "network-events",
-        "audit",
-        "--bids-dir",
-        str(config.paths.bids_dir),
+    root = config.paths.bids_dir / "sourcedata" / "behavioral"
+    in_scanner, out_of_scanner = root / "in_scanner", root / "out_of_scanner"
+    clone_calls = [call for call in runner.calls if call[:2] == ["datalad", "clone"]]
+    assert clone_calls == [
+        ["datalad", "clone", str(config.behavior.in_scanner.source), str(in_scanner)],
+        ["datalad", "clone", str(config.behavior.out_of_scanner.source), str(out_of_scanner)],
     ]
-    staged_behavior = Path(audit_command[-1])
-    assert audit_command[4:6] == ["--behavioral-dir", str(staged_behavior)]
-    assert staged_behavior.name == "behavioral"
-    assert staged_behavior.parent.name.startswith(".behavioral-ingest-")
-    assert not staged_behavior.exists()
-    assert audit_command != [
-        "network-events",
-        "audit",
-        "--bids-dir",
-        str(config.paths.bids_dir),
-        "--behavioral-dir",
-        str(destination),
-    ]
+    assert ["datalad", "get", "-d", str(in_scanner), str(in_scanner)] in runner.calls
+    assert ["datalad", "get", "-d", str(out_of_scanner), str(out_of_scanner)] not in runner.calls
+    assert ["network-events", "audit", "--bids-dir", str(config.paths.bids_dir),
+            "--behavioral-dir", str(in_scanner)] in runner.calls
+    assert result.outputs == (in_scanner, out_of_scanner)
     assert result.details == {
-        "behavior_source": str(source),
-        "behavior_commit": "a" * 40,
+        "in_scanner_source": str(config.behavior.in_scanner.source),
+        "in_scanner_commit": "a" * 40,
+        "out_of_scanner_source": str(config.behavior.out_of_scanner.source),
+        "out_of_scanner_commit": "b" * 40,
     }
 
 
-def test_copy_refuses_to_replace_existing_behavioral_content(tmp_path):
-    source = canonical_source(tmp_path)
-    destination = tmp_path / "bids" / "sourcedata" / "behavioral"
-    destination.mkdir(parents=True)
-    (destination / "kept.txt").write_text("keep\n")
+def test_ingest_preflights_both_sources_before_installing_either(tmp_path):
+    config = configuration(tmp_path)
+    runner = runner_for(config)
+    runner.heads[str(config.behavior.out_of_scanner.source)] = "f" * 40
 
-    with pytest.raises(StageError, match="already exists"):
-        copy_content(source, destination, "a" * 40, GitRunner("a" * 40, tracked_paths(source)))
-
-    assert (destination / "kept.txt").read_text() == "keep\n"
-
-
-@pytest.mark.parametrize("status", [" M sub-s1/file.csv", "?? extra.csv", "!! stale.tmp"])
-def test_ingest_rejects_dirty_untracked_and_ignored_canonical_state(tmp_path, monkeypatch, status):
-    source = canonical_source(tmp_path)
-    runner = GitRunner("a" * 40, tracked_paths(source))
-    runner.status = status + "\n"
-    monkeypatch.setattr(behavior, "_publish_no_replace", publish_with_rename)
-    with pytest.raises(StageError, match="tracked, untracked, or ignored"):
-        ingest_behavior(configuration(tmp_path, source), runner)
-
-    assert not (tmp_path / "bids" / "sourcedata" / "behavioral").exists()
-
-
-def test_ingest_materializes_only_the_committed_file_set(tmp_path, monkeypatch):
-    source = canonical_source(tmp_path)
-    committed = tracked_paths(source)
-    (source / "ignored-local.csv").write_text("must not copy\n")
-    runner = GitRunner("a" * 40, committed)
-    monkeypatch.setattr(behavior, "_publish_no_replace", publish_with_rename)
-
-    ingest_behavior(configuration(tmp_path, source), runner)
-
-    destination = tmp_path / "bids" / "sourcedata" / "behavioral"
-    assert not (destination / "ignored-local.csv").exists()
-
-
-def test_ingest_reads_the_actual_pinned_git_tree_before_dereferencing_annex_content(tmp_path, monkeypatch):
-    source = tmp_path / "canonical-behavior"
-    file = source / "sub-s1" / "ses-01" / "beh" / "sub-s1_ses-01_task-test_run-1_beh.csv"
-    file.parent.mkdir(parents=True)
-    annex_content = tmp_path / "annex-content.csv"
-    annex_content.write_text("onset\n1\n")
-    file.symlink_to(annex_content)
-    (source / "behavioral_exceptions.tsv").write_text("subject\tsession\ttask\trun\treason\n")
-    for command in (
-        ["git", "-C", str(source), "init"],
-        ["git", "-C", str(source), "config", "user.email", "test@example.com"],
-        ["git", "-C", str(source), "config", "user.name", "Test User"],
-        ["git", "-C", str(source), "add", "."],
-        ["git", "-C", str(source), "commit", "-m", "canonical behavior"],
-    ):
-        subprocess.run(command, check=True, capture_output=True)
-    head = subprocess.run(
-        ["git", "-C", str(source), "rev-parse", "HEAD"],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    config = configuration(tmp_path, source)
-    object.__setattr__(config, "behavior", BehaviorSource(source, head))
-    monkeypatch.setattr(behavior, "_publish_no_replace", publish_with_rename)
-
-    def runner(args, **kwargs):
-        if args[:2] == ["network-events", "audit"]:
-            return SimpleNamespace(stdout="")
-        return subprocess.run(args, **kwargs)
-
-    ingest_behavior(config, runner)
-
-    copied = config.paths.bids_dir / "sourcedata" / "behavioral" / file.relative_to(source)
-    assert copied.read_text() == "onset\n1\n"
-    assert not copied.is_symlink()
-
-
-def test_failed_staged_audit_publishes_nothing_and_allows_retry(tmp_path, monkeypatch):
-    source = canonical_source(tmp_path)
-    runner = GitRunner("a" * 40, tracked_paths(source))
-    runner.fail_audit = True
-    monkeypatch.setattr(behavior, "_publish_no_replace", publish_with_rename)
-    config = configuration(tmp_path, source)
-
-    with pytest.raises(StageError, match="source stage command failed"):
+    with pytest.raises(StageError, match="canonical behavior commit"):
         ingest_behavior(config, runner)
 
-    destination = config.paths.bids_dir / "sourcedata" / "behavioral"
-    assert not destination.exists()
-    assert not list(destination.parent.glob(".behavioral-ingest-*"))
+    assert not any(call[:2] == ["datalad", "clone"] for call in runner.calls)
 
-    runner.fail_audit = False
+
+def test_ingest_matching_rerun_is_a_safe_noop(tmp_path):
+    config = configuration(tmp_path)
+    root = config.paths.bids_dir / "sourcedata" / "behavioral"
+    destinations = (root / "in_scanner", root / "out_of_scanner")
+    runner = runner_for(config)
+    for destination, head in zip(destinations, ("a" * 40, "b" * 40), strict=True):
+        destination.mkdir(parents=True)
+        (destination / ".git").write_text("gitdir\n")
+        runner.heads[str(destination)] = head
+
     ingest_behavior(config, runner)
-    assert destination.is_dir()
+
+    assert not any(call[:2] == ["datalad", "clone"] for call in runner.calls)
+
+
+def test_ingest_rejects_conflicting_existing_destination(tmp_path):
+    config = configuration(tmp_path)
+    destination = config.paths.bids_dir / "sourcedata" / "behavioral" / "in_scanner"
+    destination.mkdir(parents=True)
+    (destination / "unrelated.txt").write_text("keep\n")
+
+    with pytest.raises(StageError, match="conflicting behavioral destination"):
+        ingest_behavior(config, runner_for(config))
+
+    assert (destination / "unrelated.txt").read_text() == "keep\n"
+
+
+@pytest.mark.parametrize("source_name", ["in_scanner", "out_of_scanner"])
+def test_ingest_rejects_dirty_finalized_source(tmp_path, source_name):
+    config = configuration(tmp_path)
+    runner = runner_for(config)
+    source = getattr(config.behavior, source_name).source
+    runner.status[str(source)] = "?? unexpected.csv\n"
+
+    with pytest.raises(StageError, match="tracked, untracked, or ignored"):
+        ingest_behavior(config, runner)

@@ -9,6 +9,7 @@ import pytest
 
 from network_fmri.config import (
     BehaviorSource,
+    BehaviorSources,
     ContainerConfig,
     SlurmConfig,
     VerifiedContainerConfig,
@@ -47,7 +48,10 @@ def configuration(tmp_path: Path) -> WorkflowConfig:
         subjects_file=subjects_file,
         subjects=subjects,
         flywheel_project="r01network",
-        behavior=BehaviorSource(tmp_path / "behavior", "a" * 40),
+        behavior=BehaviorSources(
+            BehaviorSource(tmp_path / "behavior", "a" * 40),
+            BehaviorSource(tmp_path / "out-of-scanner", "b" * 40),
+        ),
         mriqc=ContainerConfig(tmp_path / "mriqc.sif", "24.0.2"),
         fmriprep=ContainerConfig(tmp_path / "fmriprep.sif", "25.2.5"),
         pydeface=VerifiedContainerConfig(tmp_path / "pydeface.sif", "2.1.0", "a" * 64),

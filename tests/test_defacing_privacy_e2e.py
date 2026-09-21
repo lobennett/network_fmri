@@ -18,6 +18,7 @@ from network_fw2bids.defacing import DefaceConfig
 from network_fw2bids.planning import ArchivePlan
 from network_fmri.config import (
     BehaviorSource,
+    BehaviorSources,
     ContainerConfig,
     SlurmConfig,
     VerifiedContainerConfig,
@@ -156,7 +157,10 @@ def _synthetic_runtime(tmp_path: Path) -> _Runtime:
         subjects_file=tmp_path / "subjects.txt",
         subjects=("s03",),
         flywheel_project="russpold/r01network",
-        behavior=BehaviorSource(behavior, "a" * 40),
+        behavior=BehaviorSources(
+            BehaviorSource(behavior, "a" * 40),
+            BehaviorSource(tmp_path / "out-of-scanner", "b" * 40),
+        ),
         mriqc=ContainerConfig(tmp_path / "mriqc.sif", "24.0.2"),
         fmriprep=ContainerConfig(tmp_path / "fmriprep.sif", "25.2.5"),
         pydeface=VerifiedContainerConfig(pydeface, "2.1.0", _sha256(pydeface)),

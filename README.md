@@ -5,7 +5,7 @@ Sibling packages own Flywheel conversion, behavioral events, scan evidence, and 
 signal analysis.
 
 ```text
-Flywheel → BIDS → behavioral sourcedata → global signal (pretrim)
+Flywheel → BIDS → pinned behavioral subdatasets → global signal (pretrim)
 → trim 7 volumes → events → global signal (posttrim) → B0 links
 → validator → MRIQC → human-approved scan decisions
 → curation → validator → fMRIPrep

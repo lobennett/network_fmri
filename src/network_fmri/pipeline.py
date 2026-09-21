@@ -667,8 +667,10 @@ def save_stage_result(
     }
     if config is not None:
         inputs.update({
-            "behavior_source": str(config.behavior.source),
-            "behavior_commit": config.behavior.commit,
+            "in_scanner_behavior_source": str(config.behavior.in_scanner.source),
+            "in_scanner_behavior_commit": config.behavior.in_scanner.commit,
+            "out_of_scanner_behavior_source": str(config.behavior.out_of_scanner.source),
+            "out_of_scanner_behavior_commit": config.behavior.out_of_scanner.commit,
         })
     receipt = MilestoneReceipt(
         stage=result.name,

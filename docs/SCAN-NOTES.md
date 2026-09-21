@@ -58,8 +58,8 @@ Twenty-two aborted runs had behavioral onsets beyond acquired BOLD duration. Eve
 trials beginning during acquisition, do not shorten their durations, and record loss
 evidence under `sourcedata/events_qc/`.
 
-Out-of-scanner behavior is a separate, pinned DataLad dataset configured in
-`config/out_of_scanner_behavior.toml`. It contains 1,263 raw CSVs from 37 subjects and
+Out-of-scanner behavior is a finalized DataLad input pinned in the workflow configuration
+and installed inside the canonical BIDS dataset. It contains 1,263 raw CSVs from 37 subjects and
 137 QA files. Thirty-four subjects have all 36 tasks; s373 has 30, s1314 has 6, and
 s1391 has 3. Nine subjects have no out-of-scanner files: s03, s10, s19, s29, s43,
 s599, s1057, s1338, and s1481. Its `missing_behavior.tsv` records all 393 absent

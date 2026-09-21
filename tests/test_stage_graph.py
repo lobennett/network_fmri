@@ -8,7 +8,7 @@ import pytest
 
 import network_fmri.pipeline as pipeline
 from network_fmri.config import (
-    BehaviorSource, ContainerConfig, SlurmConfig, VerifiedContainerConfig, WorkflowConfig, WorkflowPaths,
+    BehaviorSource, BehaviorSources, ContainerConfig, SlurmConfig, VerifiedContainerConfig, WorkflowConfig, WorkflowPaths,
 )
 from network_fmri.pipeline import (
     STAGE_ORDER, build_plan, initial_submission, post_approval_submission,
@@ -32,7 +32,10 @@ def configuration(tmp_path: Path) -> WorkflowConfig:
             freesurfer_license=tmp_path / "license.txt",
         ),
         subjects_file=subjects_file, subjects=subjects, flywheel_project="russpold/r01network",
-        behavior=BehaviorSource(tmp_path / "behavior", "a" * 40),
+        behavior=BehaviorSources(
+            BehaviorSource(tmp_path / "behavior", "a" * 40),
+            BehaviorSource(tmp_path / "out-of-scanner", "b" * 40),
+        ),
         mriqc=ContainerConfig(tmp_path / "mriqc.sif", "24.0.2"),
         fmriprep=ContainerConfig(tmp_path / "fmriprep.sif", "25.2.5"),
         pydeface=VerifiedContainerConfig(tmp_path / "pydeface.sif", "2.1.0", "a" * 64),
@@ -92,7 +95,8 @@ def test_milestone_receipt_carries_input_package_and_container_provenance(tmp_pa
     bids, receipt = captured[0]
     assert bids == config.paths.bids_dir
     assert receipt.inputs["input_datalad_commit"] == "a" * 40
-    assert receipt.inputs["behavior_commit"] == "a" * 40
+    assert receipt.inputs["in_scanner_behavior_commit"] == "a" * 40
+    assert receipt.inputs["out_of_scanner_behavior_commit"] == "b" * 40
     assert {"network_fmri", "network_fw2bids", "network_events", "network_qa"} <= receipt.versions.keys()
     assert receipt.versions["mriqc"]["version"] == "24.0.2"
     assert receipt.versions["fmriprep"]["version"] == "25.2.5"

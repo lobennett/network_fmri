@@ -35,6 +35,14 @@ class BehaviorSource:
 
 
 @dataclass(frozen=True)
+class BehaviorSources:
+    """Finalized behavioral repositories included in the canonical dataset."""
+
+    in_scanner: BehaviorSource
+    out_of_scanner: BehaviorSource
+
+
+@dataclass(frozen=True)
 class ContainerConfig:
     """One versioned Apptainer image."""
 
@@ -71,7 +79,7 @@ class WorkflowConfig:
     subjects_file: Path
     subjects: tuple[str, ...]
     flywheel_project: str
-    behavior: BehaviorSource
+    behavior: BehaviorSources
     mriqc: ContainerConfig
     fmriprep: ContainerConfig
     pydeface: VerifiedContainerConfig
@@ -158,12 +166,22 @@ def _flywheel_project(raw: dict[str, Any]) -> str:
     return value
 
 
-def _parse_behavior(raw: dict[str, Any]) -> BehaviorSource:
-    _unknown_keys(raw, {"source", "commit"}, "behavior")
-    commit = _nonempty_string(raw, "commit", "behavior")
+def _parse_behavior(raw: dict[str, Any]) -> BehaviorSources:
+    _unknown_keys(raw, {"in_scanner", "out_of_scanner"}, "behavior")
+    return BehaviorSources(
+        in_scanner=_parse_behavior_source(_table(raw, "in_scanner", "behavior"), "behavior.in_scanner"),
+        out_of_scanner=_parse_behavior_source(
+            _table(raw, "out_of_scanner", "behavior"), "behavior.out_of_scanner"
+        ),
+    )
+
+
+def _parse_behavior_source(raw: dict[str, Any], name: str) -> BehaviorSource:
+    _unknown_keys(raw, {"source", "commit"}, name)
+    commit = _nonempty_string(raw, "commit", name)
     if not _COMMIT.fullmatch(commit):
-        raise ValueError("behavior.commit must be a 40-character lowercase hexadecimal commit")
-    return BehaviorSource(source=_path(raw, "source", "behavior"), commit=commit)
+        raise ValueError(f"{name}.commit must be a 40-character lowercase hexadecimal commit")
+    return BehaviorSource(source=_path(raw, "source", name), commit=commit)
 
 
 def _parse_container(raw: dict[str, Any], name: str) -> ContainerConfig:

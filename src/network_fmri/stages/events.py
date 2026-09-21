@@ -18,7 +18,7 @@ def generate_events(bids_dir: Path, runner: Runner = subprocess.run) -> StageRes
     evidence and must not be collapsed into a stage failure here.
     """
     bids_dir = Path(bids_dir)
-    behavioral_dir = bids_dir / "sourcedata" / "behavioral"
+    behavioral_dir = bids_dir / "sourcedata" / "behavioral" / "in_scanner"
     if not bids_dir.is_dir():
         raise StageError(f"BIDS directory is missing: {bids_dir}")
     if not behavioral_dir.is_dir():

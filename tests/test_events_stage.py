@@ -19,7 +19,7 @@ class Runner:
 
 
 def test_events_uses_audited_create_against_canonical_sourcedata(tmp_path):
-    behavioral = tmp_path / "sourcedata" / "behavioral"
+    behavioral = tmp_path / "sourcedata" / "behavioral" / "in_scanner"
     behavioral.mkdir(parents=True)
     runner = Runner()
 
@@ -42,6 +42,6 @@ def test_events_requires_canonical_behavioral_sourcedata(tmp_path):
 
 
 def test_events_reports_audit_or_incomplete_conversion_failure(tmp_path):
-    (tmp_path / "sourcedata" / "behavioral").mkdir(parents=True)
+    (tmp_path / "sourcedata" / "behavioral" / "in_scanner").mkdir(parents=True)
     with pytest.raises(StageError, match="audit or conversion"):
         generate_events(tmp_path, Runner(fail=True))
