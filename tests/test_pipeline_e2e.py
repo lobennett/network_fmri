@@ -301,6 +301,14 @@ def test_synthetic_pilot_executes_assembly_through_fmriprep(tmp_path, monkeypatc
         "scan-decisions-generated", "scan-decisions-approved", "mriqc-curated",
         "fmriprep-complete",
     ]
+    assembled_receipt = json.loads(
+        receipt_path(config.paths.bids_dir, "bids-assembled").read_text()
+    )
+    assert assembled_receipt["versions"]["pydeface"] == {
+        "image": str(config.pydeface.image),
+        "version": "2.1.0",
+        "sha256": "a" * 64,
+    }
     bold_json = config.paths.bids_dir / "sub-s7" / "ses-01" / "func" / "sub-s7_ses-01_task-rest_run-1_bold.json"
     assert json.loads(bold_json.read_text())["NumberOfVolumesDiscardedByUser"] == 7
     assert (config.paths.bids_dir / "derivatives" / "fmriprep" / "sub-s7.html").is_file()

@@ -15,6 +15,25 @@ uv run --frozen network-fmri pipeline submit /path/to/workflow.toml --dry-run
 Do not put the token in a TOML file, shell history, Slurm command, receipt, or log.
 `network-fw2bids` reads it from the worker environment.
 
+## Anatomical privacy pilot
+
+The workflow's `[pydeface]` section must name the absolute PyDeface 2.1.0/FSL
+Apptainer image and its SHA-256 digest. Verify the file on Sherlock before starting:
+
+```bash
+sha256sum /absolute/path/to/pydeface-2.1.0-fsl-6.0.7.18.sif
+```
+
+The reported digest must match `pydeface.sha256` in the reviewed TOML. The worker uses
+`dcm2niix -ba y` to remove identifying BIDS metadata, but that option cannot remove
+facial voxels. It then runs the verified PyDeface image before copying anything to a
+persistent subject part.
+
+Slurm must supply `$SLURM_TMPDIR`. Flywheel archives, extracted DICOMs, undefaced
+NIfTIs, and PyDeface temporary files may exist only below that node-local directory.
+They are removed before publication. Do not use persistent scratch, DataLad, or
+`sourcedata` for original anatomy.
+
 Before the full run, create a copy of the reviewed TOML with a separate pilot BIDS,
 parts, work, and log location. Keep its reviewed 46-subject roster; the pilot selector
 derives one allowed subject from that roster:
@@ -27,7 +46,17 @@ uv run --frozen network-fmri pipeline submit /path/to/pilot-workflow.toml \
 ```
 
 Inspect the pilot's Flywheel access, container binds, DataLad saves, validator output,
-and Slurm logs. It must never share paths with the full run.
+and Slurm logs. It must never share paths with the full run. Confirm that every T1w and
+T2w has a receipt entry and a `Defaced: true` sidecar:
+
+```bash
+jq . /path/to/pilot-bids/code/network_fw2bids/defacing/sub-s03.json
+find /path/to/pilot-bids/sub-s03 -path '*/anat/*_T?w.json' -print -exec jq '.Defaced' {} \;
+```
+
+Open the pilot T1w and T2w images and review them visually before submitting the
+46-subject run. A matching receipt, checksum, and sidecar confirm the automated privacy
+boundary, but they do not establish that facial anatomy was adequately removed.
 The pilot selector is persisted in its submission record; include the same selector on
 the approval resume command:
 
