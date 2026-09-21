@@ -40,13 +40,15 @@ original comparisons; invalid FBER values (−1) must not be ranked.
 Canonical behavioral sourcedata is organized one file per logical BOLD acquisition. It
 preserves raw CSV content and provenance; the runtime pipeline does not infer pairings.
 
-Known BOLD scans with no recoverable behavior remain in BIDS and are recorded in
+An unrecoverable run has BOLD data but no behavioral CSV in the raw, cleaned, or
+canonical sources. These runs remain in BIDS and are recorded in
 `behavioral_exceptions.tsv`: s03/ses-01 nBack, s19/ses-02 goNogo, s29/ses-02 goNogo,
 s19/ses-11 directedForgettingWFlanker, s1292/ses-04 nBack, s300/ses-08 flanker,
 s180/ses-12 shapeMatchingWCuedTS, and s1175/ses-11 cuedTSWFlanker.
 
-Five historical false starts have no behavioral CSV because a complete repeated run
-exists: s10/ses-01 goNogo run-1, s29/ses-12 directedForgettingWFlanker run-1,
+Five false starts produced BOLD data before the task was stopped and repeated. They have
+no behavioral CSV; the completed repeat does. They are also recorded in
+`behavioral_exceptions.tsv`: s10/ses-01 goNogo run-1, s29/ses-12 directedForgettingWFlanker run-1,
 s43/ses-11 stopSignalWDirectedForgetting run-2, s336/ses-05 goNogo run-1, and
 s216/ses-05 directedForgetting run-1. Six pairings remain lower-confidence because only
 browser download order distinguished equivalent files: s76/ses-12, s247/ses-12, and

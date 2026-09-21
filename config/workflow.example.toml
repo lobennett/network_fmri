@@ -12,9 +12,9 @@ templateflow_dir = "/home/groups/russpold/templateflow"
 freesurfer_license = "/home/groups/russpold/license.txt"
 
 [behavior]
-source = "/oak/stanford/groups/russpold/r01network/canonical-behavior"
+source = "/oak/stanford/groups/russpold/data/network_grant/behavioral_data/canonical"
 # Pin the reviewed canonical behavioral DataLad commit before running.
-commit = "0000000000000000000000000000000000000000"
+commit = "8edc76d2bc36c175195d384953c5f1834e6a2e51"
 
 [mriqc]
 image = "/home/groups/russpold/singularity_images/mriqc_24.0.2.sif"

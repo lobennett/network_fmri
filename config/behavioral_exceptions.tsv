@@ -1,0 +1,14 @@
+subject	session	task	run	reason	detail	reviewed_by	reviewed_at
+sub-s03	ses-01	nBack	1	unrecoverable_behavior	No recoverable behavioral CSV was found.	lobennett	2026-09-21
+sub-s10	ses-01	goNogo	1	false_start	The task was stopped and repeated; the completed repeat has behavioral data.	lobennett	2026-09-21
+sub-s19	ses-02	goNogo	1	unrecoverable_behavior	No recoverable behavioral CSV was found.	lobennett	2026-09-21
+sub-s19	ses-11	directedForgettingWFlanker	1	unrecoverable_behavior	No recoverable behavioral CSV was found.	lobennett	2026-09-21
+sub-s29	ses-02	goNogo	1	unrecoverable_behavior	No recoverable behavioral CSV was found.	lobennett	2026-09-21
+sub-s29	ses-12	directedForgettingWFlanker	1	false_start	The task was stopped and repeated; the completed repeat has behavioral data.	lobennett	2026-09-21
+sub-s43	ses-11	stopSignalWDirectedForgetting	2	false_start	The task was stopped and repeated; the completed repeat has behavioral data.	lobennett	2026-09-21
+sub-s180	ses-12	shapeMatchingWCuedTS	1	unrecoverable_behavior	No recoverable behavioral CSV was found.	lobennett	2026-09-21
+sub-s216	ses-05	directedForgetting	1	false_start	The task was stopped and repeated; the completed repeat has behavioral data.	lobennett	2026-09-21
+sub-s300	ses-08	flanker	1	unrecoverable_behavior	No recoverable behavioral CSV was found.	lobennett	2026-09-21
+sub-s336	ses-05	goNogo	1	false_start	The task was stopped and repeated; the completed repeat has behavioral data.	lobennett	2026-09-21
+sub-s1175	ses-11	cuedTSWFlanker	1	unrecoverable_behavior	No recoverable behavioral CSV was found.	lobennett	2026-09-21
+sub-s1292	ses-04	nBack	1	unrecoverable_behavior	No recoverable behavioral CSV was found.	lobennett	2026-09-21
