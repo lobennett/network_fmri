@@ -236,3 +236,29 @@ def test_assembly_rejects_a_directly_constructed_non_46_subject_config(tmp_path)
 
     with pytest.raises(StageError, match="exactly 46"):
         assemble_dataset(config, RecordingRunner())
+
+
+def test_receipt_rejects_nul_in_image_path(tmp_path):
+    from network_fmri.stages.assembly import _verified_receipt_image_counts
+
+    config = configuration(tmp_path)
+    write_verified_receipts(config.paths.bids_dir, ("s1",))
+    receipt = config.paths.bids_dir / "code/network_fw2bids/defacing/sub-s1.json"
+    value = json.loads(receipt.read_text())
+    value["images"][0]["path"] = "sub-s1/anat/sub-s1_\u0000_T1w.nii.gz"
+    receipt.write_text(json.dumps(value))
+    with pytest.raises(StageError, match="invalid image evidence"):
+        _verified_receipt_image_counts(receipt, "s1", config)
+
+
+@pytest.mark.parametrize("extension", [".nii", ".nii.gz"])
+def test_receipt_counts_use_terminal_filename_suffix(tmp_path, extension):
+    from network_fmri.stages.assembly import _verified_receipt_image_counts
+
+    config = configuration(tmp_path)
+    write_verified_receipts(config.paths.bids_dir, ("s1",))
+    receipt = config.paths.bids_dir / "code/network_fw2bids/defacing/sub-s1.json"
+    value = json.loads(receipt.read_text())
+    value["images"][0]["path"] = f"sub-s1/ses-T1w/anat/sub-s1_desc-T1w.extra_T1w.extra_T2w{extension}"
+    receipt.write_text(json.dumps(value))
+    assert _verified_receipt_image_counts(receipt, "s1", config) == (0, 1)

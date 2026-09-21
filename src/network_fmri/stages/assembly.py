@@ -250,6 +250,7 @@ def _validated_receipt_image(image: object, subject: str, receipt_path: Path) ->
     if (
         path is None
         or not image_path
+        or "\0" in image_path
         or path.is_absolute()
         or ".." in path.parts
         or path.as_posix() != image_path
@@ -270,7 +271,7 @@ def _validated_receipt_image(image: object, subject: str, receipt_path: Path) ->
         )
     ):
         raise StageError(f"assembled defacing receipt has invalid image evidence: {receipt_path}")
-    return "T1w" if "_T1w." in image_path else "T2w"
+    return "T1w" if path.name.endswith(("_T1w.nii", "_T1w.nii.gz")) else "T2w"
 
 
 def _run_checked(command: list[str], runner: Runner) -> None:
