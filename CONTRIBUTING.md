@@ -1,16 +1,13 @@
 # Contributing
 
-`network_fmri` owns the fixed 46-subject BIDS orchestration graph, Slurm submission,
-DataLad milestones, and curation. Conversion belongs in `network_fw2bids`, behavioral
-event conversion belongs in `network_events`, and scan-decision evidence belongs in
-`network_qa`.
+`network_fmri` owns orchestration, Slurm submission, DataLad milestones, and curation.
+Conversion belongs in `network_fw2bids`, events in `network_events`, and scan evidence
+in `network_qa`.
 
-Read [README.md](README.md), [SHERLOCK.md](docs/SHERLOCK.md), and
-[SCAN-NOTES.md](docs/SCAN-NOTES.md) before changing behavior. Keep runtime paths
-absolute, preserve `FLYWHEEL_API_TOKEN` in the environment, and add focused tests for
-failure paths that could affect BIDS data or a milestone receipt.
-
-Use the locked environment on Sherlock:
+Read the [README](README.md), [Sherlock guide](docs/SHERLOCK.md), and
+[scan notes](docs/SCAN-NOTES.md) before changing behavior. Keep paths absolute and the
+Flywheel token in the environment. Test failures that could corrupt BIDS data or a
+milestone receipt.
 
 ```bash
 uv sync --frozen
@@ -19,11 +16,9 @@ uv build
 git diff --check
 ```
 
-When changing a pinned sibling package, commit and review that change in its repository,
-update the immutable revision in `[tool.uv.sources]`, regenerate `uv.lock`, and verify
-the installed revision. The relevant pins are `network-fw2bids`, `network-events`,
-`network-qa`, and `global-signal-plots`.
+When changing a sibling package, commit it first, update its immutable revision in
+`[tool.uv.sources]`, regenerate `uv.lock`, and verify the installed revision.
 
-Serial stages use explicit DataLad saves after verified output. Array workers must never
-save the shared dataset. Preserve the approval gate: any new pre-fMRIPrep condition that
-needs human judgment must become scan-decision evidence and block resume until approved.
+Serial stages save verified outputs with DataLad; array workers never save the shared
+dataset. Any new condition requiring human judgment must block curation through the
+scan-decision approval gate.

@@ -1,26 +1,24 @@
 # network_fmri
 
-`network_fmri` builds and preprocesses one reviewed 46-subject BIDS dataset. It
-orchestrates pinned sibling packages and Slurm jobs; it does not contain Flywheel
-conversion rules, behavioral remapping rules, GLM code, or a second workflow engine.
+`network_fmri` builds and preprocesses one reviewed 46-subject BIDS dataset on Slurm.
+Sibling packages own Flywheel conversion, behavioral events, scan evidence, and global
+signal analysis.
 
 ```text
-Flywheel parts → one BIDS dataset → canonical behavioral sourcedata
-→ global signal (pretrim) → trim 7 volumes → events → global signal (posttrim)
-→ B0 links → validator → MRIQC → scan decisions → human approval
+Flywheel → BIDS → behavioral sourcedata → global signal (pretrim)
+→ trim 7 volumes → events → global signal (posttrim) → B0 links
+→ validator → MRIQC → human-approved scan decisions
 → curation → validator → fMRIPrep
 ```
 
-Each serial milestone is committed with `datalad save` and receives a receipt in
-`code/network_fmri/milestones/`. Array workers never write the shared DataLad history.
-The receipt records package/container identities, scheduler job IDs, inputs, outputs,
-and validation evidence without credentials.
+Serial milestones use `datalad save` and write receipts under
+`code/network_fmri/milestones/`. Array workers never save the shared dataset.
 
-## Configure and inspect
+## Configure
 
-Copy [workflow.example.toml](config/workflow.example.toml) to a reviewed location and
-replace every placeholder with an absolute Sherlock path. The roster file must contain
-exactly the 46 selected subject IDs. Keep `FLYWHEEL_API_TOKEN` only in the environment.
+Copy [workflow.example.toml](config/workflow.example.toml) and replace every placeholder
+with an absolute Sherlock path. The roster must contain exactly 46 unique subjects. Keep
+`FLYWHEEL_API_TOKEN` only in the environment.
 
 ```bash
 uv sync --frozen
@@ -28,69 +26,58 @@ uv run --frozen network-fmri pipeline plan /path/to/workflow.toml
 uv run --frozen network-fmri pipeline submit /path/to/workflow.toml --dry-run
 ```
 
-The dry run has no filesystem or scheduler effects. Review the printed commands,
-container paths, dataset path, roster, and Slurm resources before the pilot.
+Review the paths, roster, containers, commands, and Slurm resources printed by the dry
+run.
 
-## Pilot, approval, and resume
+## Pilot and submit
 
-Run a bounded one-subject operational pilot before the full submission. Copy the reviewed
-configuration, keep its validated 46-subject roster, and change every runtime path under
-`[paths]` to a dedicated pilot location. Then choose one roster member explicitly:
+Copy the reviewed configuration for a one-subject pilot. Keep the 46-subject roster,
+give the pilot separate BIDS, parts, work, and log paths, and select one roster member:
 
 ```bash
-uv run --frozen network-fmri pipeline submit /path/to/pilot-workflow.toml \
+uv run --frozen network-fmri pipeline submit /path/to/pilot.toml \
   --pilot-subject s03 --dry-run
-uv run --frozen network-fmri pipeline submit /path/to/pilot-workflow.toml \
+uv run --frozen network-fmri pipeline submit /path/to/pilot.toml \
   --pilot-subject s03
 ```
 
-The `--pilot-subject` option derives a one-subject run from the validated full roster; it
-does not accept a reduced roster or share the full-run BIDS, parts, work, or log paths.
-Its identity is written to the submission record, so every resume of that pilot must
-repeat the same `--pilot-subject s03` option.
-Confirm Flywheel access, container binds, DataLad annex content, validator diagnostics,
-and Slurm logs before the full 46-subject submission. The pilot must also use the pinned
-PyDeface 2.1.0/FSL image from `[pydeface]`; verify its digest with
-`sha256sum /absolute/path/to/pydeface-2.1.0-fsl-6.0.7.18.sif` before submission.
-`dcm2niix -ba y` removes identifying metadata but does not remove facial voxels, so the
-array worker passes this verified image to `network-fw2bids` for image-level defacing.
-
-All DICOMs, undefaced NIfTIs, and PyDeface intermediates remain below the worker's
-`$SLURM_TMPDIR`. Only defaced anatomy may enter the persistent subject parts or the
-assembled DataLad dataset; original anatomy never belongs in `sourcedata`. Inspect the
-pilot receipts and sidecars before proceeding:
+The pinned PyDeface container must match the version and SHA-256 digest in `[pydeface]`.
+DICOMs, undefaced NIfTIs, and defacing intermediates may exist only in `$SLURM_TMPDIR`.
+Inspect the receipt, confirm each anatomical sidecar contains `Defaced: true`, and view
+the T1w and T2w images before running all subjects:
 
 ```bash
 jq . /path/to/pilot-bids/code/network_fw2bids/defacing/sub-s03.json
-find /path/to/pilot-bids/sub-s03 -path '*/anat/*_T?w.json' -print -exec jq '.Defaced' {} \;
+find /path/to/pilot-bids/sub-s03 -path '*/anat/*_T?w.json' \
+  -print -exec jq '.Defaced' {} \;
 ```
 
-Open the pilot T1w and T2w images and review the defacing result visually. Automated
-checks verify the receipts, checksums, and provenance; visual review is required before
-submitting the 46-subject run.
+Submit the full configuration after the pilot passes:
 
-The initial submission ends at `scan-decisions-generated`. Inspect and resolve every row
-requiring review in `code/network_fmri/scan_decisions.tsv`, then seal it with:
+```bash
+uv run --frozen network-fmri pipeline submit /path/to/workflow.toml
+```
+
+The initial graph stops at `scan-decisions-generated`. Resolve every review row in
+`code/network_fmri/scan_decisions.tsv`, then validate and resume:
 
 ```bash
 uv run --frozen network-fmri decisions validate /path/to/bids
 uv run --frozen network-fmri pipeline submit /path/to/workflow.toml --resume
 ```
 
-Resume verifies the committed approval receipt before curation. If submission partly
-fails, its record remains under the configured log directory; correct the cause and use
-`--resume` to submit only missing stages.
+`--resume` checks approval and completed stages before submitting missing work. Repeat
+`--pilot-subject s03` when resuming a pilot.
 
-## DataLad and diagnostics
+## Outputs and recovery
 
-Configure a durable annex remote and verify it retains content before curation. The
-pre-curation commit remains recoverable only while the annexed content is available from
-a remote. Do not execute multiple serial stages against the same dataset concurrently.
+Configure a durable DataLad annex remote before curation. The pre-curation state is
+recoverable only while that remote retains the annexed content. Do not run serial stages
+against the same dataset concurrently.
 
-Validator reports and logs are written under `derivatives/bids-validator/`, including
-failed runs. Global-signal outputs live in `derivatives/gs-pretrim/` and
-`derivatives/gs-posttrim/`; MRIQC and fMRIPrep use their own derivative datasets.
+Validator reports are stored in `derivatives/bids-validator/`; global-signal outputs in
+`derivatives/gs-pretrim/` and `derivatives/gs-posttrim/`; MRIQC and fMRIPrep each use a
+separate derivative dataset.
 
-The scientific source history and known exceptions are in
-[SCAN-NOTES.md](docs/SCAN-NOTES.md). Sherlock operations are in
-[SHERLOCK.md](docs/SHERLOCK.md).
+See [Sherlock operations](docs/SHERLOCK.md) for cluster details and
+[scan notes](docs/SCAN-NOTES.md) for scientific decisions and known exceptions.
