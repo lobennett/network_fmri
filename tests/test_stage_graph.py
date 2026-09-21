@@ -8,7 +8,7 @@ import pytest
 
 import network_fmri.pipeline as pipeline
 from network_fmri.config import (
-    BehaviorSource, ContainerConfig, SlurmConfig, WorkflowConfig, WorkflowPaths,
+    BehaviorSource, ContainerConfig, SlurmConfig, VerifiedContainerConfig, WorkflowConfig, WorkflowPaths,
 )
 from network_fmri.pipeline import (
     STAGE_ORDER, build_plan, initial_submission, post_approval_submission,
@@ -35,6 +35,7 @@ def configuration(tmp_path: Path) -> WorkflowConfig:
         behavior=BehaviorSource(tmp_path / "behavior", "a" * 40),
         mriqc=ContainerConfig(tmp_path / "mriqc.sif", "24.0.2"),
         fmriprep=ContainerConfig(tmp_path / "fmriprep.sif", "25.2.5"),
+        pydeface=VerifiedContainerConfig(tmp_path / "pydeface.sif", "2.1.0", "a" * 64),
         slurm=SlurmConfig("normal", 8, 32, 720, 4),
     )
 
@@ -95,6 +96,30 @@ def test_milestone_receipt_carries_input_package_and_container_provenance(tmp_pa
     assert {"network_fmri", "network_fw2bids", "network_events", "network_qa"} <= receipt.versions.keys()
     assert receipt.versions["mriqc"]["version"] == "24.0.2"
     assert receipt.versions["fmriprep"]["version"] == "25.2.5"
+    assert receipt.versions["pydeface"] == {
+        "image": str(tmp_path / "pydeface.sif"), "version": "2.1.0", "sha256": "a" * 64,
+    }
+
+
+def test_assembled_milestone_records_only_defacing_counts_and_relative_receipts(tmp_path, monkeypatch):
+    config = configuration(tmp_path)
+    captured = []
+    details = {
+        "subjects": 46,
+        "T1w": 46,
+        "T2w": 12,
+        "receipts": ["code/network_fw2bids/defacing/sub-s1.json"],
+    }
+    monkeypatch.setattr("network_fmri.pipeline._input_datalad_commit", lambda _: "a" * 40)
+    monkeypatch.setattr("network_fmri.milestones.save_milestone", lambda _bids, receipt: captured.append(receipt))
+
+    save_stage_result(
+        config.paths.bids_dir,
+        StageResult("bids-assembled", (config.paths.bids_dir,), {"defacing": details}),
+        config=config,
+    )
+
+    assert captured[0].validation["defacing"] == details
 
 
 def test_approval_milestone_binds_the_exact_manifest_and_metadata_bytes(tmp_path, monkeypatch):

@@ -15,12 +15,16 @@ def write_config(
     tmp_path: Path,
     *,
     behavior_commit: str = "a" * 40,
+    pydeface_image: Path | None = None,
+    pydeface_sha256: str = "a" * 64,
     subjects: list[str] | None = None,
     paths: dict[str, str] | None = None,
     slurm: dict[str, int] | None = None,
     extra: str = "",
 ) -> Path:
     subjects_file = write_subjects(tmp_path / "subjects.txt", subjects)
+    pydeface_image = pydeface_image or (tmp_path / "pydeface.sif")
+    pydeface_image.touch()
     workflow_paths = {
         "bids_dir": str(tmp_path / "bids"),
         "parts_dir": str(tmp_path / "parts"),
@@ -57,6 +61,11 @@ version = "24.0.2"
 image = "{tmp_path / 'fmriprep.sif'}"
 version = "25.2.5"
 
+[pydeface]
+image = "{pydeface_image}"
+version = "2.1.0"
+sha256 = "{pydeface_sha256}"
+
 [slurm]
 partition = "normal"
 {chr(10).join(f'{key} = {value}' for key, value in resources.items())}
@@ -74,6 +83,35 @@ def test_loads_single_dataset_configuration(tmp_path):
     assert config.mriqc.version == "24.0.2"
     assert config.fmriprep.version == "25.2.5"
     assert config.subjects == tuple(f"s{number}" for number in range(1, 47))
+
+
+def test_loads_pinned_pydeface_container(tmp_path):
+    from network_fmri.config import WorkflowConfig
+
+    config = WorkflowConfig.load(write_config(tmp_path, pydeface_sha256="a" * 64))
+
+    assert config.pydeface.version == "2.1.0"
+    assert config.pydeface.sha256 == "a" * 64
+
+
+@pytest.mark.parametrize("digest", ["", "abc", "A" * 64, "g" * 64])
+def test_rejects_invalid_pydeface_digest(tmp_path, digest):
+    from network_fmri.config import WorkflowConfig
+
+    with pytest.raises(ValueError, match="pydeface.*sha256"):
+        WorkflowConfig.load(write_config(tmp_path, pydeface_sha256=digest))
+
+
+def test_rejects_symlinked_pydeface_image(tmp_path):
+    from network_fmri.config import WorkflowConfig
+
+    image = tmp_path / "pydeface.sif"
+    image.write_bytes(b"image")
+    link = tmp_path / "pydeface-link.sif"
+    link.symlink_to(image)
+
+    with pytest.raises(ValueError, match="pydeface.*image"):
+        WorkflowConfig.load(write_config(tmp_path, pydeface_image=link))
 
 
 def test_rejects_short_behavior_commit(tmp_path):

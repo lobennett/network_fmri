@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _SUBJECT = re.compile(r"^s[0-9]+$")
 _FLYWHEEL_PROJECT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9_-]*$")
 
@@ -42,6 +43,15 @@ class ContainerConfig:
 
 
 @dataclass(frozen=True)
+class VerifiedContainerConfig:
+    """One immutable container image identified by its expected checksum."""
+
+    image: Path
+    version: str
+    sha256: str
+
+
+@dataclass(frozen=True)
 class SlurmConfig:
     """Shared positive resource limits for jobs in this workflow."""
 
@@ -64,6 +74,7 @@ class WorkflowConfig:
     behavior: BehaviorSource
     mriqc: ContainerConfig
     fmriprep: ContainerConfig
+    pydeface: VerifiedContainerConfig
     slurm: SlurmConfig
 
     @classmethod
@@ -85,7 +96,7 @@ def parse_config(raw: dict[str, Any], *, base: Path) -> WorkflowConfig:
     _reject_token_keys(raw)
     _unknown_keys(
         raw,
-        {"paths", "subjects_file", "flywheel_project", "behavior", "mriqc", "fmriprep", "slurm"},
+        {"paths", "subjects_file", "flywheel_project", "behavior", "mriqc", "fmriprep", "pydeface", "slurm"},
         "top-level",
     )
     # ``base`` remains part of this parser boundary so callers can retain the source
@@ -102,6 +113,7 @@ def parse_config(raw: dict[str, Any], *, base: Path) -> WorkflowConfig:
         behavior=_parse_behavior(_table(raw, "behavior", "top-level")),
         mriqc=_parse_container(_table(raw, "mriqc", "top-level"), "mriqc"),
         fmriprep=_parse_container(_table(raw, "fmriprep", "top-level"), "fmriprep"),
+        pydeface=_parse_verified_container(_table(raw, "pydeface", "top-level"), "pydeface"),
         slurm=_parse_slurm(_table(raw, "slurm", "top-level")),
     )
 
@@ -159,6 +171,23 @@ def _parse_container(raw: dict[str, Any], name: str) -> ContainerConfig:
     return ContainerConfig(
         image=_path(raw, "image", name),
         version=_nonempty_string(raw, "version", name),
+    )
+
+
+def _parse_verified_container(raw: dict[str, Any], name: str) -> VerifiedContainerConfig:
+    """Parse a present, regular container image with a canonical digest."""
+
+    _unknown_keys(raw, {"image", "version", "sha256"}, name)
+    image = _path(raw, "image", name)
+    if image.is_symlink() or not image.is_file():
+        raise ValueError(f"{name}.image must be a real regular file")
+    sha256 = _nonempty_string(raw, "sha256", name)
+    if not _SHA256.fullmatch(sha256):
+        raise ValueError(f"{name}.sha256 must be a 64-character lowercase hexadecimal checksum")
+    return VerifiedContainerConfig(
+        image=image,
+        version=_nonempty_string(raw, "version", name),
+        sha256=sha256,
     )
 
 

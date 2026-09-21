@@ -12,6 +12,7 @@ from network_fmri.config import (
     BehaviorSource,
     ContainerConfig,
     SlurmConfig,
+    VerifiedContainerConfig,
     WorkflowConfig,
     WorkflowPaths,
 )
@@ -43,6 +44,7 @@ def configuration(tmp_path: Path) -> WorkflowConfig:
         behavior=BehaviorSource(tmp_path / "behavior", "a" * 40),
         mriqc=ContainerConfig(tmp_path / "mriqc.sif", "24.0.2"),
         fmriprep=ContainerConfig(tmp_path / "fmriprep.sif", "25.2.5"),
+        pydeface=VerifiedContainerConfig(tmp_path / "pydeface.sif", "2.1.0", "a" * 64),
         slurm=SlurmConfig("normal", 8, 32, 720, 4),
     )
 

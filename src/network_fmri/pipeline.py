@@ -721,6 +721,11 @@ def _receipt_versions(config: WorkflowConfig | None) -> dict[str, object]:
             "fmriprep": {
                 "image": str(config.fmriprep.image), "version": config.fmriprep.version,
             },
+            "pydeface": {
+                "image": str(config.pydeface.image),
+                "version": config.pydeface.version,
+                "sha256": config.pydeface.sha256,
+            },
         })
     return versions
 

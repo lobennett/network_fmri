@@ -11,7 +11,7 @@ import pytest
 
 import network_fmri.pipeline as pipeline
 from network_fmri.config import (
-    BehaviorSource, ContainerConfig, SlurmConfig, WorkflowConfig, WorkflowPaths,
+    BehaviorSource, ContainerConfig, SlurmConfig, VerifiedContainerConfig, WorkflowConfig, WorkflowPaths,
 )
 from network_fmri.milestones import receipt_path
 from network_fmri.qa.fmriprep import (
@@ -38,6 +38,7 @@ def _config(tmp_path: Path) -> WorkflowConfig:
         behavior=BehaviorSource(behavior, "a" * 40),
         mriqc=ContainerConfig(tmp_path / "mriqc.sif", "24.0.2"),
         fmriprep=ContainerConfig(tmp_path / "fmriprep.sif", "25.2.5"),
+        pydeface=VerifiedContainerConfig(tmp_path / "pydeface.sif", "2.1.0", "a" * 64),
         # Keep the real trimming implementation in-process for this acceptance test.
         slurm=SlurmConfig("normal", 1, 32, 720, 1),
     )
@@ -89,7 +90,8 @@ class FakeApplications:
             Path(command[command.index("--output") + 1]).mkdir(parents=True)
             return SimpleNamespace(stdout="")
         if command[:3] == (sys.executable, "-m", "network_fw2bids._assembly"):
-            self._assemble(Path(command[command.index("--output") + 1]))
+            subjects = tuple(Path(command[command.index("--subjects") + 1]).read_text().splitlines())
+            self._assemble(Path(command[command.index("--output") + 1]), subjects)
             return SimpleNamespace(stdout="")
         if command[:2] == ("network-events", "audit"):
             return SimpleNamespace(stdout="")
@@ -148,7 +150,7 @@ class FakeApplications:
             return SimpleNamespace(stdout=b"raw.csv\0")
         raise AssertionError(f"unexpected behavioral Git command: {command}")
 
-    def _assemble(self, destination: Path) -> None:
+    def _assemble(self, destination: Path, subjects: tuple[str, ...]) -> None:
         session = destination / "sub-s7" / "ses-01"
         (session / "func").mkdir(parents=True)
         (session / "anat").mkdir()
@@ -163,6 +165,28 @@ class FakeApplications:
         )
         for suffix in ("T1w", "T2w"):
             (session / "anat" / f"sub-s7_ses-01_{suffix}.nii.gz").write_bytes(b"nii")
+        for subject in subjects:
+            receipt = destination / "code" / "network_fw2bids" / "defacing" / f"sub-{subject}.json"
+            receipt.parent.mkdir(parents=True, exist_ok=True)
+            receipt.write_text(json.dumps({
+                "schema_version": 1,
+                "subject": subject,
+                "status": "success",
+                "software": {
+                    "name": "PyDeface",
+                    "version": self.config.pydeface.version,
+                    "container": self.config.pydeface.image.name,
+                    "sha256": self.config.pydeface.sha256,
+                },
+                "images": [{
+                    "path": f"sub-{subject}/ses-01/anat/sub-{subject}_ses-01_{suffix}.nii.gz",
+                    "input_sha256": "b" * 64,
+                    "output_sha256": "c" * 64,
+                    "shape": [2, 2, 2],
+                    "zooms": [1.0, 1.0, 1.0],
+                    "affine_sha256": "d" * 64,
+                } for suffix in ("T1w", "T2w")],
+            }))
         fieldmap = session / "fmap" / "sub-s7_ses-01_fieldmap.nii.gz"
         fieldmap.write_bytes(b"nii")
         fieldmap.with_name(fieldmap.name.removesuffix(".nii.gz") + ".json").write_text("{}")
