@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import subprocess
 import sys
 import zipfile
@@ -13,19 +12,6 @@ from pathlib import Path
 
 import nibabel as nib
 import numpy as np
-
-# Task 5 exercises the sibling implementation before its reviewed Git revision can
-# be published and resolved by uv.  The final dependency pin below names that exact
-# revision; this source path keeps the acceptance test on the same implementation.
-UPSTREAM_SRC = (
-    Path(__file__).resolve().parents[4]
-    / "network_fw2bids"
-    / ".worktrees"
-    / "integrated-defacing"
-    / "src"
-)
-if str(UPSTREAM_SRC) not in sys.path:
-    sys.path.insert(0, str(UPSTREAM_SRC))
 
 from network_fw2bids.conversion import DicomConverter
 from network_fw2bids.defacing import DefaceConfig
@@ -59,17 +45,17 @@ class _ConversionBoundary:
     """Fake only dcm2niix and PyDeface while preserving the local file contract."""
 
     def __init__(self) -> None:
-        self.undefaced_hash: str | None = None
+        self.undefaced_hashes: set[str] = set()
 
     def __call__(self, command: list[str], **_kwargs: object) -> None:
         if command[0] == "dcm2niix":
             output = Path(command[command.index("-o") + 1])
             output.mkdir(parents=True, exist_ok=True)
-            data = np.arange(60, dtype=np.float32).reshape((3, 4, 5))
+            data = (np.arange(60, dtype=np.float32) + len(self.undefaced_hashes)).reshape((3, 4, 5))
             image = nib.Nifti1Image(data, np.diag((1.5, 1.25, 2.0, 1.0)))
             path = output / "converted.nii.gz"
             nib.save(image, path)
-            self.undefaced_hash = _sha256(path)
+            self.undefaced_hashes.add(_sha256(path))
             (output / "converted.json").write_text(json.dumps({"Modality": "MR"}))
             return
         assert command[:2] == ["apptainer", "exec"]
@@ -91,11 +77,7 @@ class _DataLadBoundary:
     def __call__(self, command: list[str], **kwargs: object):
         command = [str(item) for item in command]
         if command[:3] == [sys.executable, "-m", "network_fw2bids._assembly"]:
-            environment = dict(os.environ)
-            environment["PYTHONPATH"] = os.pathsep.join(
-                [str(UPSTREAM_SRC), str(Path(__file__).resolve().parents[1] / "src")]
-            )
-            return subprocess.run(command, env=environment, **kwargs)
+            return subprocess.run(command, **kwargs)
         if command[:2] in (["datalad", "create"], ["datalad", "save"]):
             if command[:2] == ["datalad", "save"]:
                 self.head = "1" * 40
@@ -118,10 +100,14 @@ class _Runtime:
         return self.config.paths.parts_dir / "s03"
 
     def published_anatomy_is_defaced(self) -> bool:
-        images = list(self.config.paths.bids_dir.glob("sub-s03/ses-01/anat/*_T1w.nii.gz"))
-        return len(images) == 1 and json.loads(
-            images[0].with_name(images[0].name[:-7] + ".json").read_text()
-        ).get("Defaced") is True
+        images = list(self.config.paths.bids_dir.glob("sub-s03/ses-01/anat/*_T?w.nii.gz"))
+        return {
+            image.name.removesuffix(".nii.gz").rsplit("_", 1)[-1]
+            for image in images
+        } == {"T1w", "T2w"} and all(
+            json.loads(image.with_name(image.name[:-7] + ".json").read_text()).get("Defaced") is True
+            for image in images
+        )
 
     def receipts_match_all_anatomy(self) -> bool:
         receipt = json.loads(
@@ -134,9 +120,9 @@ class _Runtime:
         return {item["path"] for item in receipt["images"]} == anatomy
 
     def persistent_tree_contains_undefaced_fixture_hash(self) -> bool:
-        assert self.converter.undefaced_hash is not None
+        assert self.converter.undefaced_hashes
         return any(
-            _sha256(path) == self.converter.undefaced_hash
+            _sha256(path) in self.converter.undefaced_hashes
             for path in self.root.rglob("*.nii.gz")
             if self.node_tmp not in path.parents
         )
@@ -180,12 +166,15 @@ def _synthetic_runtime(tmp_path: Path) -> _Runtime:
 
 
 def _run_conversion_and_assembly(runtime: _Runtime) -> None:
-    plan = ArchivePlan(
-        acquisition=_Acquisition(),
-        dicom_file=_DicomFile(),
-        relative_prefix=Path("sub-s03/ses-01/anat/sub-s03_ses-01_T1w"),
-        modality="anat",
-    )
+    plans = [
+        ArchivePlan(
+            acquisition=_Acquisition(),
+            dicom_file=_DicomFile(),
+            relative_prefix=Path(f"sub-s03/ses-01/anat/sub-s03_ses-01_{suffix}"),
+            modality="anat",
+        )
+        for suffix in ("T1w", "T2w")
+    ]
     DicomConverter(
         runner=runtime.converter,
         deface_config=DefaceConfig(
@@ -193,7 +182,7 @@ def _run_conversion_and_assembly(runtime: _Runtime) -> None:
             runtime.config.pydeface.version,
             runtime.config.pydeface.sha256,
         ),
-    ).convert([plan], runtime.part, runtime.config.flywheel_project)
+    ).convert(plans, runtime.part, runtime.config.flywheel_project)
     result = assemble_dataset(runtime.config, runner=runtime.datalad)
     save_stage_result(runtime.config.paths.bids_dir, result, config=runtime.config, runner=runtime.datalad)
 
@@ -210,4 +199,7 @@ def test_persistent_pipeline_never_contains_undefaced_anatomy(tmp_path, monkeypa
     assert runtime.receipts_match_all_anatomy()
     assert not list(runtime.node_tmp.iterdir())
     assert not runtime.persistent_tree_contains_undefaced_fixture_hash()
-    assert runtime.milestone("bids-assembled")["versions"]["pydeface"]["version"] == "2.1.0"
+    milestone = runtime.milestone("bids-assembled")
+    assert milestone["versions"]["pydeface"]["version"] == "2.1.0"
+    assert milestone["validation"]["defacing"]["T1w"] == 1
+    assert milestone["validation"]["defacing"]["T2w"] == 1
