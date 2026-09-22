@@ -19,13 +19,13 @@ MRIQC evidence and requires explicit approval in `scan_decisions.tsv` before cur
 
 Scanner localizers and shims, processed images, `run-1_sbref`, `T1w MPRAGE PROMO`, and
 known redundant trailing fieldmaps are not BIDS acquisitions. `n01` was a pilot with an
-incompatible naming convention; `s29/22424` was a fieldmap-only test session. The pinned
-conversion package owns current mapping rules; these notes remain review evidence.
+incompatible naming convention. Session `s29/22424` was excluded from the canonical
+sample and is preserved under Flywheel subject `qa-reject-s29`.
 
-Five Flywheel sessions were historically filed under another participant: `22752`
-(s03→s10), `22542` (s19-2→s19), `20210305` (s29-2→s29), `20201112` (s43-2→s43), and
-`unknown2` (ex26207→s297). Fieldmap-only containers for s1258, s1391, and s1445 belong
-with their functional twin because the fieldmap preceded the first BOLD run.
+Four Flywheel sessions formerly filed under another participant were moved to their
+canonical subjects: `22752` (s03→s10), `22542` (s19-2→s19), `20210305`
+(s29-2→s29), and `20201112` (s43-2→s43). Fieldmap-only containers for s1258, s1391,
+and s1445 belong with their functional twin because the fieldmap preceded the first BOLD run.
 `s03/ses-13` is intentionally anatomical plus fieldmap only.
 
 The s43/ses-11 task labels were corrected on Flywheel on 2026-08-18; old exports must be
