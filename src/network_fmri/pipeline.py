@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
+import shutil
 import subprocess
+import tempfile
 from dataclasses import asdict, replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -521,6 +524,23 @@ def pilot_config(config: WorkflowConfig, subject: str) -> WorkflowConfig:
     return replace(config, subjects=(subject,))
 
 
+@contextmanager
+def _conversion_tmpdir(stage: str):
+    """Provide a private compute-node directory when Sherlock omits SLURM_TMPDIR."""
+
+    if stage != "fw2bids-array" or os.environ.get("SLURM_TMPDIR") or not os.environ.get("SLURM_JOB_ID"):
+        yield
+        return
+    path = Path(tempfile.mkdtemp(prefix=f"network-fmri-{os.environ['SLURM_JOB_ID']}-", dir="/tmp"))
+    path.chmod(0o700)
+    os.environ["SLURM_TMPDIR"] = str(path)
+    try:
+        yield
+    finally:
+        os.environ.pop("SLURM_TMPDIR", None)
+        shutil.rmtree(path, ignore_errors=True)
+
+
 def stage_main(argv: list[str] | None = None, *, runner=None) -> int:
     """Execute one private Slurm stage and save serial milestones explicitly."""
 
@@ -532,10 +552,11 @@ def stage_main(argv: list[str] | None = None, *, runner=None) -> int:
     if (args.stage in array_stages) != (args.array_index is not None):
         stage_parser().error("--array-index is required only for array stages")
     try:
-        result = (
-            _run_stage(config, args.stage, args.array_index)
-            if runner is None else _run_stage(config, args.stage, args.array_index, runner=runner)
-        )
+        with _conversion_tmpdir(args.stage):
+            result = (
+                _run_stage(config, args.stage, args.array_index)
+                if runner is None else _run_stage(config, args.stage, args.array_index, runner=runner)
+            )
     except _validation_error_type() as error:
         # The validator itself atomically publishes both files.  Save those
         # diagnostics separately from a success milestone before preserving

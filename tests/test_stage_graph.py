@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import json
+import os
 import pytest
 
 import network_fmri.pipeline as pipeline
@@ -198,6 +199,25 @@ def test_curated_validation_is_a_graph_node_without_a_second_milestone(tmp_path,
 
     assert pipeline.stage_main(["bids-curated-validated", str(tmp_path / "workflow.toml")]) == 0
     assert saved == []
+
+
+def test_conversion_stage_creates_and_removes_secure_node_local_tmp(tmp_path, monkeypatch):
+    created = tmp_path / "network-fmri-123-test"
+
+    def make_tmp(**_kwargs):
+        created.mkdir(mode=0o700)
+        return str(created)
+
+    monkeypatch.delenv("SLURM_TMPDIR", raising=False)
+    monkeypatch.setenv("SLURM_JOB_ID", "123")
+    monkeypatch.setattr(pipeline.tempfile, "mkdtemp", make_tmp)
+
+    with pipeline._conversion_tmpdir("fw2bids-array"):
+        assert Path(os.environ["SLURM_TMPDIR"]) == created
+        assert created.stat().st_mode & 0o777 == 0o700
+
+    assert "SLURM_TMPDIR" not in os.environ
+    assert not created.exists()
 
 
 def test_curated_validation_failure_saves_its_rolled_back_diagnostics(tmp_path, monkeypatch):
