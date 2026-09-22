@@ -79,5 +79,6 @@ Validator reports are stored in `derivatives/bids-validator/`; global-signal out
 `derivatives/gs-pretrim/` and `derivatives/gs-posttrim/`; MRIQC and fMRIPrep each use a
 separate derivative dataset.
 
-See [Sherlock operations](docs/SHERLOCK.md) for cluster details and
-[scan notes](docs/SCAN-NOTES.md) for scientific decisions and known exceptions.
+See the [canonical dataset design](docs/canonical-dataset.md),
+[Sherlock operations](docs/sherlock.md), and
+[scan notes](docs/scan-notes.md) for durable design and operating details.

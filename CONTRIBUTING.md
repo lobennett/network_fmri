@@ -4,8 +4,8 @@
 Conversion belongs in `network_fw2bids`, events in `network_events`, and scan evidence
 in `network_qa`.
 
-Read the [README](README.md), [Sherlock guide](docs/SHERLOCK.md), and
-[scan notes](docs/SCAN-NOTES.md) before changing behavior. Keep paths absolute and the
+Read the [README](README.md), [Sherlock guide](docs/sherlock.md), and
+[scan notes](docs/scan-notes.md) before changing behavior. Keep paths absolute and the
 Flywheel token in the environment. Test failures that could corrupt BIDS data or a
 milestone receipt.
 

@@ -1,7 +1,7 @@
 # network_fmri instructions
 
-Read [README.md](README.md) for the pipeline, [docs/SHERLOCK.md](docs/SHERLOCK.md) for
-cluster operations, [docs/SCAN-NOTES.md](docs/SCAN-NOTES.md) for scientific decisions,
+Read [README.md](README.md) for the pipeline, [docs/sherlock.md](docs/sherlock.md) for
+cluster operations, [docs/scan-notes.md](docs/scan-notes.md) for scientific decisions,
 and [CONTRIBUTING.md](CONTRIBUTING.md) for development.
 
 ## Constraints
@@ -18,6 +18,6 @@ and [CONTRIBUTING.md](CONTRIBUTING.md) for development.
   revisions.
 - Before editing, inspect the checkout, branch, worktree, and imported package path.
 
-Update the README for commands and outputs, `SHERLOCK.md` for cluster operations,
-`SCAN-NOTES.md` for scientific decisions, and `CONTRIBUTING.md` for development. Delete
+Update the README for commands and outputs, `sherlock.md` for cluster operations,
+`scan-notes.md` for scientific decisions, and `CONTRIBUTING.md` for development. Delete
 stale claims; job state belongs in Slurm records, receipts, and DataLad history.
