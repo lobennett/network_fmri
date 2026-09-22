@@ -9,7 +9,10 @@ supported-markers = [
 ]
 
 [manifest]
-constraints = [{ name = "pillow", specifier = "<12" }]
+constraints = [
+    { name = "deno", specifier = "==2.6.4" },
+    { name = "pillow", specifier = "<12" },
+]
 overrides = [{ name = "packaging", specifier = ">=26" }]
 
 [[package]]
@@ -213,11 +216,11 @@ wheels = [
 
 [[package]]
 name = "deno"
-version = "2.9.7"
+version = "2.6.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/82/f1/0d7ca153f2363559d4462faed0d742632eedb74c9f7b8c05ee0d0bacdaaf/deno-2.9.7.tar.gz", hash = "sha256:79f4b7acdd9a37e98a4d1e0ca08d71c4e55f6c0cb13bd1e0946fa9b5497be2d9", size = 8168, upload-time = "2026-09-17T09:08:45.061Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/35/1ff471a43b1cee1ee426c2294643e841dacebbaae5c8ee5256d2c16305e8/deno-2.6.4.tar.gz", hash = "sha256:11ba60852158551bc3139f00d38db1445882f75f26dd9bf505bcbff95221dd56", size = 4933, upload-time = "2026-01-05T19:25:57.512Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/97/83/7168eaf88abd94777a62cf8fed9a849a2bd1adf9118d3b470b0b4ff5f08d/deno-2.9.7-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:836f2ab5918723b47b638a05bc4fdac99fc35e69b49a6771c24e32b19dff5d8a", size = 41608137, upload-time = "2026-09-17T09:08:37.461Z" },
+    { url = "https://files.pythonhosted.org/packages/6e/23/d15d14667cdb7881c2eb297ac4211d9d450da3a4f64310f288025b7ffeed/deno-2.6.4-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:09f6de458c6629cf5dd8962bfb46824386df1e5aa865d8ab5bf5a936411a9f01", size = 46736371, upload-time = "2026-01-05T19:25:51.926Z" },
 ]
 
 [[package]]

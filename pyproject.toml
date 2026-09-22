@@ -31,7 +31,10 @@ testpaths = ["tests"]
 [tool.uv]
 # Pillow 12 ships no wheel for this host (glibc 2.17) and its sdist needs libjpeg
 # headers we do not have. matplotlib pulls it in for the PDF traces.
-constraint-dependencies = ["pillow<12"]
+constraint-dependencies = [
+    "deno==2.6.4",  # newest wheel compatible with Sherlock's glibc 2.17
+    "pillow<12",
+]
 # Only ever runs on Sherlock; without this uv solves splits we cannot hit.
 environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
 override-dependencies = [
