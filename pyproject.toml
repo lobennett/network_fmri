@@ -21,7 +21,6 @@ dependencies = [
 
 [project.scripts]
 network-fmri = "network_fmri.cli:main"
-network_fmri = "network_fmri.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]
@@ -42,9 +41,9 @@ override-dependencies = [
 
 [tool.uv.sources]
 global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "ee5ad00ad2f51586d0379d2fe5a6a5fa3e2e60d7" }
-network_fw2bids = { git = "https://github.com/lobennett/network_fw2bids.git", rev = "43440fb0aaa219f558729402a02849c964a6fece" }
-network_events = { git = "https://github.com/lobennett/network_events.git", rev = "a1e44896f478a013f40b7a38ad9fdd0c278a6d9f" }
-network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "450c52db9ba6ed94f3b6db386912da62ab18e020" }
+network_fw2bids = { git = "https://github.com/lobennett/network_fw2bids.git", rev = "eba93dced33dd9458bb63f0db6830a357b024949" }
+network_events = { git = "https://github.com/lobennett/network_events.git", rev = "f858ec456f6c501de5f3eb50ab7fafa0aa52a5f8" }
+network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "3ed9460a1cdb2fbb70c00368b62f6b49a4f1d99c" }
 
 [build-system]
 requires = ["hatchling"]

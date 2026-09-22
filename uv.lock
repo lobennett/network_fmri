@@ -506,7 +506,7 @@ wheels = [
 [[package]]
 name = "network-events"
 version = "0.2.0"
-source = { git = "https://github.com/lobennett/network_events.git?rev=a1e44896f478a013f40b7a38ad9fdd0c278a6d9f#a1e44896f478a013f40b7a38ad9fdd0c278a6d9f" }
+source = { git = "https://github.com/lobennett/network_events.git?rev=f858ec456f6c501de5f3eb50ab7fafa0aa52a5f8#f858ec456f6c501de5f3eb50ab7fafa0aa52a5f8" }
 dependencies = [
     { name = "nibabel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -539,9 +539,9 @@ requires-dist = [
     { name = "datalad", specifier = ">=1.1" },
     { name = "datalad-installer", specifier = ">=1.1" },
     { name = "global-signal-plots", extras = ["plot"], git = "https://github.com/lobennett/global_signal_plots.git?rev=ee5ad00ad2f51586d0379d2fe5a6a5fa3e2e60d7" },
-    { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=a1e44896f478a013f40b7a38ad9fdd0c278a6d9f" },
-    { name = "network-fw2bids", git = "https://github.com/lobennett/network_fw2bids.git?rev=43440fb0aaa219f558729402a02849c964a6fece" },
-    { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=450c52db9ba6ed94f3b6db386912da62ab18e020" },
+    { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=f858ec456f6c501de5f3eb50ab7fafa0aa52a5f8" },
+    { name = "network-fw2bids", git = "https://github.com/lobennett/network_fw2bids.git?rev=eba93dced33dd9458bb63f0db6830a357b024949" },
+    { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=3ed9460a1cdb2fbb70c00368b62f6b49a4f1d99c" },
     { name = "nibabel", specifier = ">=5.3" },
 ]
 
@@ -551,7 +551,7 @@ dev = [{ name = "pytest", specifier = ">=8" }]
 [[package]]
 name = "network-fw2bids"
 version = "0.1.0"
-source = { git = "https://github.com/lobennett/network_fw2bids.git?rev=43440fb0aaa219f558729402a02849c964a6fece#43440fb0aaa219f558729402a02849c964a6fece" }
+source = { git = "https://github.com/lobennett/network_fw2bids.git?rev=eba93dced33dd9458bb63f0db6830a357b024949#eba93dced33dd9458bb63f0db6830a357b024949" }
 dependencies = [
     { name = "dcm2niix", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "flywheel-sdk", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -561,7 +561,7 @@ dependencies = [
 [[package]]
 name = "network-qa"
 version = "0.2.0"
-source = { git = "https://github.com/lobennett/network_qa.git?rev=450c52db9ba6ed94f3b6db386912da62ab18e020#450c52db9ba6ed94f3b6db386912da62ab18e020" }
+source = { git = "https://github.com/lobennett/network_qa.git?rev=3ed9460a1cdb2fbb70c00368b62f6b49a4f1d99c#3ed9460a1cdb2fbb70c00368b62f6b49a4f1d99c" }
 dependencies = [
     { name = "nibabel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
