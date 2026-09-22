@@ -42,7 +42,7 @@ override-dependencies = [
 
 [tool.uv.sources]
 global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "ee5ad00ad2f51586d0379d2fe5a6a5fa3e2e60d7" }
-network_fw2bids = { git = "https://github.com/lobennett/network_fw2bids.git", rev = "006760861ea1ef6e3fa00a25de9a398d59433b5f" }
+network_fw2bids = { git = "https://github.com/lobennett/network_fw2bids.git", rev = "c7be0424088640aa928c707228723aa40368f0be" }
 network_events = { git = "https://github.com/lobennett/network_events.git", rev = "f858ec456f6c501de5f3eb50ab7fafa0aa52a5f8" }
 network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "3ed9460a1cdb2fbb70c00368b62f6b49a4f1d99c" }
 

@@ -517,7 +517,7 @@ requires-dist = [
     { name = "datalad-installer", specifier = ">=1.1" },
     { name = "global-signal-plots", extras = ["plot"], git = "https://github.com/lobennett/global_signal_plots.git?rev=ee5ad00ad2f51586d0379d2fe5a6a5fa3e2e60d7" },
     { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=f858ec456f6c501de5f3eb50ab7fafa0aa52a5f8" },
-    { name = "network-fw2bids", git = "https://github.com/lobennett/network_fw2bids.git?rev=006760861ea1ef6e3fa00a25de9a398d59433b5f" },
+    { name = "network-fw2bids", git = "https://github.com/lobennett/network_fw2bids.git?rev=c7be0424088640aa928c707228723aa40368f0be" },
     { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=3ed9460a1cdb2fbb70c00368b62f6b49a4f1d99c" },
     { name = "nibabel", specifier = ">=5.3" },
 ]
@@ -528,7 +528,7 @@ dev = [{ name = "pytest", specifier = ">=8" }]
 [[package]]
 name = "network-fw2bids"
 version = "0.1.0"
-source = { git = "https://github.com/lobennett/network_fw2bids.git?rev=006760861ea1ef6e3fa00a25de9a398d59433b5f#006760861ea1ef6e3fa00a25de9a398d59433b5f" }
+source = { git = "https://github.com/lobennett/network_fw2bids.git?rev=c7be0424088640aa928c707228723aa40368f0be#c7be0424088640aa928c707228723aa40368f0be" }
 dependencies = [
     { name = "dcm2niix", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "flywheel-sdk", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
