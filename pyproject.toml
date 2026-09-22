@@ -3,23 +3,24 @@ name = "network_fmri"
 version = "0.1.0"
 description = "Flywheel -> BIDS curation and pipeline submission for the r01network study"
 readme = "README.md"
-# Bounded: network_glm's pinned stack has no 3.14 wheels.
+# Bounded to the Python version supported by the pinned study packages.
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "datalad>=1.1",
     # provisions git-annex; pip cannot ship the binary
     "datalad-installer>=1.1",
-    "fw-heudiconv",
+    "bids-validator-deno>=1.0",
     "global-signal-plots[plot]",
-    # Owns the behavioural half: events.tsv, truncation QC, behaviour-driven trimming.
+    "network-fw2bids",
+    "nibabel>=5.3",
+    # Owns the behavioural half: events.tsv and truncation QC.
     "network-events",
-    # Owns the GLMs; this repo owns their submission.
-    "network-glm",
-    # Exclusion decisions; this repo owns when they run.
+    # Owns scan-decision evidence and approval validation.
     "network-qa",
 ]
 
 [project.scripts]
+network-fmri = "network_fmri.cli:main"
 network_fmri = "network_fmri.cli:main"
 
 [dependency-groups]
@@ -27,11 +28,6 @@ dev = ["pytest>=8"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
-[tool.ruff]
-# Byte-faithful upstream mechababs sources at a pinned commit. The published patch
-# applies against their exact context lines, so they must not be reformatted or fixed.
-extend-exclude = ["tests/fixtures/campaign/mechababs-base"]
 
 [tool.uv]
 # Pillow 12 ships no wheel for this host (glibc 2.17) and its sdist needs libjpeg
@@ -45,11 +41,10 @@ override-dependencies = [
 ]
 
 [tool.uv.sources]
-fw-heudiconv = { git = "https://github.com/lobennett/fw-heudiconv.git", rev = "81c44e778e785cf33c700e1a0fd7e14b2716a500" }
 global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "ee5ad00ad2f51586d0379d2fe5a6a5fa3e2e60d7" }
-network_events = { git = "https://github.com/lobennett/network_events.git", rev = "e3ceda53a8409ca103574d879390d38180ca9443" }
-network_glm = { git = "https://github.com/lobennett/network_glm.git", rev = "c99a2810133b1b54cc9e62c37e5c277c99e25889" }
-network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "9a2f22ca7325890a815ff6d3f7ac56c522e1abfc" }
+network_fw2bids = { git = "https://github.com/lobennett/network_fw2bids.git", rev = "43440fb0aaa219f558729402a02849c964a6fece" }
+network_events = { git = "https://github.com/lobennett/network_events.git", rev = "4be4b221aa97e898246b476752911b441fa8b27e" }
+network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "53d097935bf3e75507d19c4a5f5d2ff5ccc269db" }
 
 [build-system]
 requires = ["hatchling"]

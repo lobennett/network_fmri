@@ -1,6 +1,0 @@
-subject_id	session_id	datatypes	t1w_num	t2w_num	bold_num
-sub-fmap	ses-01	fmap	0	0	0
-sub-anat	ses-01	anat	1	0	0
-sub-func	ses-01	func	0	0	2
-sub-mixed	ses-01	anat	1	1	0
-sub-mixed	ses-02	fmap,func	0	0	3

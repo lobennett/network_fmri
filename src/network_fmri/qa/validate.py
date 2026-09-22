@@ -1,49 +1,145 @@
-"""``network_fmri validate`` — official BIDS validator on a merged tree.
-
-Runs the upstream ``bids/validator`` container, so no host tooling is needed. Checks
-NIfTI headers and sidecar field types, which a schema-only checker cannot.
-"""
+"""Run the BIDS Validator and retain fresh evidence for every outcome."""
 
 from __future__ import annotations
 
 import argparse
-import sys
+import json
+import os
+import re
+import subprocess
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
-from network_fmri.qa import container
+from network_fmri.models import Runner
 
-VALIDATOR_URI = "docker://bids/validator:3.0.1"
+_LABEL = re.compile(r"^[a-z][a-z0-9-]*$")
+
+
+@dataclass(frozen=True)
+class ValidationResult:
+    """The durable evidence produced by one BIDS Validator invocation."""
+
+    label: str
+    report: Path
+    log: Path
+    returncode: int
+
+
+class ValidationError(RuntimeError):
+    """The validator did not produce a valid, successful report."""
+
+    def __init__(self, result: ValidationResult):
+        self.result = result
+        super().__init__(
+            f"BIDS validation failed for {result.label!r} (exit {result.returncode}); "
+            f"diagnostics: {result.report}, {result.log}"
+        )
+
+
+def validate_bids(
+    bids_dir: Path,
+    label: str,
+    runner: Runner = subprocess.run,
+) -> ValidationResult:
+    """Validate a dataset and atomically publish fresh report and log artifacts.
+
+    The validator writes to a same-directory temporary file. A previous report can
+    therefore never make a failed or incomplete later invocation appear valid. If
+    the program does not write a JSON object, a labelled diagnostic JSON replaces
+    the old report and the stage fails even when the process exit code was zero.
+    """
+
+    if not _LABEL.fullmatch(label):
+        raise ValueError(f"validation label is unsafe: {label!r}")
+    bids_dir = Path(bids_dir)
+    output_dir = bids_dir / "derivatives" / "bids-validator"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report = output_dir / f"desc-{label}_validation.json"
+    log = report.with_suffix(".log")
+    temporary_report = _temporary_path(output_dir, f".{report.name}.")
+    temporary_log = _temporary_path(output_dir, f".{log.name}.")
+    try:
+        command = [
+            "bids-validator-deno", str(bids_dir), "--outfile", str(temporary_report),
+            "--format", "json_pp", "--prune",
+        ]
+        returncode, stdout, stderr = _invoke(command, runner)
+        output_error = _report_error(temporary_report)
+        if output_error:
+            _write_json(temporary_report, {
+                "label": label,
+                "status": output_error,
+                "detail": "bids-validator-deno did not produce a fresh JSON object",
+            })
+        _write_text(temporary_log, _join_output(stdout, stderr))
+        os.replace(temporary_report, report)
+        os.replace(temporary_log, log)
+    finally:
+        temporary_report.unlink(missing_ok=True)
+        temporary_log.unlink(missing_ok=True)
+    result = ValidationResult(label, report, log, returncode or (1 if output_error else 0))
+    if result.returncode:
+        raise ValidationError(result)
+    return result
+
+
+def _temporary_path(directory: Path, prefix: str) -> Path:
+    descriptor, name = tempfile.mkstemp(dir=directory, prefix=prefix, suffix=".tmp")
+    os.close(descriptor)
+    path = Path(name)
+    path.unlink()
+    return path
+
+
+def _invoke(command: list[str], runner: Runner) -> tuple[int, str, str]:
+    try:
+        completed = runner(command, check=False, capture_output=True, text=True)
+    except subprocess.CalledProcessError as error:
+        return error.returncode or 1, _as_text(error.output), _as_text(error.stderr)
+    except OSError as error:
+        return 127, "", str(error)
+    return int(getattr(completed, "returncode", 0) or 0), _as_text(
+        getattr(completed, "stdout", "")
+    ), _as_text(getattr(completed, "stderr", ""))
+
+
+def _report_error(path: Path) -> str | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return "validator-output-missing"
+    return None if isinstance(value, dict) else "validator-output-invalid"
+
+
+def _as_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def _join_output(stdout: str, stderr: str) -> str:
+    return stdout + ("\n" if stdout and stderr else "") + stderr
+
+
+def _write_json(path: Path, value: dict[str, str]) -> None:
+    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+
+def _write_text(path: Path, value: str) -> None:
+    path.write_text(value, encoding="utf-8")
 
 
 def get_parser() -> argparse.ArgumentParser:
-    from network_fmri.cohorts import COHORTS, DEFAULT_STAGING
-
-    p = argparse.ArgumentParser(prog="network_fmri validate")
-    p.add_argument("--cohort", required=True, choices=list(COHORTS))
-    p.add_argument("--staging", default=DEFAULT_STAGING)
-    p.add_argument("--uri", default=VALIDATOR_URI, help=f"default: {VALIDATOR_URI}")
-    p.add_argument("--image", default=None,
-                   help="path to an existing .sif, skipping the pull")
-    p.add_argument("--cache", default=None,
-                   help=f"where pulled images live (default: {container.cache_dir()})")
-    # After --, args pass to the validator (--ignoreWarnings, --format json).
-    p.add_argument("validator_args", nargs=argparse.REMAINDER,
-                   help="extra bids-validator args (prefix with --)")
-    return p
+    parser = argparse.ArgumentParser(prog="network_fmri validate")
+    parser.add_argument("--bids-dir", required=True, type=Path)
+    parser.add_argument("--label", required=True)
+    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = get_parser().parse_args(argv)
-    tree = Path(args.staging) / args.cohort / "bids"
-    if not tree.is_dir():
-        raise SystemExit(f"no merged tree at {tree} (run `network_fmri merge` first)")
-
-    extra = [a for a in args.validator_args if a != "--"]
-    sif = container.resolve(args.uri, args.image, args.cache)
-    rc = container.run(sif, [str(tree), *extra])
-    print(f"[{args.cohort}] validator rc={rc}", flush=True)
-    return rc
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    validate_bids(args.bids_dir, args.label)
+    return 0

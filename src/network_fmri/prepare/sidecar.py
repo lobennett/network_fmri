@@ -7,11 +7,12 @@ a pure function of the input, so re-running any of those stages is byte-identica
 from __future__ import annotations
 
 import json
-import logging
 import os
 from pathlib import Path
 
-log = logging.getLogger(__name__)
+
+class SidecarError(ValueError):
+    """A BIDS sidecar required by a preparation stage is not usable."""
 
 
 def path_for(nifti: Path) -> Path:
@@ -20,26 +21,39 @@ def path_for(nifti: Path) -> Path:
 
 
 def read(path: Path) -> dict:
-    """Parse a sidecar. A missing or truncated file reads as empty rather than raising."""
+    """Return a JSON-object sidecar, rejecting missing and malformed files.
+
+    Treating a bad sidecar as an empty object can make a destructive in-place
+    stage appear successful.  Preparation stages instead fail before writing
+    derived metadata, leaving the defect visible for repair.
+    """
     try:
-        return json.loads(path.read_text())
-    except FileNotFoundError:
-        return {}
-    except (json.JSONDecodeError, OSError) as e:
-        log.warning("malformed sidecar, treating as empty: %s (%s)", path.name, e)
-        return {}
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as error:
+        raise SidecarError(f"required sidecar is missing: {path}") from error
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as error:
+        raise SidecarError(f"required sidecar is malformed: {path}") from error
+    if not isinstance(data, dict):
+        raise SidecarError(f"required sidecar is not a JSON object: {path}")
+    return data
+
+
+def write(path: Path, data: dict) -> None:
+    """Atomically write one complete sidecar object."""
+    temporary = path.with_name(path.name + ".tmp")
+    try:
+        temporary.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, path)
+    except OSError as error:
+        temporary.unlink(missing_ok=True)
+        raise SidecarError(f"could not write sidecar: {path}") from error
 
 
 def update(path: Path, **fields) -> bool:
-    """Set ``fields`` on a sidecar. False if the file is absent or already correct."""
-    if not path.is_file():
-        log.warning("expected sidecar is missing: %s", path)
-        return False
+    """Set ``fields`` on an existing valid sidecar and return whether it changed."""
     data = read(path)
     if all(data.get(k) == v for k, v in fields.items()):
         return False
     data.update(fields)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2) + "\n")
-    os.replace(tmp, path)
+    write(path, data)
     return True

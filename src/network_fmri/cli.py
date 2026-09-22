@@ -1,26 +1,47 @@
-"""Registry-driven command dispatch for network_fmri."""
+"""The intentionally small public command-line interface."""
 
 from __future__ import annotations
 
+import argparse
 import sys
+from pathlib import Path
 
-from network_fmri.registry import command_usage, resolve_command
+from network_fmri import pipeline
+from network_fmri.curation import apply_curation
+from network_fmri.stages.decisions import validate_decisions
+
+
+def get_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="network-fmri")
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("pipeline", help="plan, submit, or inspect the fixed workflow")
+    decisions = commands.add_parser("decisions", help="validate reviewed scan decisions")
+    decision_commands = decisions.add_subparsers(dest="decision_command", required=True)
+    validate = decision_commands.add_parser("validate")
+    validate.add_argument("bids_dir", type=Path)
+    curate = commands.add_parser("curate", help="apply approved drop decisions")
+    curate.add_argument("bids_dir", type=Path)
+    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if args in (["-h"], ["--help"]):
-        sys.stdout.write(command_usage())
+        get_parser().print_help()
         return 0
-
-    resolved = resolve_command(args)
-    if resolved is None:
-        sys.stderr.write(command_usage())
-        return 2
-
-    command, remaining = resolved
-    return command.load()(remaining)
+    if args and args[0] == "pipeline":
+        return pipeline.main(args[1:])
+    if args and args[0] == "_stage":
+        return pipeline.stage_main(args[1:])
+    parsed = get_parser().parse_args(args)
+    if parsed.command == "decisions":
+        result = validate_decisions(parsed.bids_dir)
+        pipeline.save_stage_result(parsed.bids_dir, result)
+        return 0
+    manifest = parsed.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
+    apply_curation(parsed.bids_dir, manifest)
+    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
