@@ -43,8 +43,8 @@ override-dependencies = [
 [tool.uv.sources]
 global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "ee5ad00ad2f51586d0379d2fe5a6a5fa3e2e60d7" }
 network_fw2bids = { git = "https://github.com/lobennett/network_fw2bids.git", rev = "43440fb0aaa219f558729402a02849c964a6fece" }
-network_events = { git = "https://github.com/lobennett/network_events.git", rev = "4be4b221aa97e898246b476752911b441fa8b27e" }
-network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "53d097935bf3e75507d19c4a5f5d2ff5ccc269db" }
+network_events = { git = "https://github.com/lobennett/network_events.git", rev = "a1e44896f478a013f40b7a38ad9fdd0c278a6d9f" }
+network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "450c52db9ba6ed94f3b6db386912da62ab18e020" }
 
 [build-system]
 requires = ["hatchling"]
