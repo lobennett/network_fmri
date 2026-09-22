@@ -8,7 +8,8 @@ import pytest
 
 import network_fmri.pipeline as pipeline
 from network_fmri.config import (
-    BehaviorSource, BehaviorSources, ContainerConfig, SlurmConfig, VerifiedContainerConfig, WorkflowConfig, WorkflowPaths,
+    BehaviorSource, BehaviorSources, ContainerConfig, ParticipantsSource, SlurmConfig,
+    VerifiedContainerConfig, WorkflowConfig, WorkflowPaths,
 )
 from network_fmri.pipeline import (
     STAGE_ORDER, build_plan, initial_submission, post_approval_submission,
@@ -40,6 +41,7 @@ def configuration(tmp_path: Path) -> WorkflowConfig:
         fmriprep=ContainerConfig(tmp_path / "fmriprep.sif", "25.2.5"),
         pydeface=VerifiedContainerConfig(tmp_path / "pydeface.sif", "2.1.0", "a" * 64),
         slurm=SlurmConfig("normal", 8, 32, 720, 4),
+        participants=ParticipantsSource(tmp_path / "demographics", "c" * 40),
     )
 
 
@@ -48,6 +50,8 @@ def test_graph_has_the_fixed_order_and_human_gate(tmp_path):
     names = tuple(job.name for job in plan)
 
     assert names == STAGE_ORDER
+    assert names.index("behavioral-sourcedata-ingested") < names.index("participants-ingested")
+    assert names.index("participants-ingested") < names.index("gs-pretrim")
     assert names.index("scan-decisions-approved") < names.index("mriqc-curated")
     assert names.index("mriqc-curated") < names.index("fmriprep-array")
     assert names.index("mriqc-curated") < names.index("bids-curated-validated")
@@ -97,6 +101,7 @@ def test_milestone_receipt_carries_input_package_and_container_provenance(tmp_pa
     assert receipt.inputs["input_datalad_commit"] == "a" * 40
     assert receipt.inputs["in_scanner_behavior_commit"] == "a" * 40
     assert receipt.inputs["out_of_scanner_behavior_commit"] == "b" * 40
+    assert receipt.inputs["participants_commit"] == "c" * 40
     assert {"network_fmri", "network_fw2bids", "network_events", "network_qa"} <= receipt.versions.keys()
     assert receipt.versions["mriqc"]["version"] == "24.0.2"
     assert receipt.versions["fmriprep"]["version"] == "25.2.5"

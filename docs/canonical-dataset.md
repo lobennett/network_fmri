@@ -33,6 +33,13 @@ commit, installs it as a DataLad subdataset at the fixed path above, obtains the
 needed by the next stage, and saves the root dataset. An existing matching subdataset is
 a safe no-op; any conflicting path or commit fails before publication.
 
+Participant metadata comes from a separate clean, pinned repository containing only
+deidentified, BIDS-ready `participants.tsv` and `participants.json`. The table must
+cover the reviewed 46-subject roster exactly, and the JSON file must describe every
+non-ID column. The pipeline validates the complete source before publishing the files
+at the BIDS root; a one-subject pilot receives only its selected row. Raw identifiers
+and runtime subject remapping are outside the pipeline.
+
 `network_events` reads only `sourcedata/behavioral/in_scanner`, audits it against the
 BOLD identities, and writes `_events.tsv` files beside their functional scans. The
 out-of-scanner battery remains intact as source data. Later analyses may write derived
@@ -42,7 +49,8 @@ A clean rebuild starts with a new output directory and repeats conversion, assem
 behavioral installation, event generation, QA, and preprocessing. Imaging changes can
 therefore be made upstream and rebuilt without editing the finalized behavioral sources.
 Participant demographics belong in `participants.tsv` and `participants.json`; their
-source must likewise be reconciled and pinned before the pipeline publishes them.
+canonical source must be reconciled and committed before a production configuration
+can replace the example path and zero commit.
 
 ## Finalized inputs
 
@@ -50,4 +58,3 @@ source must likewise be reconciled and pinned before the pipeline publishes them
 |---|---|---|
 | In-scanner behavior | `/oak/stanford/groups/russpold/data/network_grant/behavioral_data/canonical` | `8edc76d2bc36c175195d384953c5f1834e6a2e51` |
 | Out-of-scanner behavior | `/oak/stanford/groups/russpold/data/network_grant/behavioral_data/canonical_out_of_scanner` | `c2e14a7b0d437c3fd8b38a7b701a820d8acaea44` |
-

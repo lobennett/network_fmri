@@ -19,6 +19,7 @@ from network_fw2bids.planning import ArchivePlan
 from network_fmri.config import (
     BehaviorSource,
     BehaviorSources,
+    ParticipantsSource,
     ContainerConfig,
     SlurmConfig,
     VerifiedContainerConfig,
@@ -161,6 +162,7 @@ def _synthetic_runtime(tmp_path: Path) -> _Runtime:
             BehaviorSource(behavior, "a" * 40),
             BehaviorSource(tmp_path / "out-of-scanner", "b" * 40),
         ),
+        participants=ParticipantsSource(tmp_path / "demographics", "c" * 40),
         mriqc=ContainerConfig(tmp_path / "mriqc.sif", "24.0.2"),
         fmriprep=ContainerConfig(tmp_path / "fmriprep.sif", "25.2.5"),
         pydeface=VerifiedContainerConfig(pydeface, "2.1.0", _sha256(pydeface)),

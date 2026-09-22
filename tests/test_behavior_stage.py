@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from network_fmri.config import (
-    BehaviorSource, BehaviorSources, ContainerConfig, SlurmConfig,
+    BehaviorSource, BehaviorSources, ContainerConfig, ParticipantsSource, SlurmConfig,
     VerifiedContainerConfig, WorkflowConfig, WorkflowPaths,
 )
 from network_fmri.stages import StageError
@@ -60,6 +60,7 @@ def configuration(tmp_path: Path) -> WorkflowConfig:
     return WorkflowConfig(
         paths=paths, subjects_file=subjects_file, subjects=subjects,
         flywheel_project="russpold/r01network", behavior=sources,
+        participants=ParticipantsSource(tmp_path / "demographics", "c" * 40),
         mriqc=ContainerConfig(tmp_path / "mriqc.sif", "24.0.2"),
         fmriprep=ContainerConfig(tmp_path / "fmriprep.sif", "25.2.5"),
         pydeface=VerifiedContainerConfig(tmp_path / "pydeface.sif", "2.1.0", "a" * 64),

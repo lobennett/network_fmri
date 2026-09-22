@@ -7,6 +7,7 @@ and [CONTRIBUTING.md](CONTRIBUTING.md) for development.
 ## Constraints
 
 - Build one BIDS dataset from exactly 46 reviewed subjects.
+- Publish participant metadata only from the clean, pinned, deidentified canonical source.
 - Derive pilots from the full roster with `--pilot-subject`; give them separate paths.
 - Keep `FLYWHEEL_API_TOKEN` in the worker environment and out of commands and logs.
 - Keep DICOMs and undefaced anatomy in `$SLURM_TMPDIR` only.

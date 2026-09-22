@@ -5,7 +5,8 @@ Sibling packages own Flywheel conversion, behavioral events, scan evidence, and 
 signal analysis.
 
 ```text
-Flywheel → BIDS → pinned behavioral subdatasets → global signal (pretrim)
+Flywheel → BIDS → pinned behavioral subdatasets → participant metadata
+→ global signal (pretrim)
 → trim 7 volumes → events → global signal (posttrim) → B0 links
 → validator → MRIQC → human-approved scan decisions
 → curation → validator → fMRIPrep
@@ -26,8 +27,10 @@ uv run --frozen network-fmri pipeline plan /path/to/workflow.toml
 uv run --frozen network-fmri pipeline submit /path/to/workflow.toml --dry-run
 ```
 
-Review the paths, roster, containers, commands, and Slurm resources printed by the dry
-run.
+The participant source must be a clean Git/DataLad repository at the configured commit
+with deidentified, BIDS-ready `participants.tsv` and `participants.json`. Review the
+configured paths, roster, source revisions, and containers; the dry run prints the
+commands, dependencies, and Slurm resources.
 
 ## Pilot and submit
 

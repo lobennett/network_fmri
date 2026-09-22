@@ -19,6 +19,11 @@ commit = "8edc76d2bc36c175195d384953c5f1834e6a2e51"
 source = "/oak/stanford/groups/russpold/data/network_grant/behavioral_data/canonical_out_of_scanner"
 commit = "c2e14a7b0d437c3fd8b38a7b701a820d8acaea44"
 
+[participants]
+# BIDS-ready, deidentified participants.tsv and participants.json at this commit.
+source = "/oak/stanford/groups/russpold/data/network_grant/demographics/canonical"
+commit = "0000000000000000000000000000000000000000"
+
 [mriqc]
 image = "/home/groups/russpold/singularity_images/mriqc_24.0.2.sif"
 version = "24.0.2"

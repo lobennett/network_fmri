@@ -56,7 +56,7 @@ def ingest_behavior(
 
 
 def require_clean_canonical_source(
-    source: Path, expected: str, runner: Runner = subprocess.run,
+    source: Path, expected: str, runner: Runner = subprocess.run, *, label: str = "behavior",
 ) -> None:
     """Require an unchanged repository at the configured immutable commit."""
 
@@ -65,10 +65,10 @@ def require_clean_canonical_source(
             runner(["git", "-C", str(source), "rev-parse", "HEAD"], check=True, capture_output=True, text=True)
         ).strip()
     except (OSError, subprocess.CalledProcessError) as error:
-        raise StageError(f"could not verify canonical behavior commit at {source}") from error
+        raise StageError(f"could not verify canonical {label} commit at {source}") from error
     if actual != expected:
         raise StageError(
-            f"canonical behavior commit mismatch at {source}: expected {expected}, found {actual or 'none'}"
+            f"canonical {label} commit mismatch at {source}: expected {expected}, found {actual or 'none'}"
         )
     try:
         status = _output(
@@ -78,10 +78,11 @@ def require_clean_canonical_source(
             )
         ).strip()
     except (OSError, subprocess.CalledProcessError) as error:
-        raise StageError(f"could not inspect canonical behavioral source at {source}") from error
+        raise StageError(f"could not inspect canonical {label} source at {source}") from error
     if status:
         raise StageError(
-            "canonical behavioral source has tracked, untracked, or ignored changes: " + status
+            f"canonical {label} source must be clean; it has tracked, untracked, "
+            f"or ignored changes: {status}"
         )
 
 

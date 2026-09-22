@@ -2,8 +2,9 @@
 
 ## Prepare
 
-Use a Sherlock allocation, a pinned `uv` environment, a readable behavioral DataLad
-checkout, configured annex remotes, and the containers named in the reviewed TOML.
+Use a Sherlock allocation, a pinned `uv` environment, a clean checkout, readable
+behavioral DataLad repositories, a clean canonical participant-metadata repository,
+configured annex remotes, and the containers named in the reviewed TOML.
 
 ```bash
 cd /path/to/network_fmri

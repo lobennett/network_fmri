@@ -11,7 +11,8 @@ import pytest
 
 import network_fmri.pipeline as pipeline
 from network_fmri.config import (
-    BehaviorSource, BehaviorSources, ContainerConfig, SlurmConfig, VerifiedContainerConfig, WorkflowConfig, WorkflowPaths,
+    BehaviorSource, BehaviorSources, ContainerConfig, ParticipantsSource, SlurmConfig,
+    VerifiedContainerConfig, WorkflowConfig, WorkflowPaths,
 )
 from network_fmri.milestones import receipt_path
 from network_fmri.qa.fmriprep import (
@@ -27,6 +28,15 @@ def _config(tmp_path: Path) -> WorkflowConfig:
     out_of_scanner = tmp_path / "out-of-scanner"
     behavior.mkdir()
     out_of_scanner.mkdir()
+    demographics = tmp_path / "demographics"
+    demographics.mkdir()
+    (demographics / "participants.tsv").write_text(
+        "participant_id\tage\n"
+        + "".join(f"sub-{subject}\t30\n" for subject in subjects)
+    )
+    (demographics / "participants.json").write_text(
+        json.dumps({"age": {"Description": "Age in years"}}) + "\n"
+    )
     return WorkflowConfig(
         paths=WorkflowPaths(
             bids_dir=tmp_path / "bids", parts_dir=tmp_path / "parts",
@@ -44,6 +54,7 @@ def _config(tmp_path: Path) -> WorkflowConfig:
         pydeface=VerifiedContainerConfig(tmp_path / "pydeface.sif", "2.1.0", "a" * 64),
         # Keep the real trimming implementation in-process for this acceptance test.
         slurm=SlurmConfig("normal", 1, 32, 720, 1),
+        participants=ParticipantsSource(demographics, "c" * 40),
     )
 
 
@@ -152,8 +163,9 @@ class FakeApplications:
         if command[:3] in {
             ("git", "-C", str(self.config.behavior.in_scanner.source)),
             ("git", "-C", str(self.config.behavior.out_of_scanner.source)),
+            ("git", "-C", str(self.config.participants.source)),
         }:
-            return self._behavior_git(command)
+            return self._source_git(command)
         if command[:2] == ("git", "-C") and command[2] in self.subdataset_heads:
             return SimpleNamespace(stdout=self.subdataset_heads[command[2]] + "\n")
         if command[:4] == ("git", "-C", str(self.bids_dir), "rev-parse"):
@@ -164,14 +176,14 @@ class FakeApplications:
             return SimpleNamespace(stdout="COMPLETED\n")
         raise AssertionError(f"unexpected external command: {command}")
 
-    def _behavior_git(self, command: tuple[str, ...]):
+    def _source_git(self, command: tuple[str, ...]):
         if command[3] == "rev-parse":
             source = Path(command[2])
-            configured = (
-                self.config.behavior.in_scanner
-                if source == self.config.behavior.in_scanner.source
-                else self.config.behavior.out_of_scanner
-            )
+            configured = {
+                self.config.behavior.in_scanner.source: self.config.behavior.in_scanner,
+                self.config.behavior.out_of_scanner.source: self.config.behavior.out_of_scanner,
+                self.config.participants.source: self.config.participants,
+            }[source]
             return SimpleNamespace(stdout=configured.commit + "\n")
         if command[3] == "status":
             return SimpleNamespace(stdout="")
@@ -300,7 +312,8 @@ def test_synthetic_pilot_executes_assembly_through_fmriprep(tmp_path, monkeypatc
     assert initial.pilot_subject == "s7"
     assert all("--pilot-subject s7" in " ".join(command) for command in initial.commands.values())
 
-    for name in pipeline.STAGE_ORDER[:12]:
+    generated = pipeline.STAGE_ORDER.index("scan-decisions-generated")
+    for name in pipeline.STAGE_ORDER[: generated + 1]:
         _stage(name, config_path, apps)
     _stage("scan-decisions-approved", config_path, apps)
 
@@ -317,11 +330,12 @@ def test_synthetic_pilot_executes_assembly_through_fmriprep(tmp_path, monkeypatc
     assert pipeline.main(
         ["submit", str(config_path), "--pilot-subject", "s7", "--resume"], runner=apps,
     ) == 0
-    for name in pipeline.STAGE_ORDER[13:]:
+    curated = pipeline.STAGE_ORDER.index("mriqc-curated")
+    for name in pipeline.STAGE_ORDER[curated:]:
         _stage(name, config_path, apps)
 
     assert apps.milestones == [
-        "bids-assembled", "behavioral-sourcedata-ingested", "gs-pretrim",
+        "bids-assembled", "behavioral-sourcedata-ingested", "participants-ingested", "gs-pretrim",
         "dummy-volumes-trimmed", "bids-events-generated", "gs-posttrim",
         "b0-fieldmaps-linked", "bids-precuration-validated", "mriqc-complete",
         "scan-decisions-generated", "scan-decisions-approved", "mriqc-curated",
@@ -337,6 +351,9 @@ def test_synthetic_pilot_executes_assembly_through_fmriprep(tmp_path, monkeypatc
     }
     bold_json = config.paths.bids_dir / "sub-s7" / "ses-01" / "func" / "sub-s7_ses-01_task-rest_run-1_bold.json"
     assert json.loads(bold_json.read_text())["NumberOfVolumesDiscardedByUser"] == 7
+    assert (config.paths.bids_dir / "participants.tsv").read_text().splitlines() == [
+        "participant_id\tage", "sub-s7\t30",
+    ]
     assert (config.paths.bids_dir / "derivatives" / "fmriprep" / "sub-s7.html").is_file()
 
 

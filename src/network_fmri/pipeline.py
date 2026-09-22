@@ -17,7 +17,7 @@ from network_fmri.slurm import PlannedJob, SubmissionRecord, submit_plan
 
 STAGE_ORDER = (
     "fw2bids-array", "bids-assembled", "behavioral-sourcedata-ingested",
-    "gs-pretrim", "dummy-volumes-trimmed", "bids-events-generated",
+    "participants-ingested", "gs-pretrim", "dummy-volumes-trimmed", "bids-events-generated",
     "gs-posttrim", "b0-fieldmaps-linked", "bids-precuration-validated",
     "mriqc-array", "mriqc-complete", "scan-decisions-generated",
     "scan-decisions-approved", "mriqc-curated", "bids-curated-validated",
@@ -571,6 +571,7 @@ def _run_stage(
     from network_fmri.stages.decisions import generate_decisions, validate_decisions
     from network_fmri.stages.events import generate_events
     from network_fmri.stages.global_signal import run_global_signal
+    from network_fmri.stages.participants import ingest_participants
 
     if name == "fw2bids-array":
         return convert_subject(config, _array_subject(config, array_index), runner)
@@ -578,6 +579,8 @@ def _run_stage(
         return assemble_dataset(config, runner)
     if name == "behavioral-sourcedata-ingested":
         return ingest_behavior(config, runner)
+    if name == "participants-ingested":
+        return ingest_participants(config, runner)
     if name == "gs-pretrim":
         return run_global_signal(config.paths.bids_dir, "pretrim", runner)
     if name == "dummy-volumes-trimmed":
@@ -671,6 +674,10 @@ def save_stage_result(
             "in_scanner_behavior_commit": config.behavior.in_scanner.commit,
             "out_of_scanner_behavior_source": str(config.behavior.out_of_scanner.source),
             "out_of_scanner_behavior_commit": config.behavior.out_of_scanner.commit,
+        })
+        inputs.update({
+            "participants_source": str(config.participants.source),
+            "participants_commit": config.participants.commit,
         })
     receipt = MilestoneReceipt(
         stage=result.name,

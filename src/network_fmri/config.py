@@ -43,6 +43,14 @@ class BehaviorSources:
 
 
 @dataclass(frozen=True)
+class ParticipantsSource:
+    """The reviewed, deidentified BIDS-ready participant metadata source."""
+
+    source: Path
+    commit: str
+
+
+@dataclass(frozen=True)
 class ContainerConfig:
     """One versioned Apptainer image."""
 
@@ -80,6 +88,7 @@ class WorkflowConfig:
     subjects: tuple[str, ...]
     flywheel_project: str
     behavior: BehaviorSources
+    participants: ParticipantsSource
     mriqc: ContainerConfig
     fmriprep: ContainerConfig
     pydeface: VerifiedContainerConfig
@@ -104,7 +113,7 @@ def parse_config(raw: dict[str, Any], *, base: Path) -> WorkflowConfig:
     _reject_token_keys(raw)
     _unknown_keys(
         raw,
-        {"paths", "subjects_file", "flywheel_project", "behavior", "mriqc", "fmriprep", "pydeface", "slurm"},
+        {"paths", "subjects_file", "flywheel_project", "behavior", "participants", "mriqc", "fmriprep", "pydeface", "slurm"},
         "top-level",
     )
     # ``base`` remains part of this parser boundary so callers can retain the source
@@ -123,6 +132,7 @@ def parse_config(raw: dict[str, Any], *, base: Path) -> WorkflowConfig:
         fmriprep=_parse_container(_table(raw, "fmriprep", "top-level"), "fmriprep"),
         pydeface=_parse_verified_container(_table(raw, "pydeface", "top-level"), "pydeface"),
         slurm=_parse_slurm(_table(raw, "slurm", "top-level")),
+        participants=_parse_participants(_table(raw, "participants", "top-level")),
     )
 
 
@@ -182,6 +192,15 @@ def _parse_behavior_source(raw: dict[str, Any], name: str) -> BehaviorSource:
     if not _COMMIT.fullmatch(commit):
         raise ValueError(f"{name}.commit must be a 40-character lowercase hexadecimal commit")
     return BehaviorSource(source=_path(raw, "source", name), commit=commit)
+
+
+def _parse_participants(raw: dict[str, Any]) -> ParticipantsSource:
+    name = "participants"
+    _unknown_keys(raw, {"source", "commit"}, name)
+    commit = _nonempty_string(raw, "commit", name)
+    if not _COMMIT.fullmatch(commit):
+        raise ValueError(f"{name}.commit must be a 40-character lowercase hexadecimal commit")
+    return ParticipantsSource(source=_path(raw, "source", name), commit=commit)
 
 
 def _parse_container(raw: dict[str, Any], name: str) -> ContainerConfig:
