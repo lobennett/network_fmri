@@ -100,6 +100,7 @@ class Acquisition:
 def apply_curation(
     bids_dir: Path,
     manifest: Path,
+    validator_image: Path,
     runner: Runner = subprocess.run,
 ) -> StageResult:
     """Remove approved drop bundles, repair B0 metadata, and validate the result.
@@ -120,7 +121,7 @@ def apply_curation(
     transaction = _RemovalTransaction.stage(bids_dir, plan)
     try:
         b0 = _rebuild_b0(bids_dir)
-        validation = validate_bids(bids_dir, "curated", runner)
+        validation = validate_bids(bids_dir, "curated", validator_image, runner)
     except ValidationError:
         _rollback(transaction, metadata)
         # Preserve the validator's result so the stage boundary can save its fresh

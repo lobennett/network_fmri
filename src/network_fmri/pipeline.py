@@ -598,7 +598,9 @@ def _run_stage(
         return link_b0(config.paths.bids_dir)
     if name == "bids-precuration-validated":
         return _validation_result(
-            "bids-precuration-validated", validate_bids(config.paths.bids_dir, "precuration", runner),
+            "bids-precuration-validated", validate_bids(
+                config.paths.bids_dir, "precuration", config.validator.image, runner,
+            ),
         )
     if name == "mriqc-array":
         subject = _array_subject(config, array_index)
@@ -621,10 +623,12 @@ def _run_stage(
         return validate_decisions(config.paths.bids_dir, runner)
     if name == "mriqc-curated":
         manifest = config.paths.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
-        return apply_curation(config.paths.bids_dir, manifest, runner)
+        return apply_curation(config.paths.bids_dir, manifest, config.validator.image, runner)
     if name == "bids-curated-validated":
         return _validation_result(
-            "bids-curated-validated", validate_bids(config.paths.bids_dir, "curated", runner),
+            "bids-curated-validated", validate_bids(
+                config.paths.bids_dir, "curated", config.validator.image, runner,
+            ),
         )
     if name == "fmriprep-array":
         subject = _array_subject(config, array_index)
@@ -731,6 +735,9 @@ def _receipt_versions(config: WorkflowConfig | None) -> dict[str, object]:
     }
     if config is not None:
         versions.update({
+            "validator": {
+                "image": str(config.validator.image), "version": config.validator.version,
+            },
             "mriqc": {"image": str(config.mriqc.image), "version": config.mriqc.version},
             "fmriprep": {
                 "image": str(config.fmriprep.image), "version": config.fmriprep.version,

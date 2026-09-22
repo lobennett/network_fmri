@@ -24,6 +24,10 @@ commit = "c2e14a7b0d437c3fd8b38a7b701a820d8acaea44"
 source = "/oak/stanford/groups/russpold/data/network_grant/demographics/canonical"
 commit = "5179a94a37e525bbe59b30bf019d4bced6311972"
 
+[validator]
+image = "/home/groups/russpold/singularity_images/bids-validator-3.0.1.sif"
+version = "3.0.1"
+
 [mriqc]
 image = "/home/groups/russpold/singularity_images/mriqc_24.0.2.sif"
 version = "24.0.2"

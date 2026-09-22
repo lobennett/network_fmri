@@ -42,6 +42,7 @@ def configuration(tmp_path: Path) -> WorkflowConfig:
         pydeface=VerifiedContainerConfig(tmp_path / "pydeface.sif", "2.1.0", "a" * 64),
         slurm=SlurmConfig("normal", 8, 32, 720, 4),
         participants=ParticipantsSource(tmp_path / "demographics", "c" * 40),
+        validator=ContainerConfig(tmp_path / "validator.sif", "3.0.1"),
     )
 
 
@@ -105,6 +106,7 @@ def test_milestone_receipt_carries_input_package_and_container_provenance(tmp_pa
     assert {"network_fmri", "network_fw2bids", "network_events", "network_qa"} <= receipt.versions.keys()
     assert receipt.versions["mriqc"]["version"] == "24.0.2"
     assert receipt.versions["fmriprep"]["version"] == "25.2.5"
+    assert receipt.versions["validator"]["version"] == "3.0.1"
     assert receipt.versions["pydeface"] == {
         "image": str(tmp_path / "pydeface.sif"), "version": "2.1.0", "sha256": "a" * 64,
     }

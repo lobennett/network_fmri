@@ -21,6 +21,7 @@ def get_parser() -> argparse.ArgumentParser:
     validate.add_argument("bids_dir", type=Path)
     curate = commands.add_parser("curate", help="apply approved drop decisions")
     curate.add_argument("bids_dir", type=Path)
+    curate.add_argument("--validator-image", required=True, type=Path)
     return parser
 
 
@@ -39,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
         pipeline.save_stage_result(parsed.bids_dir, result)
         return 0
     manifest = parsed.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
-    apply_curation(parsed.bids_dir, manifest)
+    apply_curation(parsed.bids_dir, manifest, parsed.validator_image)
     return 0
 
 

@@ -9,10 +9,7 @@ supported-markers = [
 ]
 
 [manifest]
-constraints = [
-    { name = "deno", specifier = "==2.6.4" },
-    { name = "pillow", specifier = "<12" },
-]
+constraints = [{ name = "pillow", specifier = "<12" }]
 overrides = [{ name = "packaging", specifier = ">=26" }]
 
 [[package]]
@@ -35,18 +32,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a9/d2/f4d173e22df740bc37b1db102b386ba719b66e95b0f0d751f556b387e6d2/anyio-4.15.1.tar.gz", hash = "sha256:9f28306018cbd6d329e64a36d58256edff76dd996fe423bc957326e578b82a94", size = 276966, upload-time = "2026-09-05T10:42:39.44Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/12/b8/4bd346e22b28902df4d651910f5242c28d84e4a5c2435ca5c3f797ed7e2e/anyio-4.15.1-py3-none-any.whl", hash = "sha256:6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101", size = 132079, upload-time = "2026-09-05T10:42:37.923Z" },
-]
-
-[[package]]
-name = "bids-validator-deno"
-version = "3.0.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "deno", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/51/a9/99478a37eac0b8a55f5608b193301adb5754bcba7b097a2404b7d411fb3d/bids_validator_deno-3.0.2.tar.gz", hash = "sha256:a1580cfa6f3320eff3551cb5af10916f4962a9365e76d39b9155a75470c8a45b", size = 142592, upload-time = "2026-09-18T16:26:33.88Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/2c/f93f3600283d4440d4a413f46bd4a5a8dbda5b3a137f4adff7c0ead34cf8/bids_validator_deno-3.0.2-py3-none-any.whl", hash = "sha256:2607e11f18c7da5d788771e474a9cf0c95ed044cb6c3824e57faf45a02eeb5cd", size = 4385643, upload-time = "2026-09-18T16:26:32.123Z" },
 ]
 
 [[package]]
@@ -212,15 +197,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/72/3e/c59ff7d1abbd3160a
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ed/e6/9665e8cf8c7b37d5cf646dfa2941804388e11bf79c66576a8e85b5144f62/dcm2niix-1.0.20260724-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:92381fab09e97f517d2f1120b0d4d8c00f0ed9dddabc70a56abd4e003ec59344", size = 2104617, upload-time = "2026-07-24T19:54:42.374Z" },
     { url = "https://files.pythonhosted.org/packages/a4/59/e4969ca5e1b6fb71878ee19799ab74a00e94f467da4605485d6606da734c/dcm2niix-1.0.20260724-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:c36e3d00bb46deec9dac16d80dca640601962e01caef394dae5cea86e6b58fd0", size = 2411090, upload-time = "2026-07-24T19:54:45.488Z" },
-]
-
-[[package]]
-name = "deno"
-version = "2.6.4"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f9/35/1ff471a43b1cee1ee426c2294643e841dacebbaae5c8ee5256d2c16305e8/deno-2.6.4.tar.gz", hash = "sha256:11ba60852158551bc3139f00d38db1445882f75f26dd9bf505bcbff95221dd56", size = 4933, upload-time = "2026-01-05T19:25:57.512Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6e/23/d15d14667cdb7881c2eb297ac4211d9d450da3a4f64310f288025b7ffeed/deno-2.6.4-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:09f6de458c6629cf5dd8962bfb46824386df1e5aa865d8ab5bf5a936411a9f01", size = 46736371, upload-time = "2026-01-05T19:25:51.926Z" },
 ]
 
 [[package]]
@@ -521,7 +497,6 @@ name = "network-fmri"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "bids-validator-deno", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "datalad", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "datalad-installer", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "global-signal-plots", extra = ["plot"], marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -538,12 +513,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bids-validator-deno", specifier = ">=1.0" },
     { name = "datalad", specifier = ">=1.1" },
     { name = "datalad-installer", specifier = ">=1.1" },
     { name = "global-signal-plots", extras = ["plot"], git = "https://github.com/lobennett/global_signal_plots.git?rev=ee5ad00ad2f51586d0379d2fe5a6a5fa3e2e60d7" },
     { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=f858ec456f6c501de5f3eb50ab7fafa0aa52a5f8" },
-    { name = "network-fw2bids", git = "https://github.com/lobennett/network_fw2bids.git?rev=eba93dced33dd9458bb63f0db6830a357b024949" },
+    { name = "network-fw2bids", git = "https://github.com/lobennett/network_fw2bids.git?rev=006760861ea1ef6e3fa00a25de9a398d59433b5f" },
     { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=3ed9460a1cdb2fbb70c00368b62f6b49a4f1d99c" },
     { name = "nibabel", specifier = ">=5.3" },
 ]
@@ -554,7 +528,7 @@ dev = [{ name = "pytest", specifier = ">=8" }]
 [[package]]
 name = "network-fw2bids"
 version = "0.1.0"
-source = { git = "https://github.com/lobennett/network_fw2bids.git?rev=eba93dced33dd9458bb63f0db6830a357b024949#eba93dced33dd9458bb63f0db6830a357b024949" }
+source = { git = "https://github.com/lobennett/network_fw2bids.git?rev=006760861ea1ef6e3fa00a25de9a398d59433b5f#006760861ea1ef6e3fa00a25de9a398d59433b5f" }
 dependencies = [
     { name = "dcm2niix", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "flywheel-sdk", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },

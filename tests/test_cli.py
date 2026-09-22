@@ -34,11 +34,18 @@ def test_decisions_validate_calls_the_sealing_stage(tmp_path, monkeypatch):
 
 
 def test_curate_uses_only_the_governed_manifest_path(tmp_path, monkeypatch):
-    observed: list[tuple[Path, Path]] = []
-    monkeypatch.setattr(cli, "apply_curation", lambda bids, manifest: observed.append((bids, manifest)))
+    observed: list[tuple[Path, Path, Path]] = []
+    monkeypatch.setattr(
+        cli, "apply_curation",
+        lambda bids, manifest, image: observed.append((bids, manifest, image)),
+    )
 
-    assert cli.main(["curate", str(tmp_path / "bids")]) == 0
+    image = tmp_path / "validator.sif"
+    assert cli.main([
+        "curate", str(tmp_path / "bids"), "--validator-image", str(image),
+    ]) == 0
     assert observed == [(
         tmp_path / "bids",
         tmp_path / "bids" / "code" / "network_fmri" / "scan_decisions.tsv",
+        image,
     )]

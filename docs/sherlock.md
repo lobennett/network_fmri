@@ -5,6 +5,8 @@
 Use a Sherlock allocation, a pinned `uv` environment, a clean checkout, readable
 behavioral DataLad repositories, a clean canonical participant-metadata repository,
 configured annex remotes, and the containers named in the reviewed TOML.
+The BIDS Validator runs from its configured Apptainer image because Sherlock's host
+glibc cannot run the validator's Deno binary directly.
 
 ```bash
 cd /path/to/network_fmri

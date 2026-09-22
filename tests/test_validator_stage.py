@@ -1,22 +1,10 @@
 import json
-import shutil
-import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from network_fmri.qa.validate import ValidationError, validate_bids
-
-
-def test_installed_bids_validator_deno_entrypoint_smoke():
-    """The frozen Linux environment must expose the validator command we invoke."""
-
-    executable = shutil.which("bids-validator-deno")
-    if executable is None:
-        pytest.skip("bids-validator-deno is installed only in the reviewed Linux environment")
-    completed = subprocess.run([executable, "--version"], check=False, capture_output=True, text=True)
-    assert completed.returncode == 0
 
 
 class Runner:
@@ -37,7 +25,7 @@ def test_validator_failure_keeps_json_and_log_diagnostics(tmp_path):
     runner = Runner(returncode=1, stderr="invalid BIDS")
 
     with pytest.raises(ValidationError) as raised:
-        validate_bids(tmp_path, "precuration", runner)
+        validate_bids(tmp_path, "precuration", tmp_path / "validator.sif", runner)
 
     result = raised.value.result
     report = tmp_path / "derivatives" / "bids-validator" / "desc-precuration_validation.json"
@@ -47,10 +35,15 @@ def test_validator_failure_keeps_json_and_log_diagnostics(tmp_path):
     assert json.loads(report.read_text())["status"] == "validator-output-missing"
     assert "invalid BIDS" in log.read_text()
     command, = runner.calls
-    assert command[:3] == ["bids-validator-deno", str(tmp_path), "--outfile"]
-    assert Path(command[3]).parent == report.parent
-    assert Path(command[3]) != report
-    assert command[4:] == ["--format", "json_pp", "--prune"]
+    assert command[:3] == ["apptainer", "exec", "--bind"]
+    assert command[3] == f"{tmp_path}:/data:ro"
+    assert command[4:6] == ["--bind", f"{report.parent}:/out"]
+    assert command[6:11] == [
+        str(tmp_path / "validator.sif"), "deno", "-A", "/src/bids-validator.js", "/data",
+    ]
+    assert command[11] == "--outfile"
+    assert command[12].startswith("/out/.desc-precuration_validation.json.")
+    assert command[13:] == ["--format", "json_pp", "--prune"]
 
 
 def test_validator_success_preserves_validator_output(tmp_path):
@@ -58,11 +51,14 @@ def test_validator_success_preserves_validator_output(tmp_path):
 
     class WritingRunner(Runner):
         def __call__(self, args, **kwargs):
-            temporary_report = Path(args[args.index("--outfile") + 1])
+            name = Path(args[args.index("--outfile") + 1]).name
+            temporary_report = report.parent / name
             temporary_report.write_text('{"issues": {}}\n')
             return super().__call__(args, **kwargs)
 
-    result = validate_bids(tmp_path, "curated", WritingRunner(stdout="valid"))
+    result = validate_bids(
+        tmp_path, "curated", tmp_path / "validator.sif", WritingRunner(stdout="valid"),
+    )
 
     assert result.returncode == 0
     assert json.loads(report.read_text()) == {"issues": {}}
@@ -75,12 +71,12 @@ def test_validator_never_reuses_a_stale_report_when_new_output_is_missing(tmp_pa
     report.write_text('{"old": true}\n')
 
     with pytest.raises(ValidationError):
-        validate_bids(tmp_path, "curated", Runner(returncode=0))
+        validate_bids(tmp_path, "curated", tmp_path / "validator.sif", Runner(returncode=0))
 
     assert json.loads(report.read_text())["status"] == "validator-output-missing"
 
 
 def test_validator_rejects_unsafe_label_without_writing(tmp_path):
     with pytest.raises(ValueError, match="label"):
-        validate_bids(tmp_path, "../bad", Runner())
+        validate_bids(tmp_path, "../bad", tmp_path / "validator.sif", Runner())
     assert not (tmp_path / "derivatives").exists()

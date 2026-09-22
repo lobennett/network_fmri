@@ -9,7 +9,6 @@ dependencies = [
     "datalad>=1.1",
     # provisions git-annex; pip cannot ship the binary
     "datalad-installer>=1.1",
-    "bids-validator-deno>=1.0",
     "global-signal-plots[plot]",
     "network-fw2bids",
     "nibabel>=5.3",
@@ -32,7 +31,6 @@ testpaths = ["tests"]
 # Pillow 12 ships no wheel for this host (glibc 2.17) and its sdist needs libjpeg
 # headers we do not have. matplotlib pulls it in for the PDF traces.
 constraint-dependencies = [
-    "deno==2.6.4",  # newest wheel compatible with Sherlock's glibc 2.17
     "pillow<12",
 ]
 # Only ever runs on Sherlock; without this uv solves splits we cannot hit.
@@ -44,7 +42,7 @@ override-dependencies = [
 
 [tool.uv.sources]
 global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "ee5ad00ad2f51586d0379d2fe5a6a5fa3e2e60d7" }
-network_fw2bids = { git = "https://github.com/lobennett/network_fw2bids.git", rev = "eba93dced33dd9458bb63f0db6830a357b024949" }
+network_fw2bids = { git = "https://github.com/lobennett/network_fw2bids.git", rev = "006760861ea1ef6e3fa00a25de9a398d59433b5f" }
 network_events = { git = "https://github.com/lobennett/network_events.git", rev = "f858ec456f6c501de5f3eb50ab7fafa0aa52a5f8" }
 network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "3ed9460a1cdb2fbb70c00368b62f6b49a4f1d99c" }
 

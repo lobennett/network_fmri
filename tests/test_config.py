@@ -62,6 +62,10 @@ commit = "{out_of_scanner_commit}"
 source = "{tmp_path / 'canonical-demographics'}"
 commit = "{'c' * 40}"
 
+[validator]
+image = "{tmp_path / 'validator.sif'}"
+version = "3.0.1"
+
 [mriqc]
 image = "{tmp_path / 'mriqc.sif'}"
 version = "24.0.2"
@@ -91,6 +95,7 @@ def test_loads_single_dataset_configuration(tmp_path):
     assert config.paths.bids_dir == tmp_path / "bids"
     assert config.mriqc.version == "24.0.2"
     assert config.fmriprep.version == "25.2.5"
+    assert config.validator.version == "3.0.1"
     assert config.subjects == tuple(f"s{number}" for number in range(1, 47))
     assert config.behavior.in_scanner.commit == "a" * 40
     assert config.behavior.out_of_scanner.commit == "b" * 40

@@ -89,6 +89,7 @@ class WorkflowConfig:
     flywheel_project: str
     behavior: BehaviorSources
     participants: ParticipantsSource
+    validator: ContainerConfig
     mriqc: ContainerConfig
     fmriprep: ContainerConfig
     pydeface: VerifiedContainerConfig
@@ -113,7 +114,7 @@ def parse_config(raw: dict[str, Any], *, base: Path) -> WorkflowConfig:
     _reject_token_keys(raw)
     _unknown_keys(
         raw,
-        {"paths", "subjects_file", "flywheel_project", "behavior", "participants", "mriqc", "fmriprep", "pydeface", "slurm"},
+        {"paths", "subjects_file", "flywheel_project", "behavior", "participants", "validator", "mriqc", "fmriprep", "pydeface", "slurm"},
         "top-level",
     )
     # ``base`` remains part of this parser boundary so callers can retain the source
@@ -128,6 +129,7 @@ def parse_config(raw: dict[str, Any], *, base: Path) -> WorkflowConfig:
         subjects=subjects,
         flywheel_project=_flywheel_project(raw),
         behavior=_parse_behavior(_table(raw, "behavior", "top-level")),
+        validator=_parse_container(_table(raw, "validator", "top-level"), "validator"),
         mriqc=_parse_container(_table(raw, "mriqc", "top-level"), "mriqc"),
         fmriprep=_parse_container(_table(raw, "fmriprep", "top-level"), "fmriprep"),
         pydeface=_parse_verified_container(_table(raw, "pydeface", "top-level"), "pydeface"),

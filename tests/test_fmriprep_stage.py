@@ -48,6 +48,7 @@ def configuration(tmp_path: Path) -> WorkflowConfig:
             BehaviorSource(tmp_path / "out-of-scanner", "b" * 40),
         ),
         participants=ParticipantsSource(tmp_path / "demographics", "c" * 40),
+        validator=ContainerConfig(tmp_path / "validator.sif", "3.0.1"),
         mriqc=ContainerConfig(tmp_path / "mriqc.sif", "24.0.2"),
         fmriprep=ContainerConfig(tmp_path / "fmriprep.sif", "25.2.5"),
         pydeface=VerifiedContainerConfig(tmp_path / "pydeface.sif", "2.1.0", "a" * 64),

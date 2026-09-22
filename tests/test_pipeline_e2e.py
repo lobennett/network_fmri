@@ -55,6 +55,7 @@ def _config(tmp_path: Path) -> WorkflowConfig:
         # Keep the real trimming implementation in-process for this acceptance test.
         slurm=SlurmConfig("normal", 1, 32, 720, 1),
         participants=ParticipantsSource(demographics, "c" * 40),
+        validator=ContainerConfig(tmp_path / "validator.sif", "3.0.1"),
     )
 
 
@@ -119,8 +120,12 @@ class FakeApplications:
             Path(command[command.index("--out-tsv") + 1]).write_text("scan\tmean\nrun\t0\n")
             Path(command[command.index("--out-pdf") + 1]).write_bytes(b"%PDF")
             return SimpleNamespace(stdout="")
-        if command[0] == "bids-validator-deno":
-            Path(command[command.index("--outfile") + 1]).write_text("{}\n")
+        if command[:2] == ("apptainer", "exec") and "/src/bids-validator.js" in command:
+            output_root = next(
+                Path(value.removesuffix(":/out")) for value in command if value.endswith(":/out")
+            )
+            outfile = output_root / Path(command[command.index("--outfile") + 1]).name
+            outfile.write_text("{}\n")
             return SimpleNamespace(stdout="", stderr="", returncode=0)
         if command[:3] == ("network-qa", "decisions", "generate"):
             self._write_generated_manifest(Path(command[command.index("--output") + 1]))

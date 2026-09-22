@@ -40,6 +40,7 @@ class ValidationError(RuntimeError):
 def validate_bids(
     bids_dir: Path,
     label: str,
+    validator_image: Path,
     runner: Runner = subprocess.run,
 ) -> ValidationResult:
     """Validate a dataset and atomically publish fresh report and log artifacts.
@@ -61,7 +62,11 @@ def validate_bids(
     temporary_log = _temporary_path(output_dir, f".{log.name}.")
     try:
         command = [
-            "bids-validator-deno", str(bids_dir), "--outfile", str(temporary_report),
+            "apptainer", "exec",
+            "--bind", f"{bids_dir}:/data:ro",
+            "--bind", f"{output_dir}:/out",
+            str(validator_image), "deno", "-A", "/src/bids-validator.js", "/data",
+            "--outfile", f"/out/{temporary_report.name}",
             "--format", "json_pp", "--prune",
         ]
         returncode, stdout, stderr = _invoke(command, runner)
@@ -70,7 +75,7 @@ def validate_bids(
             _write_json(temporary_report, {
                 "label": label,
                 "status": output_error,
-                "detail": "bids-validator-deno did not produce a fresh JSON object",
+                "detail": "BIDS Validator did not produce a fresh JSON object",
             })
         _write_text(temporary_log, _join_output(stdout, stderr))
         os.replace(temporary_report, report)
@@ -136,10 +141,11 @@ def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="network_fmri validate")
     parser.add_argument("--bids-dir", required=True, type=Path)
     parser.add_argument("--label", required=True)
+    parser.add_argument("--image", required=True, type=Path)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = get_parser().parse_args(argv)
-    validate_bids(args.bids_dir, args.label)
+    validate_bids(args.bids_dir, args.label, args.image)
     return 0

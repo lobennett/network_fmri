@@ -19,8 +19,11 @@ class Runner:
     def __call__(self, args, **kwargs):
         command = [str(value) for value in args]
         self.calls.append(command)
-        if command[0] == "bids-validator-deno":
-            outfile = Path(command[command.index("--outfile") + 1])
+        if command[:2] == ["apptainer", "exec"] and "/src/bids-validator.js" in command:
+            output_root = next(
+                Path(value.removesuffix(":/out")) for value in command if value.endswith(":/out")
+            )
+            outfile = output_root / Path(command[command.index("--outfile") + 1]).name
             outfile.parent.mkdir(parents=True, exist_ok=True)
             outfile.write_text('{"issues": {}}\n')
             return SimpleNamespace(returncode=self.validator_returncode, stdout="", stderr="")
@@ -79,14 +82,14 @@ def test_drop_removes_echo_bundle_events_and_sidecars_but_keeps_raw_behavior(tmp
     manifest = _manifest(tmp_path / "code" / "network_fmri" / "scan_decisions.tsv")
     runner = Runner()
 
-    result = apply_curation(tmp_path, manifest, runner)
+    result = apply_curation(tmp_path, manifest, tmp_path / "validator.sif", runner)
 
     assert result.name == "mriqc-curated"
     assert not list(func.glob(f"{stem}*"))
     assert not event_qc.exists()
     assert behavior.is_file()
     assert runner.calls[0][:3] == ["network-qa", "decisions", "validate"]
-    assert runner.calls[-1][0] == "bids-validator-deno"
+    assert runner.calls[-1][:2] == ["apptainer", "exec"]
 
 
 def test_curation_rejects_missing_bundle_before_any_mutation(tmp_path):
@@ -94,7 +97,7 @@ def test_curation_rejects_missing_bundle_before_any_mutation(tmp_path):
     manifest = _manifest(tmp_path / "code" / "network_fmri" / "scan_decisions.tsv", task="nback")
 
     with pytest.raises(StageError, match="matched no BIDS images"):
-        apply_curation(tmp_path, manifest, Runner())
+        apply_curation(tmp_path, manifest, tmp_path / "validator.sif", Runner())
 
     assert list(func.glob(f"{stem}*"))
     assert behavior.is_file()
@@ -107,7 +110,7 @@ def test_curation_rebuilds_b0_links_for_the_remaining_acquisitions(tmp_path):
     kept_sidecar = _write(func / f"{kept}.json", "{}")
     manifest = _manifest(tmp_path / "code" / "network_fmri" / "scan_decisions.tsv")
 
-    result = apply_curation(tmp_path, manifest, Runner())
+    result = apply_curation(tmp_path, manifest, tmp_path / "validator.sif", Runner())
 
     fmap_sidecar = tmp_path / "sub-s01" / "ses-01" / "fmap" / "sub-s01_ses-01_fieldmap.json"
     assert result.details["b0"]["bold"] == 1
@@ -123,7 +126,9 @@ def test_curation_restores_bundle_and_b0_metadata_when_validation_fails(tmp_path
     manifest = _manifest(tmp_path / "code" / "network_fmri" / "scan_decisions.tsv")
 
     with pytest.raises(ValidationError):
-        apply_curation(tmp_path, manifest, Runner(validator_returncode=1))
+        apply_curation(
+            tmp_path, manifest, tmp_path / "validator.sif", Runner(validator_returncode=1),
+        )
 
     assert len(list(func.glob(f"{stem}*bold.nii.gz"))) == 3
     assert len(list(func.glob(f"{stem}*bold.json"))) == 3
@@ -144,7 +149,7 @@ def test_curation_restores_bundle_when_b0_relinking_fails(tmp_path, monkeypatch)
 
     monkeypatch.setattr(curation, "link_b0", fail_b0)
     with pytest.raises(StageError, match="injected B0 failure"):
-        apply_curation(tmp_path, manifest, Runner())
+        apply_curation(tmp_path, manifest, tmp_path / "validator.sif", Runner())
 
     assert len(list(func.glob(f"{stem}*bold.nii.gz"))) == 3
     assert len(list(func.glob(f"{stem}*bold.json"))) == 3
@@ -162,7 +167,7 @@ def test_curation_rejects_manifest_changed_after_approval_validation(tmp_path):
             return result
 
     with pytest.raises(StageError, match="changed after validation"):
-        apply_curation(tmp_path, manifest, MutatingRunner())
+        apply_curation(tmp_path, manifest, tmp_path / "validator.sif", MutatingRunner())
 
     assert list(func.glob(f"{stem}*"))
 
@@ -182,7 +187,7 @@ def test_anatomical_curation_uses_the_run_entity_to_select_one_image(tmp_path):
     )
     manifest.with_suffix(".meta.json").write_text("{}\n")
 
-    apply_curation(tmp_path, manifest, Runner())
+    apply_curation(tmp_path, manifest, tmp_path / "validator.sif", Runner())
 
     assert not one.exists()
     assert two.is_file()
@@ -201,7 +206,7 @@ def test_curation_removes_acquisition_specific_mriqc_and_derivatives(tmp_path):
     )
     manifest = _manifest(tmp_path / "code" / "network_fmri" / "scan_decisions.tsv")
 
-    apply_curation(tmp_path, manifest, Runner())
+    apply_curation(tmp_path, manifest, tmp_path / "validator.sif", Runner())
 
     assert not mriqc.exists()
     assert not report.exists()
@@ -222,6 +227,6 @@ def test_curation_rejects_an_edited_or_unsealed_manifest_before_mutation(tmp_pat
             return super().__call__(args, **kwargs)
 
     with pytest.raises(StageError, match="approval"):
-        apply_curation(tmp_path, manifest, RejectApproval())
+        apply_curation(tmp_path, manifest, tmp_path / "validator.sif", RejectApproval())
 
     assert list(func.glob(f"{stem}*"))
