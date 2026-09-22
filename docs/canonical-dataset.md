@@ -47,10 +47,7 @@ scores under a named directory in `derivatives/`.
 
 A clean rebuild starts with a new output directory and repeats conversion, assembly,
 behavioral installation, event generation, QA, and preprocessing. Imaging changes can
-therefore be made upstream and rebuilt without editing the finalized behavioral sources.
-Participant demographics belong in `participants.tsv` and `participants.json`; their
-canonical source must be reconciled and committed before a production configuration
-can replace the example path and zero commit.
+therefore be made upstream and rebuilt without editing the finalized source datasets.
 
 ## Finalized inputs
 
@@ -58,3 +55,4 @@ can replace the example path and zero commit.
 |---|---|---|
 | In-scanner behavior | `/oak/stanford/groups/russpold/data/network_grant/behavioral_data/canonical` | `8edc76d2bc36c175195d384953c5f1834e6a2e51` |
 | Out-of-scanner behavior | `/oak/stanford/groups/russpold/data/network_grant/behavioral_data/canonical_out_of_scanner` | `c2e14a7b0d437c3fd8b38a7b701a820d8acaea44` |
+| Participant metadata | `/oak/stanford/groups/russpold/data/network_grant/demographics/canonical` | `5179a94a37e525bbe59b30bf019d4bced6311972` |

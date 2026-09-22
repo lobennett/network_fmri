@@ -278,6 +278,11 @@ def main(argv: list[str] | None = None, *, runner=None) -> int:
                 print(f"{name}\t{job_id}")
         return 0
 
+    if not args.dry_run and runner is None:
+        from network_fmri.provenance import activate_git_annex
+
+        activate_git_annex()
+
     previous = _existing_record(config)
     if previous is not None and previous.pilot_subject != pilot_subject:
         raise RuntimeError(

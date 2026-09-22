@@ -22,7 +22,7 @@ commit = "c2e14a7b0d437c3fd8b38a7b701a820d8acaea44"
 [participants]
 # BIDS-ready, deidentified participants.tsv and participants.json at this commit.
 source = "/oak/stanford/groups/russpold/data/network_grant/demographics/canonical"
-commit = "0000000000000000000000000000000000000000"
+commit = "5179a94a37e525bbe59b30bf019d4bced6311972"
 
 [mriqc]
 image = "/home/groups/russpold/singularity_images/mriqc_24.0.2.sif"

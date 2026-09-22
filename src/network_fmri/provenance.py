@@ -21,12 +21,21 @@ def git_annex_dir() -> Path:
     return Path(os.environ.get("SCRATCH", Path.home())) / "git-annex"
 
 
+def activate_git_annex(root: Path | None = None) -> Path:
+    """Put the provisioned git-annex and its compatible Git on ``PATH``."""
+
+    directory = ensure_git_annex(root or git_annex_dir())
+    os.environ["PATH"] = os.pathsep.join((str(directory), os.environ.get("PATH", "")))
+    return directory
+
+
 def ensure_git_annex(root: Path) -> Path:
-    """Provision a DataLad-compatible git-annex without interleaved installations."""
+    """Provision git-annex and return its directory with a compatible Git."""
 
     bindir = root / "usr" / "bin"
-    if (bindir / "git-annex").is_file():
-        return bindir
+    bundled = root / "usr" / "lib" / "git-annex.linux"
+    if (bindir / "git-annex").is_file() and (bundled / "git").is_file():
+        return bundled
 
     import certifi
 
@@ -50,9 +59,9 @@ def ensure_git_annex(root: Path) -> Path:
         staging.rename(root)
     except OSError:
         shutil.rmtree(staging, ignore_errors=True)
-    if not (bindir / "git-annex").is_file():
-        raise SystemExit(f"git-annex missing at {bindir} after install")
-    return bindir
+    if not (bindir / "git-annex").is_file() or not (bundled / "git").is_file():
+        raise SystemExit(f"complete git-annex bundle missing at {root} after install")
+    return bundled
 
 
 def code_version() -> str:
@@ -94,6 +103,7 @@ def _git_revision(*args: str) -> str:
 
 
 __all__ = [
+    "activate_git_annex",
     "code_is_dirty",
     "code_revision",
     "code_version",
