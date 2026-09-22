@@ -23,7 +23,7 @@ Keep the token out of TOML files, shell history, Slurm commands, receipts, and l
 Verify that the PyDeface image digest matches `[pydeface]`:
 
 ```bash
-sha256sum /absolute/path/to/pydeface-2.1.0-fsl-6.0.7.18.sif
+sha256sum /home/groups/russpold/singularity_images/pydeface-2.1.0-fsl-2602.1.sif
 ```
 
 Slurm must provide `$SLURM_TMPDIR`. Flywheel archives, DICOMs, undefaced NIfTIs, and

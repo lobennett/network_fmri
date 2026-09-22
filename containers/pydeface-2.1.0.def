@@ -1,0 +1,17 @@
+Bootstrap: docker
+From: poldracklab/pydeface@sha256:c648b8d70f31a186ff003ed2ad15d491d7b4a7d9adaa4665cf95526415fe3773
+
+%post
+    /app/.pixi/envs/default/bin/python -m ensurepip
+    /app/.pixi/envs/default/bin/python -m pip install --no-deps --force-reinstall pydeface==2.1.0
+
+%environment
+    export PATH=/app/.pixi/envs/default/bin:$PATH
+    export FSLDIR=/app/.pixi/envs/default
+    export FSLOUTPUTTYPE=NIFTI_GZ
+
+%runscript
+    exec pydeface "$@"
+
+%labels
+    org.network-fmri.pydeface.version 2.1.0

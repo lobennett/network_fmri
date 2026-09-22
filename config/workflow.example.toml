@@ -37,10 +37,10 @@ image = "/oak/stanford/groups/russpold/shared/containers/fmriprep-25.2.5.sif"
 version = "25.2.5"
 
 [pydeface]
-# PyDeface 2.1.0 with FSL 6.0.7.18. Replace this example with `sha256sum` output.
-image = "/home/groups/russpold/singularity_images/pydeface-2.1.0-fsl-6.0.7.18.sif"
+# Built from containers/pydeface-2.1.0.def.
+image = "/home/groups/russpold/singularity_images/pydeface-2.1.0-fsl-2602.1.sif"
 version = "2.1.0"
-sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+sha256 = "8a253111015321ee9bd4c735f1bcaeb40972ac1c5c4d248a83b4cdd64fc851fe"
 
 [slurm]
 partition = "russpold,normal"
