@@ -46,11 +46,12 @@ canonical sources. These runs remain in BIDS and are recorded in
 s19/ses-11 directedForgettingWFlanker, s1292/ses-04 nBack, s300/ses-08 flanker,
 s180/ses-12 shapeMatchingWCuedTS, and s1175/ses-11 cuedTSWFlanker.
 
-Five false starts produced BOLD data before the task was stopped and repeated. They have
-no behavioral CSV; the completed repeat does. They are also recorded in
-`behavioral_exceptions.tsv`: s10/ses-01 goNogo run-1, s29/ses-12 directedForgettingWFlanker run-1,
-s43/ses-11 stopSignalWDirectedForgetting run-2, s336/ses-05 goNogo run-1, and
-s216/ses-05 directedForgetting run-1. Six pairings remain lower-confidence because only
+Five false starts were resolved in Flywheel by adding `_qa-reject` to their acquisition
+labels. Conversion skips them before assigning run numbers, so the completed acquisition
+is `run-1`. The affected scans are s10/ses-01 goNogo,
+s29/ses-12 directedForgettingWFlanker, s43/ses-11 stopSignalWDirectedForgetting,
+s336/ses-05 goNogo, and s216/ses-05 directedForgetting. Six pairings remain
+lower-confidence because only
 browser download order distinguished equivalent files: s76/ses-12, s247/ses-12, and
 s1175/ses-12. Their canonical provenance remains visible during modeling review.
 
