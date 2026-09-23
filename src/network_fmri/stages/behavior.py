@@ -40,6 +40,7 @@ def ingest_behavior(
             "network-events", "audit",
             "--bids-dir", str(config.paths.bids_dir),
             "--behavioral-dir", str(in_scanner),
+            *_pilot_subject_args(config.subjects),
         ],
         runner,
     )
@@ -53,6 +54,12 @@ def ingest_behavior(
             "out_of_scanner_commit": config.behavior.out_of_scanner.commit,
         },
     )
+
+
+def _pilot_subject_args(subjects: tuple[str, ...]) -> list[str]:
+    if len(subjects) != 1:
+        return []
+    return ["--subject", f"sub-{subjects[0]}"]
 
 
 def require_clean_canonical_source(

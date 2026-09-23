@@ -36,6 +36,16 @@ def test_events_uses_audited_create_against_canonical_sourcedata(tmp_path):
     ]]
 
 
+def test_events_scopes_pilot_conversion_to_selected_subject(tmp_path):
+    behavioral = tmp_path / "sourcedata" / "behavioral" / "in_scanner"
+    behavioral.mkdir(parents=True)
+    runner = Runner()
+
+    generate_events(tmp_path, runner, subjects=("s03",))
+
+    assert runner.calls[0][-2:] == ["--subject", "sub-s03"]
+
+
 def test_events_requires_canonical_behavioral_sourcedata(tmp_path):
     with pytest.raises(StageError, match="canonical behavioral"):
         generate_events(tmp_path, Runner())

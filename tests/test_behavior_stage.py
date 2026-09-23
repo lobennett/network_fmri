@@ -1,5 +1,6 @@
 from pathlib import Path
 import subprocess
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -100,6 +101,17 @@ def test_ingest_installs_both_pinned_subdatasets_and_audits_in_scanner(tmp_path)
         "out_of_scanner_source": str(config.behavior.out_of_scanner.source),
         "out_of_scanner_commit": "b" * 40,
     }
+
+
+def test_pilot_ingest_scopes_behavior_audit_to_selected_subject(tmp_path):
+    config = configuration(tmp_path)
+    config = replace(config, subjects=("s1",))
+    runner = runner_for(config)
+
+    ingest_behavior(config, runner)
+
+    audit = next(call for call in runner.calls if call[:2] == ["network-events", "audit"])
+    assert audit[-2:] == ["--subject", "sub-s1"]
 
 
 def test_ingest_preflights_both_sources_before_installing_either(tmp_path):

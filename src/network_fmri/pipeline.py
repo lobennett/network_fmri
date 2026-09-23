@@ -612,7 +612,7 @@ def _run_stage(
     if name == "dummy-volumes-trimmed":
         return trim_dataset(config.paths.bids_dir, jobs=config.slurm.cpus)
     if name == "bids-events-generated":
-        return generate_events(config.paths.bids_dir, runner)
+        return generate_events(config.paths.bids_dir, runner, subjects=config.subjects)
     if name == "gs-posttrim":
         return run_global_signal(config.paths.bids_dir, "posttrim", runner)
     if name == "b0-fieldmaps-linked":

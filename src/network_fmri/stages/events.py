@@ -9,7 +9,9 @@ from network_fmri.models import Runner, StageResult
 from network_fmri.stages import StageError
 
 
-def generate_events(bids_dir: Path, runner: Runner = subprocess.run) -> StageResult:
+def generate_events(
+    bids_dir: Path, runner: Runner = subprocess.run, *, subjects: tuple[str, ...] = (),
+) -> StageResult:
     """Create events after trimming, preserving conversion failures as QC evidence.
 
     ``network-events create`` performs its own identity audit before conversion.
@@ -30,6 +32,7 @@ def generate_events(bids_dir: Path, runner: Runner = subprocess.run) -> StageRes
         str(bids_dir),
         "--behavioral-dir",
         str(behavioral_dir),
+        *(["--subject", f"sub-{subjects[0]}"] if len(subjects) == 1 else []),
     ]
     try:
         runner(command, check=True)
