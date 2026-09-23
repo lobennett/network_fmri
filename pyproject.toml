@@ -44,7 +44,7 @@ override-dependencies = [
 global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "ee5ad00ad2f51586d0379d2fe5a6a5fa3e2e60d7" }
 network_fw2bids = { git = "https://github.com/lobennett/network_fw2bids.git", rev = "e242cd9f9c4b38a3c1bcd4b22bf566ba31cb08de" }
 network_events = { git = "https://github.com/lobennett/network_events.git", rev = "3c38b972bb0d4ecb807572adb9040f9603d2fbd1" }
-network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "a0e0d369ee75b34a7268624183f55415dd953059" }
+network_qa = { git = "https://github.com/lobennett/network_qa.git", rev = "9ff97fef3c751f3bf4b3b9c8ba7a9496345e98ef" }
 
 [build-system]
 requires = ["hatchling"]
