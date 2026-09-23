@@ -116,10 +116,10 @@ def submit_plan(
     subject_count = subject_count or first.subject_count
     if config is None or log_dir is None or subject_count is None:
         raise ValueError("planned jobs must carry Slurm configuration, log directory, and subject count")
-    jobs = dict(existing_jobs or {})
-    dependency_jobs = dict(jobs)
-    commands: dict[str, tuple[str, ...]] = {}
     complete = set(externally_completed)
+    jobs = dict(existing_jobs or {})
+    dependency_jobs = {name: job_id for name, job_id in jobs.items() if name not in complete}
+    commands: dict[str, tuple[str, ...]] = {}
     for job in plan:
         unresolved = [
             dependency for dependency in job.dependencies

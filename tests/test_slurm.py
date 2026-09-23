@@ -63,6 +63,18 @@ def test_submit_wires_returned_ids_into_afterok_dependencies(tmp_path):
     assert "--dependency=afterok:101" in runner.calls[1]
 
 
+def test_submit_does_not_depend_on_expired_ids_for_completed_stages(tmp_path):
+    runner = Runner()
+    plan = (PlannedJob("two", ("two",), dependencies=("one",)),)
+
+    submit_plan(
+        plan, config=config(), log_dir=tmp_path, subject_count=46, runner=runner,
+        existing_jobs={"one": "123"}, externally_completed=("one",),
+    )
+
+    assert not any(arg.startswith("--dependency=") for arg in runner.calls[0])
+
+
 def test_dry_run_never_invokes_sbatch_or_creates_a_job_id(tmp_path):
     runner = Runner()
     record = submit_plan(
