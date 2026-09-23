@@ -79,6 +79,8 @@ def test_participant_command_preserves_the_trimmed_dataset_contract(tmp_path, mo
     assert "--skip-bids-validation" in command
     assert option(command, "--omp-nthreads") == "2"
     assert f"{config.paths.freesurfer_license}:/license.txt:ro" in command
+    assert f"{config.paths.bids_dir / 'derivatives' / 'freesurfer'}:/freesurfer:ro" in command
+    assert option(command, "--fs-subjects-dir") == "/freesurfer"
     assert f"{tmp_path / 'node-tmp'}:/tmp" in command
     assert (config.paths.bids_dir / "derivatives" / "fmriprep").is_dir()
     assert (config.paths.work_dir / "fmriprep" / "s3").is_dir()

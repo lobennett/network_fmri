@@ -71,5 +71,18 @@ Repeat `--pilot-subject s03` when resuming a pilot. Use the configured log direc
 completion before submitting missing stages. Validator reports remain in
 `derivatives/bids-validator/`, including failed runs.
 
+After curation, the graph runs standalone FreeSurfer and stops at
+`surface-review-generated`. Inspect each subject under `derivatives/freesurfer/`, then
+complete `code/network_fmri/surface_review.tsv`. Every row needs `approved=yes`, a
+reviewer, and a review timestamp. Seal the checklist and resume fMRIPrep:
+
+```bash
+uv run --frozen network-fmri surfaces validate /path/to/workflow.toml
+uv run --frozen network-fmri pipeline submit /path/to/workflow.toml --resume
+```
+
+For a pilot, add `--pilot-subject s03` to both commands. fMRIPrep reads the reviewed
+subjects from `derivatives/freesurfer/`.
+
 Before curation, confirm that a durable DataLad annex remote has all raw content. The
 pre-curation state depends on that remote.

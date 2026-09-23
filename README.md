@@ -9,7 +9,7 @@ Flywheel → BIDS → pinned behavioral subdatasets → participant metadata
 → global signal (pretrim)
 → trim 7 volumes → events → global signal (posttrim) → B0 links
 → validator → MRIQC → human-approved scan decisions
-→ curation → validator → fMRIPrep
+→ curation → validator → FreeSurfer → human-approved surfaces → fMRIPrep
 ```
 
 Serial milestones use `datalad save` and write receipts under
@@ -72,6 +72,19 @@ uv run --frozen network-fmri pipeline submit /path/to/workflow.toml --resume
 `--resume` checks approval and completed stages before submitting missing work. Repeat
 `--pilot-subject s03` when resuming a pilot.
 
+The resumed graph runs standalone FreeSurfer for each subject and then stops at
+`surface-review-generated`. Inspect the surfaces in `derivatives/freesurfer/`, set every
+row in `code/network_fmri/surface_review.tsv` to `approved=yes`, and record the reviewer
+and review time. Seal the checklist and resume again:
+
+```bash
+uv run --frozen network-fmri surfaces validate /path/to/workflow.toml
+uv run --frozen network-fmri pipeline submit /path/to/workflow.toml --resume
+```
+
+Repeat `--pilot-subject s03` on both commands for a pilot. fMRIPrep reuses the reviewed
+FreeSurfer subjects directory.
+
 ## Outputs and recovery
 
 Configure a durable DataLad annex remote before curation. The pre-curation state is
@@ -79,8 +92,8 @@ recoverable only while that remote retains the annexed content. Do not run seria
 against the same dataset concurrently.
 
 Validator reports are stored in `derivatives/bids-validator/`; global-signal outputs in
-`derivatives/gs-pretrim/` and `derivatives/gs-posttrim/`; MRIQC and fMRIPrep each use a
-separate derivative dataset.
+`derivatives/gs-pretrim/` and `derivatives/gs-posttrim/`; MRIQC, FreeSurfer, and fMRIPrep
+each use a separate derivative dataset.
 
 See the [canonical dataset design](docs/canonical-dataset.md),
 [Sherlock operations](docs/sherlock.md), and

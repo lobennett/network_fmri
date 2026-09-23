@@ -24,11 +24,15 @@ STAGE_ORDER = (
     "gs-posttrim", "b0-fieldmaps-linked", "bids-precuration-validated",
     "mriqc-array", "mriqc-complete", "scan-decisions-generated",
     "scan-decisions-approved", "mriqc-curated", "bids-curated-validated",
+    "freesurfer-array", "freesurfer-complete", "surface-review-generated",
+    "surface-review-approved",
     "fmriprep-array", "fmriprep-complete",
 )
 
 _FIRST_SUBMISSION_END = "scan-decisions-generated"
 _POST_APPROVAL_START = "mriqc-curated"
+_SURFACE_REVIEW_END = "surface-review-generated"
+_POST_SURFACE_APPROVAL_START = "fmriprep-array"
 _TERMINAL_FAILURE_STATES = frozenset({
     "FAILED", "CANCELLED", "TIMEOUT", "OUT_OF_MEMORY", "NODE_FAIL", "BOOT_FAIL",
     "DEADLINE", "DEPENDENCY_NEVER_SATISFIED", "INVALID_DEPEND", "LAUNCH_FAILED",
@@ -60,7 +64,7 @@ def build_plan(
     jobs: list[PlannedJob] = []
     predecessor: str | None = None
     for name in STAGE_ORDER:
-        is_array = name in {"fw2bids-array", "mriqc-array", "fmriprep-array"}
+        is_array = name in {"fw2bids-array", "mriqc-array", "freesurfer-array", "fmriprep-array"}
         command = (
             "network-fmri", "_stage", name, source,
             *(("--array-index", "${SLURM_ARRAY_TASK_ID}") if is_array else ()),
@@ -102,9 +106,19 @@ def initial_submission(plan: tuple[PlannedJob, ...]) -> tuple[PlannedJob, ...]:
 
 
 def post_approval_submission(plan: tuple[PlannedJob, ...]) -> tuple[PlannedJob, ...]:
-    """Return jobs that can run only after a sealed decision manifest exists."""
+    """Return curated work through generation of the surface-review checklist."""
 
     start = next(index for index, job in enumerate(plan) if job.name == _POST_APPROVAL_START)
+    stop = next(index for index, job in enumerate(plan) if job.name == _SURFACE_REVIEW_END)
+    return plan[start: stop + 1]
+
+
+def post_surface_approval_submission(plan: tuple[PlannedJob, ...]) -> tuple[PlannedJob, ...]:
+    """Return fMRIPrep work allowed after reviewed surfaces are sealed."""
+
+    start = next(
+        index for index, job in enumerate(plan) if job.name == _POST_SURFACE_APPROVAL_START
+    )
     return plan[start:]
 
 
@@ -161,6 +175,52 @@ def require_committed_approval(config: WorkflowConfig, runner=subprocess.run) ->
         raise RuntimeError("committed scan-decision approval hashes do not match HEAD")
     if _sha256(working_manifest) != expected["manifest_sha256"] or _sha256(working_metadata) != expected["metadata_sha256"]:
         raise RuntimeError("working scan decisions differ from the committed approval milestone")
+
+
+def require_committed_surface_approval(
+    config: WorkflowConfig, runner=subprocess.run,
+) -> None:
+    """Require a validated surface checklist and its exact committed receipt."""
+
+    from network_fmri.milestones import receipt_path
+    from network_fmri.qa.freesurfer import validate_surface_review
+    from network_fmri.stages import StageError
+
+    try:
+        validate_surface_review(config)
+    except StageError as error:
+        raise RuntimeError(
+            "FreeSurfer surfaces are not approved; run "
+            "'network-fmri surfaces validate <config>' first"
+        ) from error
+    bids_dir = config.paths.bids_dir
+    receipt = receipt_path(bids_dir, "surface-review-approved")
+    manifest = bids_dir / "code" / "network_fmri" / "surface_review.tsv"
+    metadata = manifest.with_suffix(".meta.json")
+    try:
+        value = json.loads(_head_file(bids_dir, receipt, runner).decode("utf-8"))
+        committed_manifest = _head_file(bids_dir, manifest, runner)
+        committed_metadata = _head_file(bids_dir, metadata, runner)
+    except (OSError, subprocess.CalledProcessError, UnicodeError, json.JSONDecodeError) as error:
+        raise RuntimeError(
+            "surface review is approved but its approval milestone is not committed"
+        ) from error
+    if not isinstance(value, dict):
+        raise RuntimeError("committed surface-review approval milestone is malformed")
+    validation = value.get("validation")
+    expected = {
+        "manifest_sha256": _sha256(committed_manifest),
+        "metadata_sha256": _sha256(committed_metadata),
+    }
+    if (
+        value.get("stage") != "surface-review-approved"
+        or value.get("status") != "success"
+        or not isinstance(validation, dict)
+        or any(validation.get(key) != digest for key, digest in expected.items())
+        or _sha256(manifest.read_bytes()) != expected["manifest_sha256"]
+        or _sha256(metadata.read_bytes()) != expected["metadata_sha256"]
+    ):
+        raise RuntimeError("committed surface-review approval does not match the working files")
 
 
 def _head_file(bids_dir: Path, path: Path, runner) -> bytes:
@@ -308,6 +368,8 @@ def main(argv: list[str] | None = None, *, runner=None) -> int:
         first_missing = len(completed)
         approval_index = STAGE_ORDER.index("scan-decisions-approved")
         generated_index = STAGE_ORDER.index("scan-decisions-generated")
+        surface_approval_index = STAGE_ORDER.index("surface-review-approved")
+        surface_generated_index = STAGE_ORDER.index("surface-review-generated")
         if first_missing <= generated_index:
             selected = initial_submission(plan)[first_missing:]
         else:
@@ -326,7 +388,23 @@ def main(argv: list[str] | None = None, *, runner=None) -> int:
                 require_committed_approval(config)
             else:
                 require_committed_approval(config, command_runner)
-            selected = plan[first_missing:]
+            if first_missing <= surface_generated_index:
+                selected = plan[first_missing: surface_generated_index + 1]
+            else:
+                if first_missing == surface_approval_index:
+                    if runner is None:
+                        require_committed_surface_approval(config)
+                    else:
+                        require_committed_surface_approval(config, command_runner)
+                    completed = _completed_prefix(config, plan, previous, command_runner)
+                    first_missing = len(completed)
+                if first_missing <= surface_approval_index:
+                    raise RuntimeError("FreeSurfer surfaces are not approved and committed")
+                if runner is None:
+                    require_committed_surface_approval(config)
+                else:
+                    require_committed_surface_approval(config, command_runner)
+                selected = plan[first_missing:]
         existing = {name: job_id for name, job_id in existing.items() if name in completed}
         complete = tuple(completed)
     else:
@@ -392,6 +470,11 @@ def _stage_completed(config: WorkflowConfig, job: PlannedJob, record: Submission
         return _array_job_completed(record.jobs.get(job.name), runner) and _worker_receipts_exist(
             config.paths.bids_dir / "derivatives" / "mriqc", "mriqc", config.subjects,
         )
+    if job.name == "freesurfer-array":
+        return _array_job_completed(record.jobs.get(job.name), runner) and _worker_receipts_exist(
+            config.paths.bids_dir / "derivatives" / "freesurfer",
+            "freesurfer", config.subjects,
+        )
     if job.name == "fmriprep-array":
         return _array_job_completed(record.jobs.get(job.name), runner) and _worker_receipts_exist(
             config.paths.bids_dir / "derivatives" / "fmriprep", "fmriprep", config.subjects,
@@ -406,6 +489,12 @@ def _stage_completed(config: WorkflowConfig, job: PlannedJob, record: Submission
     if job.name == "scan-decisions-approved":
         try:
             require_committed_approval(config, runner)
+        except RuntimeError:
+            return False
+        return True
+    if job.name == "surface-review-approved":
+        try:
+            require_committed_surface_approval(config, runner)
         except RuntimeError:
             return False
         return True
@@ -548,7 +637,7 @@ def stage_main(argv: list[str] | None = None, *, runner=None) -> int:
     config = WorkflowConfig.load(args.config)
     if args.pilot_subject:
         config = pilot_config(config, args.pilot_subject)
-    array_stages = {"fw2bids-array", "mriqc-array", "fmriprep-array"}
+    array_stages = {"fw2bids-array", "mriqc-array", "freesurfer-array", "fmriprep-array"}
     if (args.stage in array_stages) != (args.array_index is not None):
         stage_parser().error("--array-index is required only for array stages")
     try:
@@ -586,6 +675,11 @@ def _run_stage(
     from network_fmri.prepare.trim import trim_dataset
     from network_fmri.qa.fmriprep import (
         fmriprep_participant_command, fmriprep_subject_receipt, verify_fmriprep,
+    )
+    from network_fmri.qa.freesurfer import (
+        freesurfer_participant_command, freesurfer_subject_receipt,
+        generate_surface_review, validate_surface_review, verify_freesurfer,
+        write_freesurfer_description,
     )
     from network_fmri.qa.mriqc import (
         mriqc_group_command, mriqc_group_receipt, mriqc_participant_command,
@@ -651,6 +745,24 @@ def _run_stage(
                 config.paths.bids_dir, "curated", config.validator.image, runner,
             ),
         )
+    if name == "freesurfer-array":
+        subject = _array_subject(config, array_index)
+        runner(freesurfer_participant_command(config, subject), check=True)
+        commit = current_datalad_commit(config.paths.bids_dir, runner)
+        root = config.paths.bids_dir / "derivatives" / "freesurfer"
+        from network_fmri.containers import receipt_path
+        write_subject_receipt(
+            receipt_path(root, "freesurfer", subject),
+            freesurfer_subject_receipt(config, subject, commit),
+        )
+        return _array_result(name, subject)
+    if name == "freesurfer-complete":
+        write_freesurfer_description(config)
+        return verify_freesurfer(config, runner)
+    if name == "surface-review-generated":
+        return generate_surface_review(config)
+    if name == "surface-review-approved":
+        return validate_surface_review(config)
     if name == "fmriprep-array":
         subject = _array_subject(config, array_index)
         runner(fmriprep_participant_command(config, subject), check=True)

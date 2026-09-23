@@ -28,6 +28,7 @@ def fmriprep_participant_command(config: WorkflowConfig, subject: str) -> tuple[
     if subject not in config.subjects:
         raise StageError(f"fMRIPrep subject {subject!r} is outside the exact roster")
     root = config.paths.bids_dir / "derivatives" / "fmriprep"
+    freesurfer = config.paths.bids_dir / "derivatives" / "freesurfer"
     work = config.paths.work_dir / "fmriprep" / subject
     prepare_bids_app_paths(root, work)
     prefix = apptainer_prefix(
@@ -38,6 +39,7 @@ def fmriprep_participant_command(config: WorkflowConfig, subject: str) -> tuple[
             bind(work, "/work"),
             bind(config.paths.templateflow_dir, "/templateflow", read_only=True),
             bind(config.paths.freesurfer_license, "/license.txt", read_only=True),
+            bind(freesurfer, "/freesurfer", read_only=True),
             bind(job_tmpdir(), "/tmp"),
         ),
         environment=(("TEMPLATEFLOW_HOME", "/templateflow"),),
@@ -50,6 +52,7 @@ def fmriprep_participant_command(config: WorkflowConfig, subject: str) -> tuple[
         "--random-seed", "12345", "--skull-strip-fixed-seed", "--skull-strip-t1w", "force",
         "--notrack", "--md-only-boilerplate", "--skip-bids-validation", "--stop-on-first-crash",
         "--fs-license-file", "/license.txt", "--nprocs", str(config.slurm.cpus),
+        "--fs-subjects-dir", "/freesurfer",
         "--omp-nthreads", str(min(2, config.slurm.cpus)),
         "--mem-mb", str(config.slurm.memory_gb * 1024),
     )

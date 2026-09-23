@@ -243,10 +243,23 @@ class FakeApplications:
             else:
                 self._write_mriqc_group()
             return
+        if str(self.config.fmriprep.image) in command and "recon-all" in command:
+            self._write_freesurfer_subject(command[command.index("-s") + 1])
+            return
         if str(self.config.fmriprep.image) in command and subject:
             self._write_fmriprep_subject(subject)
             return
         raise AssertionError(f"unexpected container command: {command}")
+
+    def _write_freesurfer_subject(self, subject: str) -> None:
+        root = self.bids_dir / "derivatives" / "freesurfer" / subject
+        for relative in (
+            "surf/lh.white", "surf/rh.white", "surf/lh.pial", "surf/rh.pial",
+            "stats/aseg.stats", "mri/brain.mgz", "scripts/recon-all.done",
+        ):
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("complete")
 
     def _write_mriqc_subject(self, subject: str) -> None:
         root = self.bids_dir / "derivatives" / "mriqc"
@@ -297,7 +310,7 @@ class FakeApplications:
 
 def _stage(name: str, config_path: Path, apps: FakeApplications) -> None:
     args = [name, str(config_path), "--pilot-subject", "s7"]
-    if name in {"fw2bids-array", "mriqc-array", "fmriprep-array"}:
+    if name in {"fw2bids-array", "mriqc-array", "freesurfer-array", "fmriprep-array"}:
         args.extend(("--array-index", "0"))
     assert pipeline.stage_main(args, runner=apps) == 0
 
@@ -336,7 +349,18 @@ def test_synthetic_pilot_executes_assembly_through_fmriprep(tmp_path, monkeypatc
         ["submit", str(config_path), "--pilot-subject", "s7", "--resume"], runner=apps,
     ) == 0
     curated = pipeline.STAGE_ORDER.index("mriqc-curated")
-    for name in pipeline.STAGE_ORDER[curated:]:
+    surface_generated = pipeline.STAGE_ORDER.index("surface-review-generated")
+    for name in pipeline.STAGE_ORDER[curated: surface_generated + 1]:
+        _stage(name, config_path, apps)
+    review = config.paths.bids_dir / "code/network_fmri/surface_review.tsv"
+    lines = review.read_text().splitlines()
+    lines[1] = lines[1].replace("\tno\t\t\t", "\tyes\treviewer\t2026-09-23T12:00:00Z\t")
+    review.write_text("\n".join(lines) + "\n")
+    _stage("surface-review-approved", config_path, apps)
+    assert pipeline.main(
+        ["submit", str(config_path), "--pilot-subject", "s7", "--resume"], runner=apps,
+    ) == 0
+    for name in pipeline.STAGE_ORDER[pipeline.STAGE_ORDER.index("fmriprep-array"):]:
         _stage(name, config_path, apps)
 
     assert apps.milestones == [
@@ -344,6 +368,7 @@ def test_synthetic_pilot_executes_assembly_through_fmriprep(tmp_path, monkeypatc
         "dummy-volumes-trimmed", "bids-events-generated", "gs-posttrim",
         "b0-fieldmaps-linked", "bids-precuration-validated", "mriqc-complete",
         "scan-decisions-generated", "scan-decisions-approved", "mriqc-curated",
+        "freesurfer-complete", "surface-review-generated", "surface-review-approved",
         "fmriprep-complete",
     ]
     assembled_receipt = json.loads(

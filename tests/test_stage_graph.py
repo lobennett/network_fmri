@@ -57,7 +57,9 @@ def test_graph_has_the_fixed_order_and_human_gate(tmp_path):
     assert names.index("scan-decisions-approved") < names.index("mriqc-curated")
     assert names.index("mriqc-curated") < names.index("fmriprep-array")
     assert names.index("mriqc-curated") < names.index("bids-curated-validated")
-    assert names.index("bids-curated-validated") < names.index("fmriprep-array")
+    assert names.index("bids-curated-validated") < names.index("freesurfer-array")
+    assert names.index("freesurfer-array") < names.index("surface-review-generated")
+    assert names.index("surface-review-approved") < names.index("fmriprep-array")
     assert all(
         job.dependencies == (() if index == 0 else (names[index - 1],))
         for index, job in enumerate(plan)
@@ -69,7 +71,7 @@ def test_array_workers_never_call_datalad(tmp_path):
 
     assert all("datalad" not in " ".join(job.command).lower() for job in plan if job.array)
     assert {job.name for job in plan if job.array} == {
-        "fw2bids-array", "mriqc-array", "fmriprep-array",
+        "fw2bids-array", "mriqc-array", "freesurfer-array", "fmriprep-array",
     }
 
 
