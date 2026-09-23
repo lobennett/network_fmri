@@ -188,6 +188,29 @@ def test_anatomical_iqms_need_valid_json_but_no_motion_threshold(tmp_path):
     assert verify_mriqc(config, GitRunner()).name == "mriqc-complete"
 
 
+def test_verification_accepts_one_report_for_a_multi_echo_bold_run(tmp_path):
+    config = configuration(tmp_path)
+    root = _complete_mriqc(config)
+    bids = config.paths.bids_dir
+    original = Path("sub-s3/ses-01/func/sub-s3_ses-01_task-rest_run-1_bold")
+    (bids / original.with_suffix(".nii.gz")).unlink()
+    (root / original.with_suffix(".json")).unlink()
+    for echo in (1, 2, 3):
+        image = Path(
+            f"sub-s3/ses-01/func/sub-s3_ses-01_task-rest_run-1_echo-{echo}_bold"
+        )
+        _write(bids / image.with_suffix(".nii.gz"))
+        _write(
+            root / image.with_suffix(".json"),
+            json.dumps({"provenance": {"settings": {"fd_thres": 0.5}}}),
+        )
+
+    result = verify_mriqc(config, GitRunner())
+
+    assert result.details["iqms"] == 94
+    assert result.details["reports"] == 92
+
+
 def test_verification_requires_a_current_group_receipt(tmp_path):
     config = configuration(tmp_path)
     root = _complete_mriqc(config)

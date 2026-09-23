@@ -69,9 +69,8 @@ def mriqc_group_receipt(config: WorkflowConfig, input_commit: str) -> dict[str, 
 def verify_mriqc(config: WorkflowConfig, runner: Runner = subprocess.run) -> StageResult:
     """Require complete IQMs/reports for the exact roster before consolidation.
 
-    MRIQC preserves each raw BIDS image's relative path while changing its suffix to
-    ``.json``/``.html``. Comparing against the current raw tree detects missing echoes,
-    sessions, and modalities without maintaining a second inventory format.
+    MRIQC writes one IQM JSON per image. For multi-echo BOLD, it writes one HTML
+    report per run and omits the echo entity from that report's name.
     """
 
     root = config.paths.bids_dir / "derivatives" / "mriqc"
@@ -101,7 +100,8 @@ def verify_mriqc(config: WorkflowConfig, runner: Runner = subprocess.run) -> Sta
             missing_iqms.append(path)
         elif not _valid_iqm(iqm, require_fd_threshold=_nifti_suffix(path) == "bold"):
             invalid_iqms.append(iqm)
-    missing_reports = [path for path in images if not _report_path(root, path).is_file()]
+    reports = {_report_path(root, path) for path in images}
+    missing_reports = [path for path in reports if not path.is_file()]
     if missing_iqms:
         raise StageError("MRIQC completion has missing IQMs: " + _display(missing_iqms, config.paths.bids_dir))
     if invalid_iqms:
@@ -145,7 +145,7 @@ def verify_mriqc(config: WorkflowConfig, runner: Runner = subprocess.run) -> Sta
         raise StageError("MRIQC completion found crash evidence: " + _display(crashes, config.paths.bids_dir))
     return StageResult(
         "mriqc-complete", (root, root / "dataset_description.json"),
-        {"subjects": len(config.subjects), "iqms": len(images), "reports": len(images)},
+        {"subjects": len(config.subjects), "iqms": len(images), "reports": len(reports)},
     )
 
 
@@ -199,7 +199,10 @@ def _derivative_companion(root: Path, bids_dir: Path, raw: Path, suffix: str) ->
 def _report_path(root: Path, raw: Path) -> Path:
     """MRIQC 24 writes per-image HTML reports at the derivative root."""
 
-    return root / f"{_stem(raw)}.html"
+    stem = _stem(raw)
+    if _nifti_suffix(raw) == "bold":
+        stem = "_".join(entity for entity in stem.split("_") if not entity.startswith("echo-"))
+    return root / f"{stem}.html"
 
 
 def _nifti_suffix(path: Path) -> str | None:
