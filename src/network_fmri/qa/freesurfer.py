@@ -36,6 +36,8 @@ def generate_surface_review(
     root = surface_review_directory(config)
     root.mkdir(parents=True, exist_ok=True)
     manifest = root / "surface_review.tsv"
+    if manifest.exists() or manifest.is_symlink() or manifest.with_suffix(".meta.json").exists():
+        raise StageError("surface review already exists; existing decisions were preserved")
     evidence = surface_fingerprints(config, derivative)
     with manifest.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=REVIEW_COLUMNS, delimiter="\t", lineterminator="\n")
@@ -116,6 +118,14 @@ def validate_surface_review(
     ]
     if invalid:
         raise StageError("surface review is not approved for: " + ", ".join(invalid))
+    if fields == REVIEW_COLUMNS:
+        root = value.get("surface_root")
+        if not isinstance(root, str):
+            raise StageError("surface review is missing its evidence root")
+        current = surface_fingerprints(config, Path(root))
+        if any(not row["surface_fingerprint"] or
+               current.get(row["subject"]) != row["surface_fingerprint"] for row in rows):
+            raise StageError("surface evidence changed; approval is no longer valid")
     return StageResult(
         "surface-review-approved", (manifest, metadata),
         {"subjects": len(rows), "manifest_sha256": _sha256(manifest),
@@ -148,31 +158,10 @@ def _sha256(path: Path) -> str:
 
 
 def _surface_fingerprint(artifact: Path, subject: str) -> str | None:
-    digest = hashlib.sha256()
-    if artifact.is_dir():
-        subject_root = artifact if artifact.name == f"sub-{subject}" else artifact / f"sub-{subject}"
-        paths = [subject_root / relative for relative in REQUIRED_OUTPUTS]
-        if any(not path.is_file() for path in paths):
-            return None
-        for relative, path in zip(REQUIRED_OUTPUTS, paths, strict=True):
-            digest.update(relative.encode())
-            digest.update(path.read_bytes())
-        return digest.hexdigest()
-    if not artifact.is_file() or artifact.suffix != ".zip":
+    """Hash named file contents consistently across archive and extracted forms."""
+    from network_fmri.surface_inventory import reconstruction_inventory
+
+    inventory = reconstruction_inventory(artifact, subject)
+    if not set(REQUIRED_OUTPUTS).issubset(inventory):
         return None
-    try:
-        with zipfile.ZipFile(artifact) as archive:
-            names = archive.namelist()
-            for relative in REQUIRED_OUTPUTS:
-                matches = [
-                    name for name in names
-                    if f"sub-{subject}/" in name and name.endswith("/" + relative)
-                ]
-                if len(matches) != 1:
-                    return None
-                info = archive.getinfo(matches[0])
-                digest.update(relative.encode())
-                digest.update(f"{info.CRC}:{info.file_size}".encode())
-    except (OSError, zipfile.BadZipFile):
-        return None
-    return digest.hexdigest()
+    return hashlib.sha256(json.dumps(inventory, sort_keys=True).encode()).hexdigest()

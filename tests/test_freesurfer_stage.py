@@ -11,6 +11,7 @@ import pytest
 
 from network_fmri.qa.freesurfer import generate_surface_review, validate_surface_review
 from network_fmri.qa.freesurfer import REQUIRED_OUTPUTS
+from network_fmri.qa.freesurfer import surface_fingerprints
 from network_fmri.stages import StageError
 
 
@@ -27,6 +28,41 @@ def surface_zip(path: Path, subject: str) -> None:
     with zipfile.ZipFile(path, "w") as archive:
         for relative in REQUIRED_OUTPUTS:
             archive.writestr(f"freesurfer/sub-{subject}/{relative}", "result")
+
+
+def test_same_content_has_same_fingerprint_zipped_or_unpacked(tmp_path):
+    config = configuration(tmp_path, ("s1",))
+    zipped = tmp_path / "zipped"
+    unpacked = tmp_path / "unpacked"
+    surface_zip(zipped / "sub-s1_anat.zip", "s1")
+    for relative in REQUIRED_OUTPUTS:
+        path = unpacked / "subjects/sub-s1" / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("result")
+    assert surface_fingerprints(config, zipped) == surface_fingerprints(config, unpacked)
+
+
+def test_fingerprint_includes_non_primary_reconstruction_files(tmp_path):
+    config = configuration(tmp_path, ("s1",))
+    root = tmp_path / "surfaces"
+    for relative in REQUIRED_OUTPUTS:
+        path = root / "sub-s1" / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("result")
+    first = surface_fingerprints(config, root)
+    (root / "sub-s1/mri/aseg.mgz").write_text("changed segmentation")
+    assert surface_fingerprints(config, root) != first
+
+
+def test_generate_preserves_existing_review(tmp_path):
+    config = configuration(tmp_path, ("s1",))
+    derivative = tmp_path / "anat"
+    surface_zip(derivative / "sub-s1_anat.zip", "s1")
+    manifest = generate_surface_review(config, derivative).outputs[0]
+    original = manifest.read_bytes()
+    with pytest.raises(StageError, match="exists"):
+        generate_surface_review(config, derivative)
+    assert manifest.read_bytes() == original
 
 
 def test_review_is_regenerated_from_external_anatomical_derivative(tmp_path):
@@ -86,6 +122,12 @@ def test_surface_review_requires_explicit_approval_for_every_subject(tmp_path):
     result = validate_surface_review(config)
     assert result.name == "surface-review-approved"
     assert result.details["subjects"] == 2
+
+    surface_zip(derivative / "sub-s1_anat.zip", "s1")
+    with zipfile.ZipFile(derivative / "sub-s1_anat.zip", "a") as archive:
+        archive.writestr("freesurfer/sub-s1/mri/aseg.mgz", "new segmentation")
+    with pytest.raises(StageError, match="changed"):
+        validate_surface_review(config)
 
 
 def test_surface_review_rejects_non_object_metadata(tmp_path):

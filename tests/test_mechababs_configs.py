@@ -50,13 +50,16 @@ def test_anatomical_config_produces_reusable_freesurfer_output():
 
 def test_full_config_consumes_anatomical_derivative_and_surfaces():
     config = load(APPS / "fMRIPrep-25.2.5+full.yaml")
-    upstream = config["input_datasets"]["fMRIPrep-25.2.5+anat"]
+    upstream = config["input_datasets"]["FreeSurfer-8.2.0"]
 
-    assert config["mechababs"]["depends_on"] == "fMRIPrep-25.2.5+anat"
+    assert config["mechababs"]["depends_on"] == "FreeSurfer-8.2.0"
     assert upstream["is_zipped"] is True
-    assert upstream["path_in_babs"] == "sourcedata/fMRIPrep-25.2.5+anat"
-    assert upstream["required_files"] == ["*fMRIPrep-25.2.5+anat*.zip"]
-    assert "fMRIPrep-25.2.5+anat" in config["bids_app_args"]["--fs-subjects-dir"]
+    assert upstream["path_in_babs"] == "sourcedata/FreeSurfer-8.2.0"
+    assert upstream["required_files"] == ["*FreeSurfer-8.2.0*.zip"]
+    assert "FreeSurfer-8.2.0" in config["bids_app_args"]["--fs-subjects-dir"]
+    assert config["bids_app_args"]["--fs-no-resume"] == ""
+    assert config["bids_app_args"]["--no-track-sessions"] == ""
+    assert config["bids_app_args"]["--fs-subjects-dir"].endswith("/subjects")
     assert config["bids_app_args"]["--level"] == "full"
     assert config["bids_app_args"]["--dummy-scans"] == "0"
     assert "--no-submm-recon" in config["bids_app_args"]
@@ -73,3 +76,11 @@ def test_all_apps_use_study_layout_and_isolated_container_runtime():
         assert config["all_results_in_one_zip"] is True
         assert "--containall" in config["singularity_args"]
         assert '-B $JOB_TMP:/tmp' in config["singularity_args"]
+
+
+def test_standalone_freesurfer_config():
+    config = load(APPS / "FreeSurfer-8.2.0.yaml")
+    assert config["mechababs"]["container"]["name"] == "bids-freesurfer"
+    assert config["mechababs"]["depends_on"] == "MRIQC-24.0.2"
+    assert "--anat-only" not in config["bids_app_args"]
+    assert config["zip_foldernames"] == {"FreeSurfer-8.2.0": "8-2-0"}

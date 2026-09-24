@@ -35,7 +35,7 @@ Dashboard work can use clearly labeled fixtures while reconstruction is running.
 - Encoded traversal and symlinks must not expose files outside the allowed roots (task 4).
 - Stale status or an interrupted index rebuild must be visible without losing the last good index (tasks 3–5).
 
-## 1. Define the versioned provenance receipt
+### Task 1: Define the versioned provenance receipt
 
 **Files:** create `src/network_fmri/records/lineage.py`,
 `tests/records/test_lineage.py`; modify `records/models.py`, `records/schema.sql`,
@@ -65,7 +65,7 @@ timestamps, job ID, and logs. Unknown optional historical fields are null.
   index schema and rebuild old caches rather than migrate disposable databases.
 - [ ] Rerun all `tests/records`; commit `Define file provenance records`.
 
-## 2. Record links where outputs are produced
+### Task 2: Record links where outputs are produced
 
 **Files:** create `network_fw2bids/src/network_fw2bids/provenance.py` and tests;
 modify its `planning.py`, `conversion.py`, `_assembly.py`; modify
@@ -92,7 +92,7 @@ shared JSON fixtures test compatibility without a new shared library.
   suites, commit each producer, and update fmri's locked Git dependencies only to
   tested published commits. Do not reorganize canonical behavior again.
 
-## 3. Collect derivatives and attempt history
+### Task 3: Collect derivatives and attempt history
 
 **Files:** modify `records/collect.py`, `records/mechababs.py`, `records/database.py`,
 `records/exports.py`; create `records/derivatives.py`,
@@ -117,7 +117,7 @@ is explicitly unrecorded, while subject-level dependencies remain labeled as suc
   JSON exports for artifact lineage and attempt history; rerun tests and commit
   `Index file lineage and durable processing history`.
 
-## 4. Serve a read-only local dashboard API
+### Task 4: Serve a read-only local dashboard API
 
 **Files in new `network_dashboard`:** `pyproject.toml`, `uv.lock`,
 `src/network_dashboard/{api,records,artifacts,cli}.py`,
@@ -142,7 +142,7 @@ artifact requests accept opaque IDs, never caller-supplied filesystem paths.
   refresh, missing-content retrieval by the operator, and startup with uv.
 - [ ] Rerun API tests, build the Python package, and commit the service.
 
-## 5. Build overview, file lineage, and image views
+### Task 5: Build overview, file lineage, and image views
 
 **Files in `network_dashboard/web`:** `package.json`, lockfile, `src/api.ts`,
 `src/main.ts`, `src/views/{subjects,lineage,attempts,review}.ts`,
@@ -166,7 +166,7 @@ the selected subject/artifact; NiiVue fetches only registered content URLs.
 - [ ] Run browser tests, type checks, production build, and narrow/desktop visual
   checks; commit the UI. Adopt a restrained, accessible design with no heavy UI framework.
 
-## 6. Verify end-to-end against sub-s03
+### Task 6: Verify end-to-end against sub-s03
 
 - [ ] Rebuild the index from the real study and launch the dashboard through a local
   connection. Trace one BOLD file, one surface, and one events file against original

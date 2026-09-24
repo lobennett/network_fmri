@@ -32,7 +32,7 @@ Companion: [provenance and dashboard](provenance-dashboard.md).
 - Controller restart after submission must not submit duplicate jobs (task 4).
 - Changed inputs or surfaces must invalidate approval before fMRIPrep starts (tasks 3–5).
 
-## 1. A reproducible standalone application
+### Task 1: A reproducible standalone application
 
 **Files:** create `src/network_fmri/freesurfer_app.py`,
 `containers/freesurfer-8.2.0.def`, `tests/test_freesurfer_app.py`;
@@ -70,7 +70,7 @@ input inventory, command, container identity, and exit status into the derivativ
 - [ ] Rerun the focused tests, verify `recon-all -version` inside the image, and
   commit `Add standalone FreeSurfer 8.2.0 application`.
 
-## 2. Wire the upstream application dependency
+### Task 2: Wire the upstream application dependency
 
 **Files:** create `src/network_fmri/mechababs/apps/FreeSurfer-8.2.0.yaml`;
 modify `src/network_fmri/mechababs/apps/fMRIPrep-25.2.5+full.yaml`,
@@ -99,7 +99,7 @@ consumes the unzipped derivative through BABS's `input_datasets` contract.
   allow the canonical reviewed derivative to be modified by fMRIPrep.
 - [ ] Rerun tests and commit `Use standalone surfaces in the MechaBABS campaign`.
 
-## 3. Extract and seal surface evidence
+### Task 3: Extract and seal surface evidence
 
 **Files:** create `src/network_fmri/surface_evidence.py`,
 `tests/test_surface_evidence.py`; modify `qa/freesurfer.py`, `pipeline.py`,
@@ -130,7 +130,7 @@ Existing `surface_fingerprints`, `generate_surface_review`, and
 - [ ] Rerun tests including `tests/test_processing.py`; commit
   `Bind surface approval to verified reconstruction evidence`.
 
-## 4. Advance automatically to each review gate
+### Task 4: Advance automatically to each review gate
 
 **Files:** modify `handoff.py`, `cli.py`, `processing.py`, `tests/test_handoff.py`,
 `tests/test_cli.py`; create `scripts/run_processing.sh`.
@@ -158,7 +158,7 @@ Expose `network-fmri processing run CONFIG`; preserve `run-mriqc` for existing j
   Submit the controller with `--propagate=NONE`; heavy work remains in BABS workers.
 - [ ] Rerun tests and commit `Automate processing through manual review boundaries`.
 
-## 5. Verify and migrate the sub-s03 pilot
+### Task 5: Verify and migrate the sub-s03 pilot
 
 **Files:** update `docs/mechababs.md`, `docs/sherlock.md`, and a short pilot result
 record under the study's `code/network_fmri/`; no participant data in the source repo.

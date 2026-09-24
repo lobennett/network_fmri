@@ -1,5 +1,5 @@
 mechababs:
-  depends_on: fMRIPrep-25.2.5+anat
+  depends_on: FreeSurfer-8.2.0
   selection:
     require_datatypes: [anat, func]
     require_positive: [t1w_num, bold_num]
@@ -29,7 +29,9 @@ bids_app_args:
   --skip-bids-validation: ""
   --stop-on-first-crash: ""
   --fs-license-file: "{{FREESURFER_LICENSE}}"
-  --fs-subjects-dir: '"${PWD}"/sourcedata/fMRIPrep-25.2.5+anat/fMRIPrep-25.2.5+anat/sourcedata/freesurfer'
+  --fs-no-resume: ""
+  --no-track-sessions: ""
+  --fs-subjects-dir: '"${PWD}"/sourcedata/FreeSurfer-8.2.0/FreeSurfer-8.2.0/subjects'
   --nprocs: "4"
   --omp-nthreads: "2"
   --mem-mb: "32000"
@@ -42,11 +44,11 @@ singularity_args:
   - --env TEMPLATEFLOW_HOME=/templateflow
 
 input_datasets:
-  fMRIPrep-25.2.5+anat:
+  FreeSurfer-8.2.0:
     required_files:
-      - "*fMRIPrep-25.2.5+anat*.zip"
+      - "*FreeSurfer-8.2.0*.zip"
     is_zipped: true
-    path_in_babs: sourcedata/fMRIPrep-25.2.5+anat
+    path_in_babs: sourcedata/FreeSurfer-8.2.0
 
 cluster_resources:
   interpreting_shell: "/bin/bash"
