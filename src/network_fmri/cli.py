@@ -13,6 +13,7 @@ from network_fmri.stages.decisions import generate_decisions, validate_decisions
 from network_fmri.config import WorkflowConfig
 from network_fmri.qa.freesurfer import generate_surface_review, validate_surface_review
 from network_fmri.processing import ProcessingManager
+from network_fmri.records import build_index
 from network_fmri.study import StudyManager
 
 
@@ -20,6 +21,11 @@ def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="network-fmri")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("pipeline", help="plan, submit, or inspect the fixed workflow")
+    records = commands.add_parser("records", help="build the disposable dashboard index")
+    record_commands = records.add_subparsers(dest="records_command", required=True)
+    records_build = record_commands.add_parser("build")
+    records_build.add_argument("config", type=Path)
+    records_build.add_argument("--output", required=True, type=Path)
     study = commands.add_parser("study", help="create or verify the MechaBABS input study")
     study_commands = study.add_subparsers(dest="study_command", required=True)
     study_init = study_commands.add_parser("init")
@@ -73,6 +79,11 @@ def main(argv: list[str] | None = None) -> int:
     if args and args[0] == "_stage":
         return pipeline.stage_main(args[1:])
     parsed = get_parser().parse_args(args)
+    if parsed.command == "records":
+        print(json.dumps(
+            build_index(WorkflowConfig.load(parsed.config), parsed.output), sort_keys=True
+        ))
+        return 0
     if parsed.command == "study":
         config = WorkflowConfig.load(parsed.config)
         if parsed.pilot_subject:

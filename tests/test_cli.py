@@ -17,7 +17,25 @@ def test_help_lists_the_small_public_surface(capsys):
     assert "curate" in output
     assert "study" in output
     assert "processing" in output
+    assert "records" in output
     assert "glm" not in output
+
+
+def test_records_build_prints_machine_readable_summary(tmp_path, monkeypatch, capsys):
+    config = SimpleNamespace(mechababs=SimpleNamespace(study_dir=tmp_path / "study"))
+    monkeypatch.setattr(cli.WorkflowConfig, "load", lambda _: config)
+    monkeypatch.setattr(
+        cli, "build_index", lambda value, output: {
+            "output": str(output), "schema_version": 1, "study_commit": "a" * 40,
+            "counts": {"entities": 2, "findings": 3},
+        },
+    )
+
+    output = tmp_path / "cache.sqlite"
+    assert cli.main(["records", "build", str(tmp_path / "workflow.toml"), "--output", str(output)]) == 0
+    value = __import__("json").loads(capsys.readouterr().out)
+    assert value["counts"] == {"entities": 2, "findings": 3}
+    assert value["output"] == str(output)
 
 
 def test_decisions_validate_calls_the_sealing_stage(tmp_path, monkeypatch):
