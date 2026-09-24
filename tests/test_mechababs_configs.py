@@ -58,6 +58,9 @@ def test_full_config_consumes_anatomical_derivative_and_surfaces():
     assert upstream["required_files"] == ["*fMRIPrep-25.2.5+anat*.zip"]
     assert "fMRIPrep-25.2.5+anat" in config["bids_app_args"]["--fs-subjects-dir"]
     assert config["bids_app_args"]["--level"] == "full"
+    assert config["bids_app_args"]["--dummy-scans"] == "0"
+    assert "--no-submm-recon" in config["bids_app_args"]
+    assert config["bids_app_args"]["--output-spaces"] == "MNI152NLin2009cAsym:res-2 T1w fsnative fsaverage6"
     assert config["zip_foldernames"] == {"fMRIPrep-25.2.5+full": "25-2-5"}
 
 
