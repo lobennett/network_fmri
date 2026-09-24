@@ -12,6 +12,7 @@ _COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _SUBJECT = re.compile(r"^s[0-9]+$")
 _FLYWHEEL_PROJECT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9_-]*$")
+_SLOT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 @dataclass(frozen=True)
@@ -80,6 +81,29 @@ class SlurmConfig:
 
 
 @dataclass(frozen=True)
+class MechaBABSAppConfig:
+    """One named project-owned MechaBABS application file."""
+
+    name: str
+    file: Path
+
+
+@dataclass(frozen=True)
+class MechaBABSConfig:
+    """Pinned study and campaign inputs for post-BIDS processing."""
+
+    study_dir: Path
+    durable_sibling: Path
+    campaign: str
+    raw_slot: str
+    container_dataset: Path
+    mechababs_commit: str
+    babs_commit: str
+    cluster_file: Path
+    apps: tuple[MechaBABSAppConfig, ...]
+
+
+@dataclass(frozen=True)
 class WorkflowConfig:
     """One validated interpretation of the single-dataset TOML configuration."""
 
@@ -94,6 +118,7 @@ class WorkflowConfig:
     fmriprep: ContainerConfig
     pydeface: VerifiedContainerConfig
     slurm: SlurmConfig
+    mechababs: MechaBABSConfig | None = None
 
     @classmethod
     def load(cls, path: Path) -> "WorkflowConfig":
@@ -114,13 +139,18 @@ def parse_config(raw: dict[str, Any], *, base: Path) -> WorkflowConfig:
     _reject_token_keys(raw)
     _unknown_keys(
         raw,
-        {"paths", "subjects_file", "flywheel_project", "behavior", "participants", "validator", "mriqc", "fmriprep", "pydeface", "slurm"},
+        {"paths", "subjects_file", "flywheel_project", "behavior", "participants", "validator", "mriqc", "fmriprep", "pydeface", "slurm", "mechababs"},
         "top-level",
     )
-    # ``base`` remains part of this parser boundary so callers can retain the source
-    # location in diagnostics. Runtime paths themselves must be explicitly absolute.
+    # Project-owned paths remain relative so the campaign records exactly which
+    # checked-out files it copied. ``base`` remains available for future diagnostics.
     del base
     paths = _parse_paths(_table(raw, "paths", "top-level"))
+    mechababs = _parse_mechababs(_table(raw, "mechababs", "top-level"))
+    if mechababs.study_dir.resolve(strict=False).is_relative_to(
+        paths.bids_dir.resolve(strict=False)
+    ):
+        raise ValueError("mechababs.study_dir must not be inside paths.bids_dir")
     subjects_file = _path(raw, "subjects_file", "top-level")
     subjects = _load_subjects(subjects_file)
     return WorkflowConfig(
@@ -135,6 +165,7 @@ def parse_config(raw: dict[str, Any], *, base: Path) -> WorkflowConfig:
         pydeface=_parse_verified_container(_table(raw, "pydeface", "top-level"), "pydeface"),
         slurm=_parse_slurm(_table(raw, "slurm", "top-level")),
         participants=_parse_participants(_table(raw, "participants", "top-level")),
+        mechababs=mechababs,
     )
 
 
@@ -247,6 +278,67 @@ def _parse_slurm(raw: dict[str, Any]) -> SlurmConfig:
         time_minutes=_positive_integer(raw, "time_minutes", "slurm"),
         array_concurrency=_positive_integer(raw, "array_concurrency", "slurm"),
     )
+
+
+def _parse_mechababs(raw: dict[str, Any]) -> MechaBABSConfig:
+    name = "mechababs"
+    _unknown_keys(
+        raw,
+        {
+            "study_dir", "durable_sibling", "campaign", "raw_slot",
+            "container_dataset", "mechababs_commit", "babs_commit",
+            "cluster_file", "apps",
+        },
+        name,
+    )
+    apps_value = raw.get("apps")
+    if not isinstance(apps_value, list) or not apps_value:
+        raise ValueError("mechababs.apps must be a non-empty array of tables")
+    apps = tuple(
+        _parse_mechababs_app(value, index)
+        for index, value in enumerate(apps_value)
+    )
+    if len({app.name for app in apps}) != len(apps):
+        raise ValueError("mechababs app names must be unique")
+    raw_slot = _nonempty_string(raw, "raw_slot", name)
+    if not _SLOT.fullmatch(raw_slot):
+        raise ValueError("mechababs.raw_slot must be one path component")
+    return MechaBABSConfig(
+        study_dir=_path(raw, "study_dir", name),
+        durable_sibling=_path(raw, "durable_sibling", name),
+        campaign=_nonempty_string(raw, "campaign", name),
+        raw_slot=raw_slot,
+        container_dataset=_path(raw, "container_dataset", name),
+        mechababs_commit=_commit(raw, "mechababs_commit", name),
+        babs_commit=_commit(raw, "babs_commit", name),
+        cluster_file=_project_path(raw, "cluster_file", name),
+        apps=apps,
+    )
+
+
+def _parse_mechababs_app(value: object, index: int) -> MechaBABSAppConfig:
+    name = f"mechababs.apps[{index}]"
+    if not isinstance(value, dict):
+        raise ValueError(f"{name} must be a table")
+    _unknown_keys(value, {"name", "file"}, name)
+    return MechaBABSAppConfig(
+        name=_nonempty_string(value, "name", name),
+        file=_project_path(value, "file", name),
+    )
+
+
+def _commit(raw: dict[str, Any], key: str, where: str) -> str:
+    value = _nonempty_string(raw, key, where)
+    if not _COMMIT.fullmatch(value):
+        raise ValueError(f"{where}.{key} must be a 40-character lowercase hexadecimal commit")
+    return value
+
+
+def _project_path(raw: dict[str, Any], key: str, where: str) -> Path:
+    path = Path(_nonempty_string(raw, key, where))
+    if path.is_absolute() or ".." in path.parts or path == Path("."):
+        raise ValueError(f"{where}.{key} must be a project-relative path without '..'")
+    return path
 
 
 def _load_subjects(path: Path) -> tuple[str, ...]:

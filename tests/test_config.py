@@ -79,6 +79,21 @@ image = "{pydeface_image}"
 version = "2.1.0"
 sha256 = "{pydeface_sha256}"
 
+[mechababs]
+study_dir = "{tmp_path / 'study'}"
+durable_sibling = "{tmp_path / 'study-storage'}"
+campaign = "network-v1"
+raw_slot = "raw"
+container_dataset = "{tmp_path / 'containers'}"
+mechababs_commit = "{'d' * 40}"
+babs_commit = "{'e' * 40}"
+cluster_file = "config/mechababs/clusters/sherlock.yaml"
+apps = [
+  {{ name = "mriqc", file = "config/mechababs/apps/mriqc-24.0.2.yaml" }},
+  {{ name = "anatomical", file = "config/mechababs/apps/fmriprep-25.2.5-anatomical.yaml" }},
+  {{ name = "fmriprep", file = "config/mechababs/apps/fmriprep-25.2.5-full.yaml" }},
+]
+
 [slurm]
 partition = "normal"
 {chr(10).join(f'{key} = {value}' for key, value in resources.items())}
@@ -101,6 +116,89 @@ def test_loads_single_dataset_configuration(tmp_path):
     assert config.behavior.out_of_scanner.commit == "b" * 40
     assert config.participants.source == tmp_path / "canonical-demographics"
     assert config.participants.commit == "c" * 40
+    assert config.mechababs.study_dir == tmp_path / "study"
+    assert config.mechababs.durable_sibling == tmp_path / "study-storage"
+    assert config.mechababs.container_dataset == tmp_path / "containers"
+    assert config.mechababs.campaign == "network-v1"
+    assert config.mechababs.raw_slot == "raw"
+    assert config.mechababs.mechababs_commit == "d" * 40
+    assert config.mechababs.babs_commit == "e" * 40
+    assert tuple(app.name for app in config.mechababs.apps) == (
+        "mriqc", "anatomical", "fmriprep",
+    )
+    assert config.mechababs.cluster_file == Path("config/mechababs/clusters/sherlock.yaml")
+
+
+@pytest.mark.parametrize("field", ["study_dir", "durable_sibling", "container_dataset"])
+def test_rejects_relative_mechababs_runtime_paths(tmp_path, field):
+    from network_fmri.config import WorkflowConfig
+
+    path = write_config(tmp_path)
+    path.write_text(path.read_text().replace(f'{field} = "{tmp_path}', f'{field} = "relative'))
+
+    with pytest.raises(ValueError, match=f"mechababs.{field} must be an absolute path"):
+        WorkflowConfig.load(path)
+
+
+@pytest.mark.parametrize("field", ["mechababs_commit", "babs_commit"])
+def test_rejects_invalid_mechababs_commits(tmp_path, field):
+    from network_fmri.config import WorkflowConfig
+
+    path = write_config(tmp_path)
+    path.write_text(path.read_text().replace(f'{field} = "' + ("d" if field == "mechababs_commit" else "e") * 40, f'{field} = "abc'))
+
+    with pytest.raises(ValueError, match=f"mechababs.{field} must be a 40-character"):
+        WorkflowConfig.load(path)
+
+
+def test_rejects_duplicate_mechababs_app_names(tmp_path):
+    from network_fmri.config import WorkflowConfig
+
+    path = write_config(tmp_path)
+    path.write_text(path.read_text().replace('{ name = "anatomical"', '{ name = "mriqc"'))
+
+    with pytest.raises(ValueError, match="app names must be unique"):
+        WorkflowConfig.load(path)
+
+
+@pytest.mark.parametrize("field", ["cluster_file", "file"])
+def test_rejects_absolute_or_escaping_mechababs_config_paths(tmp_path, field):
+    from network_fmri.config import WorkflowConfig
+
+    path = write_config(tmp_path)
+    needle = f'{field} = "config/'
+    for invalid in ("/tmp/config.yaml", "../config.yaml"):
+        edited = path.read_text().replace(needle, f'{field} = "{invalid}', 1)
+        candidate = tmp_path / f"{field}-{Path(invalid).name}.toml"
+        candidate.write_text(edited)
+        with pytest.raises(ValueError, match="project-relative path"):
+            WorkflowConfig.load(candidate)
+
+
+def test_rejects_mechababs_study_nested_in_raw_bids(tmp_path):
+    from network_fmri.config import WorkflowConfig
+
+    bids = tmp_path / "bids"
+    path = write_config(tmp_path, paths={"bids_dir": str(bids)})
+    path.write_text(path.read_text().replace(
+        f'study_dir = "{tmp_path / "study"}"',
+        f'study_dir = "{bids / "study"}"',
+    ))
+
+    with pytest.raises(ValueError, match="must not be inside paths.bids_dir"):
+        WorkflowConfig.load(path)
+
+
+def test_rejects_unknown_mechababs_key(tmp_path):
+    from network_fmri.config import WorkflowConfig
+
+    path = write_config(tmp_path)
+    path.write_text(path.read_text().replace(
+        '[mechababs]\n', '[mechababs]\nunknown = true\n',
+    ))
+
+    with pytest.raises(ValueError, match="unknown mechababs"):
+        WorkflowConfig.load(path)
 
 
 def test_loads_pinned_pydeface_container(tmp_path):
