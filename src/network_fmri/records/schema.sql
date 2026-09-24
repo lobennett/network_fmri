@@ -33,3 +33,22 @@ CREATE TABLE artifacts (
   entity_key TEXT REFERENCES entities(entity_key), kind TEXT, commit_hash TEXT,
   UNIQUE (stage, path)
 );
+CREATE TABLE artifact_versions (
+  id TEXT PRIMARY KEY, dataset_id TEXT NOT NULL, path TEXT NOT NULL,
+  content_id TEXT NOT NULL, source_ids TEXT NOT NULL
+);
+CREATE TABLE artifact_observations (
+  artifact_id TEXT NOT NULL REFERENCES artifact_versions(id),
+  commit_hash TEXT, availability TEXT NOT NULL,
+  PRIMARY KEY (artifact_id, commit_hash, availability)
+);
+CREATE TABLE processing_attempts (
+  id TEXT PRIMARY KEY, stage TEXT NOT NULL, scope TEXT NOT NULL,
+  status TEXT NOT NULL, evidence_json TEXT NOT NULL
+);
+CREATE TABLE lineage_links (
+  input TEXT NOT NULL REFERENCES artifact_versions(id),
+  attempt TEXT NOT NULL REFERENCES processing_attempts(id),
+  output TEXT NOT NULL REFERENCES artifact_versions(id), relation TEXT NOT NULL,
+  PRIMARY KEY (input, attempt, output, relation)
+);

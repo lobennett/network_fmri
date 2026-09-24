@@ -172,3 +172,20 @@ def test_raw_update_refuses_dirty_identity_before_updating(tmp_path):
     with pytest.raises(RuntimeError, match='identity manifest is dirty'):
         ProcessingManager(config, runner=runner)._sync_raw_subdataset()
     assert not any(command[0] == 'datalad' for command in commands)
+
+
+def test_fmriprep_rejects_approval_for_another_surface_derivative(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from network_fmri.processing import require_stage_gate
+    config = configuration(tmp_path)
+    config.mechababs = replace(config.mechababs, apps=(
+        MechaBABSAppConfig('anatomical', Path('FreeSurfer-8.2.0.yaml')),
+    ))
+    monkeypatch.setattr('network_fmri.pipeline.require_committed_surface_approval', lambda *a: None)
+    monkeypatch.setattr('network_fmri.surface_evidence.prepare_surface_evidence',
+                        lambda *a, **k: tmp_path / 'new-surfaces')
+    metadata = config.mechababs.study_dir / 'code/network_fmri/surface_review.meta.json'
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text(json.dumps({'surface_root': str(tmp_path / 'old-surfaces')}))
+    with pytest.raises(RuntimeError, match='current standalone'):
+        require_stage_gate(config, 'fmriprep', Runner())

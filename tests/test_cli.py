@@ -6,6 +6,12 @@ from types import SimpleNamespace
 import pytest
 
 from network_fmri import cli
+
+
+def test_processing_run_accepts_poll_interval():
+    parsed = cli.get_parser().parse_args(["processing", "run", "workflow.toml", "--poll-seconds", "5"])
+    assert parsed.processing_command == "run"
+    assert parsed.poll_seconds == 5
 from network_fmri.models import StageResult
 
 

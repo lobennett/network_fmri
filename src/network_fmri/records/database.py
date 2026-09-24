@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 import sqlite3
 import tempfile
 from datetime import datetime, timezone
@@ -10,7 +11,7 @@ from pathlib import Path
 
 from network_fmri.records.collect import RecordSet
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def build_database(output: Path, study: Path, records: RecordSet) -> Path:
@@ -75,3 +76,23 @@ def _insert(db: sqlite3.Connection, records: RecordSet) -> None:
         [(item.stage, item.path, item.entity_key, item.kind, item.commit)
          for item in records.artifacts],
     )
+    for receipt in records.lineage:
+        for item in receipt["artifacts"]:
+            values = (item["id"], item["dataset_id"], item["path"], item["content_id"],
+                      json.dumps(item.get("source_ids", {}), sort_keys=True))
+            old = db.execute("SELECT * FROM artifact_versions WHERE id=?", (item["id"],)).fetchone()
+            if old is not None and old != values:
+                raise ValueError("conflicting artifact identity across receipts")
+            db.execute("INSERT OR IGNORE INTO artifact_versions VALUES (?,?,?,?,?)", values)
+            observation = (item["id"], item.get("commit"), item["availability"])
+            db.execute("INSERT INTO artifact_observations SELECT ?,?,? WHERE NOT EXISTS "
+                       "(SELECT 1 FROM artifact_observations WHERE artifact_id=? AND commit_hash IS ? AND availability=?)",
+                       observation + observation)
+        for item in receipt["attempts"]:
+            values = (item["id"], item["stage"], item["scope"], item["status"], json.dumps(item, sort_keys=True))
+            old = db.execute("SELECT * FROM processing_attempts WHERE id=?", (item["id"],)).fetchone()
+            if old is not None and old != values:
+                raise ValueError("conflicting attempt identity across receipts")
+            db.execute("INSERT OR IGNORE INTO processing_attempts VALUES (?,?,?,?,?)", values)
+        db.executemany("INSERT OR IGNORE INTO lineage_links VALUES (?,?,?,?)",
+                       [(row["input"], row["attempt"], row["output"], row["relation"]) for row in receipt["links"]])

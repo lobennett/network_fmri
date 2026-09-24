@@ -54,7 +54,10 @@ jobs:
               assert got.startswith(want), f"{name}: {got} does not match {want}"
           PY
       - name: Run tests
-        run: uv run --frozen pytest -q -ra
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y git-annex
+          uv run --frozen pytest -q -ra
       - name: Build package
         run: uv build
       - name: Check repository diff

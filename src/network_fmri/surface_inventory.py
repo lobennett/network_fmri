@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path, PurePosixPath
 import stat
+import subprocess
 import zipfile
 
 from network_fmri.stages import StageError
@@ -14,8 +15,11 @@ def reconstruction_inventory(artifact: Path, subject: str) -> dict[str, str]:
     if artifact.is_dir():
         root = artifact if artifact.name == f"sub-{subject}" else artifact / f"sub-{subject}"
         inventory = {}
+        annex = _annex_store(root)
         for path in sorted(root.rglob("*")):
-            if path.is_symlink() and not path.resolve().is_relative_to(root.resolve()):
+            target = path.resolve()
+            if path.is_symlink() and not (target.is_relative_to(root.resolve())
+                                         or annex is not None and target.is_relative_to(annex)):
                 raise StageError("surface symlink escapes the subject directory")
             if path.is_file():
                 with path.open("rb") as stream:
@@ -47,3 +51,14 @@ def reconstruction_inventory(artifact: Path, subject: str) -> dict[str, str]:
     except (OSError, zipfile.BadZipFile) as error:
         raise StageError("cannot read surface archive") from error
     return inventory
+
+
+def _annex_store(root: Path) -> Path | None:
+    try:
+        value = subprocess.check_output(
+            ("git", "rev-parse", "--git-path", "annex/objects"), cwd=root,
+            text=True, stderr=subprocess.DEVNULL, timeout=5,
+        ).strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return (root / value).resolve()

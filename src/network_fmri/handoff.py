@@ -5,6 +5,7 @@ from collections import Counter
 import csv
 import fcntl
 import json
+import logging
 from pathlib import Path
 import subprocess
 import tempfile
@@ -14,6 +15,100 @@ from network_fmri.mriqc import prepare_mriqc_review
 from network_fmri.pipeline import save_stage_result
 from network_fmri.processing import ProcessingManager
 from network_fmri.stages.decisions import generate_decisions
+
+
+def run_processing(config, *, interval=300, manager=None, prepare_review=None,
+                   sleep=time.sleep, observe=None):
+    """Advance upstream jobs until human review or intervention is required."""
+    if interval < 1:
+        raise ValueError("poll interval must be at least one second")
+    lock = _lock_path(config.mechababs.study_dir)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with lock.open("a") as stream:
+        try:
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise RuntimeError("another processing handoff controller is running") from error
+        manager = manager or ProcessingManager(config)
+        prepare_review = prepare_review or (lambda stage: _prepare_boundary(config, stage))
+        observe = observe or (lambda: _refresh_records(config, manager))
+        reviewed = set()
+        while True:
+            observe()
+            stages = manager.plan()
+            for stage in stages:
+                print(f"{stage.stage}: {stage.state}", flush=True)
+                if stage.state == "complete":
+                    if stage.stage not in reviewed:
+                        pause = prepare_review(stage.stage)
+                        observe()
+                        if pause is not None:
+                            return pause
+                        reviewed.add(stage.stage)
+                    continue
+                if stage.state not in {"ready", "active"}:
+                    raise RuntimeError(f"{stage.stage} is {stage.state}; intervention required")
+                manager.advance(stage.stage)
+                sleep(interval)
+                break
+            else:
+                return {"state": "awaiting-output-review"}
+
+
+def _refresh_records(config, manager):
+    from network_fmri.records import build_index
+    from network_fmri.records.history import record_status
+
+    record_status(config, manager.status())
+    study = config.mechababs.study_dir
+    output = study.parent / ".network-fmri-cache" / study.name / "records.sqlite"
+    try:
+        build_index(config, output)
+    except Exception:
+        # The disposable dashboard cache cannot prevent an otherwise valid job
+        # handoff. Its previous build time remains visible until refresh succeeds.
+        logging.getLogger(__name__).exception("Dashboard refresh failed; retaining last index")
+
+
+def _prepare_boundary(config, stage):
+    from network_fmri import pipeline
+    from network_fmri.curation import apply_curation
+    from network_fmri.milestones import receipt_path
+    from network_fmri.processing import _require_committed_milestone
+    from network_fmri.qa.freesurfer import generate_surface_review
+    from network_fmri.surface_evidence import prepare_surface_evidence
+
+    study = config.mechababs.study_dir
+    if stage == "mriqc":
+        curated = receipt_path(config.paths.bids_dir, "bids-curated-validated")
+        if curated.exists():
+            _require_committed_milestone(config.paths.bids_dir, "bids-curated-validated", subprocess.run)
+            pipeline.require_committed_approval(config)
+            return None
+        evidence = prepare_mriqc_review(config)
+        manifest = study / "code/network_fmri/scan_decisions.tsv"
+        _prepare_decisions(config, evidence.evidence_dir, manifest)
+        try:
+            pipeline.require_committed_approval(config)
+        except RuntimeError as error:
+            return {"state": "awaiting-scan-review", "manifest": str(manifest), "reason": str(error)}
+        result = apply_curation(config.paths.bids_dir, manifest, config.validator.image)
+        save_stage_result(config.paths.bids_dir, result, config=config)
+    elif stage == "anatomical":
+        evidence = prepare_surface_evidence(config)
+        manifest = study / "code/network_fmri/surface_review.tsv"
+        if not manifest.exists():
+            result = generate_surface_review(config, evidence)
+            save_stage_result(study, result, config=config)
+        try:
+            pipeline.require_committed_surface_approval(config)
+        except RuntimeError as error:
+            return {"state": "awaiting-surface-review", "manifest": str(manifest), "reason": str(error)}
+    elif stage == "fmriprep":
+        return {"state": "awaiting-output-review"}
+    else:
+        raise ValueError(f"unknown review boundary: {stage}")
+    return None
 
 
 def run_mriqc(config, *, interval=300, manager=None, sleep=time.sleep):

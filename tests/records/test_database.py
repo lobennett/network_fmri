@@ -56,3 +56,18 @@ def test_rejects_cache_inside_study(tmp_path):
     study.mkdir()
     with pytest.raises(ValueError, match="outside the study"):
         build_database(study / "index.sqlite", study, records())
+
+
+def test_lineage_links_and_multiple_commit_observations_are_retained(tmp_path):
+    from dataclasses import replace
+    from tests.records.test_lineage import receipt
+    value = receipt()
+    value['artifacts'][0]['commit'] = 'a' * 40
+    later = receipt()
+    later['artifacts'][0]['commit'] = 'b' * 40
+    output = tmp_path / 'index.sqlite'
+    build_database(output, tmp_path / 'study', replace(records(), lineage=(value, later)))
+    with sqlite3.connect(output) as db:
+        assert db.execute('SELECT COUNT(*) FROM artifact_versions').fetchone()[0] == 4
+        assert db.execute('SELECT COUNT(*) FROM lineage_links').fetchone()[0] == 3
+        assert db.execute('SELECT COUNT(*) FROM artifact_observations WHERE commit_hash IS NOT NULL').fetchone()[0] == 2

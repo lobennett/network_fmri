@@ -10,6 +10,8 @@ from pathlib import Path
 
 from network_fmri.records.entities import entity_from_path
 from network_fmri.records.models import Artifact, Decision, Entity, Finding, StageAttempt
+from network_fmri.records.lineage import collect_receipts
+from network_fmri.records.native_lineage import collect_native_lineage
 
 
 class CollectionError(RuntimeError):
@@ -25,6 +27,7 @@ class RecordSet:
     findings: tuple[Finding, ...]
     decisions: tuple[Decision, ...]
     artifacts: tuple[Artifact, ...]
+    lineage: tuple[dict, ...] = ()
 
 
 def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") -> RecordSet:
@@ -110,6 +113,7 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
     return RecordSet(
         dataset_id, study_commit, tuple(sorted(entities.values(), key=lambda item: item.key)),
         tuple(attempts), tuple(findings), tuple(decisions), tuple(artifacts),
+        collect_receipts(study) + collect_native_lineage(raw, raw_id),
     )
 
 

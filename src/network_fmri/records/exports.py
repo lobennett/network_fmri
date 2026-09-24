@@ -8,7 +8,8 @@ import json
 import sqlite3
 from pathlib import Path
 
-TABLES = frozenset({"entities", "stage_attempts", "findings", "decisions", "artifacts"})
+TABLES = frozenset({"entities", "stage_attempts", "findings", "decisions", "artifacts",
+                   "artifact_versions", "artifact_observations", "processing_attempts", "lineage_links"})
 
 
 def export_table(database: Path, table: str, format: str) -> str:

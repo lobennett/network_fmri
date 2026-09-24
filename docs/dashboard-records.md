@@ -1,43 +1,40 @@
 # Dashboard records
 
-The dashboard index is a disposable SQLite cache built from the canonical DataLad
-study and refreshed MechaBABS status. Create it on node-local or workstation storage,
-outside the study:
+DataLad holds the evidence; SQLite is a disposable, read-only dashboard index.
 
 ```bash
 uv run --frozen network-fmri records build workflow.toml \
-  --output "$SLURM_TMPDIR/network-dashboard.sqlite"
+  --output /path/outside/study/records.sqlite
 ```
 
-The command prints JSON containing the output path, schema version, study commit,
-and row counts. Five tables support the future dashboard:
+`processing run` refreshes the index at
+`<study-parent>/.network-fmri-cache/<study-name>/records.sqlite` on each poll and
+at review boundaries. An unsuccessful rebuild preserves the last good index and
+its timestamp. The dashboard marks snapshots older than 15 minutes as stale.
 
-| Table | Contents |
+| Records | Contents |
 |---|---|
-| `entities` | normalized BIDS identities and derivative namespace |
-| `stage_attempts` | milestone receipts and current MechaBABS job states |
-| `findings` | MRIQC metrics, timing metrics, and event conversion errors |
-| `decisions` | preprocessing, first-level, and surface reviews |
-| `artifacts` | reports, receipts, derivatives, and dataset commits |
+| Entities and findings | BIDS IDs, MRIQC metrics, behavioral timing evidence |
+| Decisions | Separate preprocessing, analysis exclusion, and surface review scopes |
+| Stage attempts | Milestones, current jobs, and saved job observations |
+| Artifact versions | Dataset ID, relative path, and content hash |
+| Lineage | Recorded input/output links and processing details |
 
-The index stores BIDS IDs, metrics, decisions, provenance, and access-controlled
-relative paths. It does not store credentials, names, image content, or raw behavioral
-values. Delete and rebuild it whenever the study changes; never commit it to DataLad.
+The controller saves observed scheduler transitions under
+`code/network_fmri/processing-history/` using DataLad. Rebuilding SQLite preserves
+this history. Transitions before observation began remain unknown.
 
-Milestone receipts are read from both the wrapper study and its raw subdataset;
-defacing receipts and validator reports remain linked as artifacts. Historical
-scheduler retries remain in BABS provenance rather than the current jobs table.
+Current file lineage covers conversion, defacing, trimming, and events when their
+producer receipts exist. Trimming stores before/after image hashes in the sidecar's
+`NetworkFMRITrim` object as part of the existing recoverable file publication.
+Unavailable annex objects remain identifiable without downloading them. Historical
+files without receipts have unrecorded ancestry; filename similarity creates no link.
 
-Behavioral evidence uses `network_events` sidecars under
-`sourcedata/events_qc/`: the six trial-retention and scan-duration metrics are
-stored with their producer field names. A sidecar is evidence, even when no trials
-were dropped; its presence never creates an exclusion. Conversion errors come from
-`conversion_errors.tsv`; the index records affected runs and the evidence path,
-without copying source paths or error messages.
+The separate `network_dashboard` project serves this index locally. It keeps
+analysis exclusions independent of preprocessing and surface approval, and shows
+whether the source snapshot is stale. Study content and indexes belong outside
+GitHub and public hosting.
 
-Reviewed analysis exclusions come from `code/network_fmri/analysis_exclusions.tsv`
-in the wrapper, falling back to the raw dataset when the wrapper has no copy.
-Each row supplies `subject`, `session`, `task`, `run`, `analysis_scope`,
-`reason_code`, `reason_detail`, `reviewer`, and `reviewed_at`. The index preserves
-that analysis scope and records the explicit exclusion independently of preprocessing
-and surface decisions.
+Still pending: full provenance for fieldmap edits, global-signal reports,
+participant ingestion, and archived derivative members; real-study acceptance on
+Sherlock. Surface review criteria remain deferred until the lab supplies its protocol.

@@ -158,6 +158,14 @@ def require_stage_gate(config: WorkflowConfig, stage: str, runner=subprocess.run
         return
     if stage == "fmriprep":
         pipeline.require_committed_surface_approval(config, runner)
+        if any(app.name == "anatomical" and app.file.stem == "FreeSurfer-8.2.0"
+               for app in config.mechababs.apps):
+            from network_fmri.surface_evidence import prepare_surface_evidence
+            evidence = prepare_surface_evidence(config, runner=runner)
+            metadata = config.mechababs.study_dir / "code/network_fmri/surface_review.meta.json"
+            value = json.loads(metadata.read_text())
+            if Path(value.get("surface_root", "")).resolve() != evidence.resolve():
+                raise RuntimeError("approval does not refer to the current standalone FreeSurfer evidence")
         return
     raise ValueError(f"unknown processing stage: {stage}")
 

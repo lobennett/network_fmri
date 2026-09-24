@@ -11,6 +11,7 @@ independent, so ``--jobs`` is safe.
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import multiprocessing
 import os
@@ -56,6 +57,14 @@ def trim_one(nifti_path: Path) -> str:
             fields["NumVolumes"] = n_vols - N_DUMMY
         updated_sidecar = {**sidecar, **fields}
         nib.save(img.slicer[:, :, :, N_DUMMY:], str(paths.temporary_nifti))
+        # Publish identity with the existing recoverable pair, so a crash cannot
+        # leave a trimmed image without its before/after provenance.
+        updated_sidecar["NetworkFMRITrim"] = {
+            "schema_version": 1, "discarded_volumes": N_DUMMY,
+            "input_sha256": _sha256(nifti_path),
+            "output_sha256": _sha256(paths.temporary_nifti),
+            "input_volumes": n_vols, "output_volumes": n_vols - N_DUMMY,
+        }
         paths.temporary_sidecar.write_text(
             json.dumps(updated_sidecar, indent=2) + "\n", encoding="utf-8"
         )
@@ -68,6 +77,11 @@ def trim_one(nifti_path: Path) -> str:
         log.error("failed on %s: %s", nifti_path.name, e)
         _cleanup_pending(paths)
         return "error"
+
+
+def _sha256(path: Path) -> str:
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 class _TransactionPaths:

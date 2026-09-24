@@ -53,6 +53,10 @@ def get_parser() -> argparse.ArgumentParser:
     processing_run.add_argument("config", type=Path)
     processing_run.add_argument("--pilot-subject")
     processing_run.add_argument("--poll-seconds", type=int, default=300)
+    processing_all = processing_commands.add_parser("run", help="advance processing to each manual review gate")
+    processing_all.add_argument("config", type=Path)
+    processing_all.add_argument("--pilot-subject")
+    processing_all.add_argument("--poll-seconds", type=int, default=300)
     processing_plan = processing_commands.add_parser("plan")
     processing_plan.add_argument("config", type=Path)
     processing_plan.add_argument("--pilot-subject")
@@ -183,6 +187,12 @@ def main(argv: list[str] | None = None) -> int:
             result = run_mriqc(config, interval=parsed.poll_seconds)
             print(json.dumps(result, sort_keys=True))
             return 2 if result["state"] == "evidence-error" else 0
+        elif parsed.processing_command == "run":
+            from network_fmri.handoff import run_processing
+
+            result = run_processing(config, interval=parsed.poll_seconds)
+            print(json.dumps(result, sort_keys=True))
+            return 0
         elif parsed.processing_command == "prepare-review":
             result = prepare_mriqc_review(config)
             for key in ("evidence_dir", "source_dataset", "source_commit", "input_commit", "archives", "created"):
