@@ -72,15 +72,16 @@ then the review is sealed again in the study.
 
 ## Campaign and gates
 
-Project-owned MechaBABS configuration lives in
-`config/mechababs/{clusters,apps}/`. The Sherlock cluster file is adapted from the
+Package-owned MechaBABS templates live in
+`src/network_fmri/mechababs/{clusters,apps}/`. `study init` renders their configured
+container and license paths into the pinned campaign. The Sherlock cluster file is adapted from the
 existing `sherlock-compat` work. App files cover MRIQC 24.0.2, fMRIPrep 25.2.5
 anatomical processing, and fMRIPrep 25.2.5 full processing. The campaign pins the
 MechaBABS and BABS Git revisions and container dataset.
 
 The anatomical app produces the FreeSurfer surfaces that fMRIPrep will later reuse.
-The full app declares the anatomical app as both its ordering dependency and its
-input derivative. `network_fmri` advances one named app at a time:
+The full app declares the anatomical result as a chained input, which is also the
+MechaBABS ordering dependency. `network_fmri` advances one named app at a time:
 
 1. MRIQC can advance after prepared-BIDS validation.
 2. The anatomical app can advance only after scan decisions are sealed and the

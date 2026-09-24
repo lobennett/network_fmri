@@ -307,12 +307,14 @@ def _parse_mechababs(raw: dict[str, Any]) -> MechaBABSConfig:
     raw_slot = _nonempty_string(raw, "raw_slot", name)
     if not _SLOT.fullmatch(raw_slot):
         raise ValueError("mechababs.raw_slot must be one path component")
+    campaign = _nonempty_string(raw, "campaign", name)
+    campaign_dir = _path(raw, "campaign_dir", name)
     return MechaBABSConfig(
         study_dir=_path(raw, "study_dir", name),
-        campaign_dir=_path(raw, "campaign_dir", name),
+        campaign_dir=campaign_dir,
         durable_sibling=_path(raw, "durable_sibling", name),
         bootstrap_script=_path(raw, "bootstrap_script", name),
-        campaign=_nonempty_string(raw, "campaign", name),
+        campaign=campaign,
         raw_slot=raw_slot,
         container_dataset=_path(raw, "container_dataset", name),
         mechababs_commit=_commit(raw, "mechababs_commit", name),

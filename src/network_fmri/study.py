@@ -37,11 +37,13 @@ class StudyManager:
         self,
         config: MechaBABSConfig,
         raw_bids_dir: Path,
+        freesurfer_license: Path,
         *,
         runner=subprocess.run,
     ) -> None:
         self.config = config
         self.raw_bids_dir = raw_bids_dir.resolve(strict=False)
+        self.freesurfer_license = Path(freesurfer_license).resolve(strict=False)
         self.runner = runner
 
     @property
@@ -145,15 +147,36 @@ class StudyManager:
         installed_raw = self.config.study_dir / "sourcedata" / self.config.raw_slot
         try:
             installed_commit = self._output(("git", "rev-parse", "HEAD"), cwd=installed_raw)
+            installed_id = self._output(
+                ("git", "config", "--get", "datalad.dataset.id"), cwd=installed_raw
+            )
+            actual_study_id = self._output(
+                ("git", "config", "--get", "datalad.dataset.id"), cwd=self.config.study_dir
+            )
+            raw_url = self._output(
+                (
+                    "git", "config", "--file", str(self.config.study_dir / ".gitmodules"),
+                    "--get", f"submodule.sourcedata/{self.config.raw_slot}.url",
+                ),
+                cwd=self.config.study_dir,
+            )
+            oak_url = self._output(
+                ("git", "remote", "get-url", "oak"), cwd=self.config.study_dir
+            )
         except (OSError, subprocess.CalledProcessError) as error:
             raise RuntimeError("existing study does not match: raw subdataset is unavailable") from error
         if (
             not study_id
             or actual != expected
             or installed_commit != expected["raw_commit"]
+            or installed_id != expected["raw_dataset_id"]
+            or actual_study_id != study_id
+            or Path(raw_url).resolve(strict=False) != self.raw_bids_dir
+            or Path(oak_url).resolve(strict=False) != self.config.durable_sibling.resolve(strict=False)
             or not self.config.campaign_dir.is_dir()
         ):
             raise RuntimeError("existing study does not match the requested DataLad identities and commits")
+        self._verify_campaign()
         return StudyResult(
             self.config.study_dir,
             self.config.campaign_dir,
@@ -162,6 +185,37 @@ class StudyManager:
             str(expected["raw_commit"]),
             False,
         )
+
+    def _verify_campaign(self) -> None:
+        if self._output(("git", "status", "--porcelain"), cwd=self.config.campaign_dir):
+            raise RuntimeError("existing study does not match: campaign is dirty")
+        for name, expected in (
+            ("mechababs", self.config.mechababs_commit),
+            ("babs", self.config.babs_commit),
+        ):
+            if self._output(
+                ("git", "rev-parse", "HEAD"), cwd=self.config.campaign_dir / "code" / name
+            ) != expected:
+                raise RuntimeError(f"existing study does not match: campaign {name} pin changed")
+        for kind, relative, expected in self._rendered_configs():
+            path = self.config.campaign_dir / "code" / "mechababs" / kind / relative.name
+            try:
+                actual = path.read_text()
+            except OSError as error:
+                raise RuntimeError(f"existing study does not match: missing config {path}") from error
+            if actual != expected:
+                raise RuntimeError(f"existing study does not match: config changed: {path}")
+        identity = self.config.campaign_dir / "code" / "network_fmri" / "campaign.json"
+        try:
+            value = json.loads(identity.read_text())
+        except (OSError, json.JSONDecodeError) as error:
+            raise RuntimeError("existing study does not match: campaign identity missing") from error
+        if value != {
+            "campaign": self.config.campaign,
+            "mechababs_commit": self.config.mechababs_commit,
+            "babs_commit": self.config.babs_commit,
+        }:
+            raise RuntimeError("existing study does not match: campaign identity changed")
 
     def _write_study_files(self, subjects: tuple[str, ...]) -> None:
         description = {
@@ -245,6 +299,7 @@ class StudyManager:
                 raise RuntimeError(
                     f"bootstrap resolved {name} at {actual}, expected {expected}"
                 )
+        self._install_configs()
         executable = self.config.campaign_dir / ".venv" / "bin" / "mechababs"
         self._run(
             (
@@ -261,6 +316,50 @@ class StudyManager:
                 "--processing-level", "session",
             )
         )
+
+    def _install_configs(self) -> None:
+        """Copy and render package-owned app and cluster configs into the campaign."""
+
+        destination_root = self.config.campaign_dir / "code" / "mechababs"
+        for kind, relative, content in self._rendered_configs():
+            destination = destination_root / kind / relative.name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(content)
+        identity = self.config.campaign_dir / "code" / "network_fmri" / "campaign.json"
+        identity.parent.mkdir(parents=True, exist_ok=True)
+        identity.write_text(json.dumps({
+            "campaign": self.config.campaign,
+            "mechababs_commit": self.config.mechababs_commit,
+            "babs_commit": self.config.babs_commit,
+        }, indent=2, sort_keys=True) + "\n")
+        self._run((
+            "datalad", "save", "-d", str(self.config.campaign_dir), "-m",
+            f"Configure {self.config.campaign} campaign",
+        ))
+
+    def _rendered_configs(self) -> list[tuple[str, Path, str]]:
+        source_root = Path(__file__).with_name("mechababs")
+        replacements = {
+            "{{CONTAINER_DATASET}}": str(self.config.container_dataset),
+            "{{FREESURFER_LICENSE}}": str(self.freesurfer_license),
+            "{{MECHABABS_VENV}}": str(self.config.campaign_dir / ".venv"),
+        }
+        requested = [("clusters", self.config.cluster_file)] + [
+            ("pipelines", app.file) for app in self.config.apps
+        ]
+        rendered = []
+        for kind, relative in requested:
+            source_kind = "apps" if kind == "pipelines" else kind
+            source = source_root / source_kind / relative.name
+            if not source.is_file():
+                raise RuntimeError(f"packaged MechaBABS config is missing: {source}")
+            content = source.read_text()
+            for marker, value in replacements.items():
+                content = content.replace(marker, value)
+            if re.search(r"\{\{[A-Z_]+\}\}", content):
+                raise RuntimeError(f"unresolved placeholder in MechaBABS config: {source}")
+            rendered.append((kind, relative, content))
+        return rendered
 
     def _output(self, command: tuple[str, ...], *, cwd: Path) -> str:
         result = self.runner(command, cwd=str(cwd), check=True, capture_output=True, text=True)

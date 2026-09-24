@@ -53,6 +53,13 @@ uv run --frozen network-fmri curate "$RAW" --manifest "$REVIEW" \
   --validator-image /home/groups/russpold/singularity_images/bids-validator-3.0.1.sif
 ```
 
+To preserve an existing approved review instead of re-entering it, run
+`network-fmri reviews migrate-scan` with its old manifest/BIDS root and the new
+MRIQC derivative. The command copies human decisions only when regenerated BIDS
+keys and evidence match exactly; otherwise it writes a mismatch report and leaves
+the new review unsealed. `reviews migrate-surfaces` applies the same rule to an
+existing surface checklist.
+
 Advance anatomical preprocessing until complete. Generate the surface checklist
 from its derivative, inspect every subject, set `approved=yes` with reviewer and
 timestamp, and seal it before full fMRIPrep.

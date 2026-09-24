@@ -27,9 +27,9 @@ class RecordSet:
     artifacts: tuple[Artifact, ...]
 
 
-def collect_study(study: Path, runner=subprocess.run) -> RecordSet:
+def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") -> RecordSet:
     study = Path(study).resolve()
-    raw = study / "sourcedata" / "raw"
+    raw = study / "sourcedata" / raw_slot
     dataset_id = _git(runner, study, ("git", "config", "--get", "datalad.dataset.id"))
     study_commit = _git(runner, study, ("git", "rev-parse", "HEAD"))
     raw_id = _git(runner, raw, ("git", "config", "--get", "datalad.dataset.id"))
@@ -40,7 +40,7 @@ def collect_study(study: Path, runner=subprocess.run) -> RecordSet:
     decisions: list[Decision] = []
     artifacts: list[Artifact] = [
         Artifact("study", ".", kind="dataset", commit=study_commit),
-        Artifact("raw", "sourcedata/raw", kind=f"dataset:{raw_id}", commit=raw_commit),
+        Artifact("raw", f"sourcedata/{raw_slot}", kind=f"dataset:{raw_id}", commit=raw_commit),
     ]
 
     for path in sorted(raw.glob("code/network_fmri/milestones/*.json")):
@@ -64,7 +64,7 @@ def collect_study(study: Path, runner=subprocess.run) -> RecordSet:
     for path in sorted((study / "derivatives").glob("**/*.json")):
         if "mriqc" not in path.as_posix().lower() or not path.name.startswith("sub-"):
             continue
-        value = _json(path, "MRIQC metric")
+        value = _mriqc_metrics(_json(path, "MRIQC metric"))
         entity = entity_from_path(path.relative_to(study))
         entities[entity.key] = entity
         findings.append(Finding(
@@ -182,3 +182,16 @@ def _git(runner, root: Path, command: tuple[str, ...]) -> str:
 
 def _relative(path: Path, study: Path) -> str:
     return path.relative_to(study).as_posix()
+
+
+def _mriqc_metrics(value: dict) -> dict[str, int | float]:
+    prefixes = (
+        "aor", "aqi", "cjv", "cnr", "dvars_", "efc", "fber", "fd_", "fwhm_",
+        "gcor", "gsr_", "icvs_", "inu_", "qi_", "rpve_", "size_", "snr",
+        "spacing_", "summary_", "tpm_overlap_", "tsnr", "wm2max",
+    )
+    return {
+        key: metric for key, metric in value.items()
+        if isinstance(metric, (int, float)) and not isinstance(metric, bool)
+        and key.startswith(prefixes)
+    }

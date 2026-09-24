@@ -30,6 +30,10 @@ class Runner:
             return SimpleNamespace(stdout=value + "\n")
         if command[:4] == ("git", "config", "--get", "datalad.dataset.id"):
             return SimpleNamespace(stdout=self.raw_id + "\n")
+        if command[:3] == ("git", "config", "--file"):
+            return SimpleNamespace(stdout=str(Path(kwargs["cwd"]).parent / "raw") + "\n")
+        if command[:4] == ("git", "remote", "get-url", "oak"):
+            return SimpleNamespace(stdout=str(Path(kwargs["cwd"]).parent / "oak-study") + "\n")
         return SimpleNamespace(stdout="")
 
 
@@ -42,7 +46,7 @@ def mechababs(tmp_path: Path) -> MechaBABSConfig:
         campaign_dir=tmp_path / "campaign",
         durable_sibling=tmp_path / "oak-study",
         bootstrap_script=bootstrap,
-        campaign="network-v1",
+        campaign="campaign",
         raw_slot="raw",
         container_dataset=tmp_path / "containers",
         mechababs_commit="d" * 40,
@@ -75,7 +79,7 @@ def raw_dataset(tmp_path: Path) -> Path:
 
 def test_initialize_creates_study_metadata_raw_slot_campaign_and_sibling(tmp_path):
     runner = Runner()
-    manager = StudyManager(mechababs(tmp_path), raw_dataset(tmp_path), runner=runner)
+    manager = StudyManager(mechababs(tmp_path), raw_dataset(tmp_path), tmp_path / "license.txt", runner=runner)
 
     result = manager.initialize(subjects=("s01", "s02"))
 
@@ -91,11 +95,15 @@ def test_initialize_creates_study_metadata_raw_slot_campaign_and_sibling(tmp_pat
     assert any(command[:2] == ("datalad", "create-sibling") for command in commands)
     assert any(command[0:2] == ("bash", str(manager.config.bootstrap_script)) for command in commands)
     assert any(command[-2:] == ("--processing-level", "session") for command in commands)
+    rendered = result.campaign_dir / "code/mechababs/pipelines/fMRIPrep-25.2.5+full.yaml"
+    assert str(manager.config.container_dataset) in rendered.read_text()
+    assert str(tmp_path / "license.txt") in rendered.read_text()
+    assert "{{" not in rendered.read_text()
 
 
 def test_initialize_matching_rerun_is_a_noop(tmp_path):
     runner = Runner()
-    manager = StudyManager(mechababs(tmp_path), raw_dataset(tmp_path), runner=runner)
+    manager = StudyManager(mechababs(tmp_path), raw_dataset(tmp_path), tmp_path / "license.txt", runner=runner)
     first = manager.initialize(subjects=("s01", "s02"))
     runner.commands.clear()
 
@@ -115,7 +123,7 @@ def test_initialize_rejects_dirty_raw_dataset(tmp_path):
             return result
 
     with pytest.raises(RuntimeError, match="raw BIDS dataset is dirty"):
-        StudyManager(mechababs(tmp_path), raw_dataset(tmp_path), runner=DirtyRunner()).initialize(
+        StudyManager(mechababs(tmp_path), raw_dataset(tmp_path), tmp_path / "license.txt", runner=DirtyRunner()).initialize(
             subjects=("s01", "s02")
         )
 
@@ -123,7 +131,7 @@ def test_initialize_rejects_dirty_raw_dataset(tmp_path):
 @pytest.mark.parametrize("field", ["raw_commit", "raw_dataset_id", "subjects"])
 def test_initialize_rejects_conflicting_existing_identity(tmp_path, field):
     runner = Runner()
-    manager = StudyManager(mechababs(tmp_path), raw_dataset(tmp_path), runner=runner)
+    manager = StudyManager(mechababs(tmp_path), raw_dataset(tmp_path), tmp_path / "license.txt", runner=runner)
     manager.initialize(subjects=("s01", "s02"))
     manifest = manager.manifest_path
     text = manifest.read_text()
@@ -147,7 +155,7 @@ def test_initialize_rejects_conflicting_existing_identity(tmp_path, field):
 
 
 def test_pilot_metadata_contains_only_selected_subject(tmp_path):
-    manager = StudyManager(mechababs(tmp_path), raw_dataset(tmp_path), runner=Runner())
+    manager = StudyManager(mechababs(tmp_path), raw_dataset(tmp_path), tmp_path / "license.txt", runner=Runner())
 
     result = manager.initialize(subjects=("s01",))
 
@@ -162,6 +170,6 @@ def test_initialize_rejects_bootstrap_branch_that_does_not_match_commit_pin(tmp_
     (config.campaign_dir / "code/babs").mkdir()
 
     with pytest.raises(RuntimeError, match="bootstrap resolved mechababs"):
-        StudyManager(config, raw_dataset(tmp_path), runner=Runner(pin_mismatch=True)).initialize(
+        StudyManager(config, raw_dataset(tmp_path), tmp_path / "license.txt", runner=Runner(pin_mismatch=True)).initialize(
             subjects=("s01", "s02")
         )

@@ -4,8 +4,8 @@ import yaml
 
 
 ROOT = Path(__file__).parents[1]
-CLUSTER = ROOT / "config/mechababs/clusters/sherlock.yaml"
-APPS = ROOT / "config/mechababs/apps"
+CLUSTER = ROOT / "src/network_fmri/mechababs/clusters/sherlock.yaml"
+APPS = ROOT / "src/network_fmri/mechababs/apps"
 
 
 def load(path: Path) -> dict:
@@ -27,7 +27,7 @@ def test_sherlock_profile_uses_campaign_tools_and_node_local_work():
 
 
 def test_mriqc_config_pins_version_image_and_resources():
-    config = load(APPS / "mriqc-24.0.2.yaml")
+    config = load(APPS / "MRIQC-24.0.2.yaml")
 
     assert config["mechababs"]["container"] == {
         "source": "{{CONTAINER_DATASET}}",
@@ -39,7 +39,7 @@ def test_mriqc_config_pins_version_image_and_resources():
 
 
 def test_anatomical_config_produces_reusable_freesurfer_output():
-    config = load(APPS / "fmriprep-25.2.5-anatomical.yaml")
+    config = load(APPS / "fMRIPrep-25.2.5+anat.yaml")
 
     assert config["mechababs"]["container"]["name"] == "bids-fmriprep"
     assert config["bids_app_args"]["--anat-only"] == ""
@@ -48,7 +48,7 @@ def test_anatomical_config_produces_reusable_freesurfer_output():
 
 
 def test_full_config_consumes_anatomical_derivative_and_surfaces():
-    config = load(APPS / "fmriprep-25.2.5-full.yaml")
+    config = load(APPS / "fMRIPrep-25.2.5+full.yaml")
     upstream = config["input_datasets"]["fMRIPrep-25.2.5+anat"]
 
     assert upstream["is_zipped"] is True

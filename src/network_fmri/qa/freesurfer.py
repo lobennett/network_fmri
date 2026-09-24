@@ -54,10 +54,12 @@ def generate_surface_review(
     )
 
 
-def validate_surface_review(config: WorkflowConfig) -> StageResult:
+def validate_surface_review(
+    config: WorkflowConfig, manifest: Path | None = None
+) -> StageResult:
     """Require an explicit named approval for every expected subject."""
 
-    manifest = surface_review_directory(config) / "surface_review.tsv"
+    manifest = Path(manifest) if manifest is not None else surface_review_directory(config) / "surface_review.tsv"
     metadata = manifest.with_suffix(".meta.json")
     try:
         with manifest.open(encoding="utf-8", newline="") as stream:

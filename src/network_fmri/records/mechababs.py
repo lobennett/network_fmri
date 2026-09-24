@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import re
 
 from network_fmri.processing import ProcessingManager
 from network_fmri.records.models import StageAttempt
@@ -34,7 +35,7 @@ def collect_attempts(manager: ProcessingManager) -> tuple[StageAttempt, ...]:
             output_commit=job.get("output_commit") or None,
             result_branch=job.get("result_branch") or job.get("branch") or None,
             job_id=job.get("job_id") or None,
-            error=job.get("error") or job.get("reason") or None,
+            error=_safe_error(job.get("error") or job.get("reason") or ""),
         ))
     for stage in status.stages:
         if stage.application not in applications_with_jobs:
@@ -46,3 +47,15 @@ def _scope(job: dict[str, str]) -> str:
     subject = (job.get("subject") or job.get("participant") or "dataset").removeprefix("sub-")
     session = (job.get("session") or "").removeprefix("ses-")
     return f"sub-{subject}" + (f"/ses-{session}" if session else "") if subject != "dataset" else subject
+
+
+def _safe_error(value: str) -> str | None:
+    if not value:
+        return None
+    value = re.sub(r"(?:/[^\s:]+)+", "[path]", value)
+    value = re.sub(r"[\w.+-]+@[\w.-]+", "[email]", value)
+    value = re.sub(
+        r"(?i)\b(?:token|password|secret|api[_-]?key)\s*[=:]\s*\S+",
+        "[credential]", value,
+    )
+    return value[:500]

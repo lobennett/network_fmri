@@ -17,7 +17,9 @@ from network_fmri.records.mechababs import collect_attempts
 def build_index(config: WorkflowConfig, output: Path) -> dict[str, object]:
     if config.mechababs is None:
         raise ValueError("workflow configuration is missing [mechababs]")
-    records = collect_study(config.mechababs.study_dir)
+    records = collect_study(
+        config.mechababs.study_dir, raw_slot=config.mechababs.raw_slot
+    )
     live_attempts = collect_attempts(ProcessingManager(config))
     records = replace(
         records,

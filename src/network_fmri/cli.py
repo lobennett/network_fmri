@@ -9,11 +9,12 @@ from pathlib import Path
 
 from network_fmri import pipeline
 from network_fmri.curation import apply_curation
-from network_fmri.stages.decisions import generate_decisions, validate_decisions
+from network_fmri.stages.decisions import generate_decisions, validate_decisions, verify_decisions
 from network_fmri.config import WorkflowConfig
 from network_fmri.qa.freesurfer import generate_surface_review, validate_surface_review
 from network_fmri.processing import ProcessingManager
 from network_fmri.records import build_index
+from network_fmri.reviews import ReviewMigrator
 from network_fmri.study import StudyManager
 
 
@@ -26,6 +27,17 @@ def get_parser() -> argparse.ArgumentParser:
     records_build = record_commands.add_parser("build")
     records_build.add_argument("config", type=Path)
     records_build.add_argument("--output", required=True, type=Path)
+    reviews = commands.add_parser("reviews", help="migrate verified human reviews")
+    review_commands = reviews.add_subparsers(dest="review_command", required=True)
+    scan_migration = review_commands.add_parser("migrate-scan")
+    scan_migration.add_argument("config", type=Path)
+    scan_migration.add_argument("--source-manifest", required=True, type=Path)
+    scan_migration.add_argument("--source-bids-dir", required=True, type=Path)
+    scan_migration.add_argument("--mriqc-dir", required=True, type=Path)
+    surface_migration = review_commands.add_parser("migrate-surfaces")
+    surface_migration.add_argument("config", type=Path)
+    surface_migration.add_argument("--source-manifest", required=True, type=Path)
+    surface_migration.add_argument("--anatomical-derivative", required=True, type=Path)
     study = commands.add_parser("study", help="create or verify the MechaBABS input study")
     study_commands = study.add_subparsers(dest="study_command", required=True)
     study_init = study_commands.add_parser("init")
@@ -84,13 +96,56 @@ def main(argv: list[str] | None = None) -> int:
             build_index(WorkflowConfig.load(parsed.config), parsed.output), sort_keys=True
         ))
         return 0
+    if parsed.command == "reviews":
+        config = WorkflowConfig.load(parsed.config)
+        if config.mechababs is None:
+            raise ValueError("workflow configuration is missing [mechababs]")
+        study = config.mechababs.study_dir
+        installed_raw = study / "sourcedata" / config.mechababs.raw_slot
+        migrator = ReviewMigrator()
+        if parsed.review_command == "migrate-scan":
+            manifest = study / "code/network_fmri/scan_decisions.tsv"
+            result = migrator.migrate_scan(
+                parsed.source_manifest,
+                installed_raw=installed_raw,
+                mriqc_derivative=parsed.mriqc_dir,
+                regenerate=lambda raw, mriqc: generate_decisions(
+                    raw, mriqc_dir=mriqc, output=manifest
+                ),
+                validate_source=lambda: verify_decisions(
+                    parsed.source_bids_dir, parsed.source_manifest
+                ),
+                approve=lambda: validate_decisions(installed_raw, manifest=manifest),
+                save_approval=lambda stage: pipeline.save_stage_result(study, stage),
+            )
+        else:
+            result = migrator.migrate_surface(
+                parsed.source_manifest,
+                installed_raw=installed_raw,
+                anatomical_derivative=parsed.anatomical_derivative,
+                regenerate=lambda _raw, derivative: generate_surface_review(config, derivative),
+                validate_source=lambda: validate_surface_review(
+                    config, parsed.source_manifest
+                ),
+                approve=lambda: validate_surface_review(config),
+                save_approval=lambda stage: pipeline.save_stage_result(
+                    study, stage, config=config
+                ),
+            )
+        print(json.dumps({
+            "approved": result.approved, "manifest": str(result.manifest),
+            "mismatch_report": str(result.mismatch_report), "rows": result.rows,
+        }, sort_keys=True))
+        return 0
     if parsed.command == "study":
         config = WorkflowConfig.load(parsed.config)
         if parsed.pilot_subject:
             config = pipeline.pilot_config(config, parsed.pilot_subject)
         if config.mechababs is None:
             raise ValueError("workflow configuration is missing [mechababs]")
-        result = StudyManager(config.mechababs, config.paths.bids_dir).initialize(
+        result = StudyManager(
+            config.mechababs, config.paths.bids_dir, config.paths.freesurfer_license
+        ).initialize(
             subjects=config.subjects
         )
         for key in (

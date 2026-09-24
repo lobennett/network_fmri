@@ -58,6 +58,19 @@ def validate_decisions(
     )
 
 
+def verify_decisions(
+    bids_dir: Path, manifest: Path, runner: Runner = subprocess.run
+) -> None:
+    """Read-only validation of an already sealed decision manifest."""
+
+    command = [
+        "network-qa", "decisions", "validate", "--manifest", str(manifest),
+        "--metadata", str(manifest.with_suffix(".meta.json")),
+        "--bids-dir", str(bids_dir),
+    ]
+    _run_checked(command, runner)
+
+
 def _run_checked(command: list[str], runner: Runner) -> None:
     try:
         runner(command, check=True)

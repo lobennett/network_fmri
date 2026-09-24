@@ -176,7 +176,9 @@ def test_curate_accepts_wrapper_manifest(tmp_path, monkeypatch):
 
 def test_study_init_uses_selected_pilot_and_prints_identity(tmp_path, monkeypatch, capsys):
     config = SimpleNamespace(
-        mechababs=object(), paths=SimpleNamespace(bids_dir=tmp_path / "raw"),
+        mechababs=object(), paths=SimpleNamespace(
+            bids_dir=tmp_path / "raw", freesurfer_license=tmp_path / "license.txt",
+        ),
         subjects=("s01", "s02"),
     )
     pilot = SimpleNamespace(
@@ -187,8 +189,8 @@ def test_study_init_uses_selected_pilot_and_prints_identity(tmp_path, monkeypatc
     calls = []
 
     class Manager:
-        def __init__(self, mechababs, raw):
-            calls.append((mechababs, raw))
+        def __init__(self, mechababs, raw, license_path):
+            calls.append((mechababs, raw, license_path))
 
         def initialize(self, *, subjects):
             calls.append(subjects)
@@ -201,7 +203,9 @@ def test_study_init_uses_selected_pilot_and_prints_identity(tmp_path, monkeypatc
     monkeypatch.setattr(cli, "StudyManager", Manager)
 
     assert cli.main(["study", "init", str(tmp_path / "workflow.toml"), "--pilot-subject", "s02"]) == 0
-    assert calls == [(config.mechababs, tmp_path / "raw"), ("s02",)]
+    assert calls == [(
+        config.mechababs, tmp_path / "raw", tmp_path / "license.txt",
+    ), ("s02",)]
     assert "study_id\tstudy-id" in capsys.readouterr().out
 
 
