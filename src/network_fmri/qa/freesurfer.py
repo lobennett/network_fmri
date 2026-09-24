@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import zipfile
 from pathlib import Path
 
 from network_fmri.config import WorkflowConfig
@@ -12,7 +13,12 @@ from network_fmri.models import StageResult
 from network_fmri.stages import StageError
 
 REVIEW_COLUMNS = (
-    "subject", "surface_dir", "status", "approved", "reviewer", "reviewed_at", "notes",
+    "subject", "surface_dir", "status", "surface_fingerprint", "approved", "reviewer",
+    "reviewed_at", "notes",
+)
+REQUIRED_OUTPUTS = (
+    "surf/lh.white", "surf/rh.white", "surf/lh.pial", "surf/rh.pial",
+    "stats/aseg.stats", "mri/brain.mgz", "scripts/recon-all.done",
 )
 
 
@@ -37,10 +43,12 @@ def generate_surface_review(
                     f"anatomical derivative has multiple artifacts for sub-{subject}: "
                     + ", ".join(map(str, artifacts))
                 )
+            fingerprint = _surface_fingerprint(artifacts[0], subject) if artifacts else None
             writer.writerow({
                 "subject": f"sub-{subject}",
                 "surface_dir": str(artifacts[0]) if artifacts else "",
-                "status": "complete" if artifacts else "missing",
+                "status": "complete" if fingerprint else "missing",
+                "surface_fingerprint": fingerprint or "",
                 "approved": "no", "reviewer": "", "reviewed_at": "", "notes": "",
             })
     metadata = manifest.with_suffix(".meta.json")
@@ -113,3 +121,34 @@ def _subject_artifacts(root: Path, subject: str) -> tuple[Path, ...]:
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _surface_fingerprint(artifact: Path, subject: str) -> str | None:
+    digest = hashlib.sha256()
+    if artifact.is_dir():
+        subject_root = artifact if artifact.name == f"sub-{subject}" else artifact / f"sub-{subject}"
+        paths = [subject_root / relative for relative in REQUIRED_OUTPUTS]
+        if any(not path.is_file() for path in paths):
+            return None
+        for relative, path in zip(REQUIRED_OUTPUTS, paths, strict=True):
+            digest.update(relative.encode())
+            digest.update(path.read_bytes())
+        return digest.hexdigest()
+    if not artifact.is_file() or artifact.suffix != ".zip":
+        return None
+    try:
+        with zipfile.ZipFile(artifact) as archive:
+            names = archive.namelist()
+            for relative in REQUIRED_OUTPUTS:
+                matches = [
+                    name for name in names
+                    if f"sub-{subject}/" in name and name.endswith("/" + relative)
+                ]
+                if len(matches) != 1:
+                    return None
+                info = archive.getinfo(matches[0])
+                digest.update(relative.encode())
+                digest.update(f"{info.CRC}:{info.file_size}".encode())
+    except (OSError, zipfile.BadZipFile):
+        return None
+    return digest.hexdigest()

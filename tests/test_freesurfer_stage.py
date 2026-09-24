@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from network_fmri.qa.freesurfer import generate_surface_review, validate_surface_review
+from network_fmri.qa.freesurfer import REQUIRED_OUTPUTS
 from network_fmri.stages import StageError
 
 
@@ -20,13 +22,19 @@ def configuration(tmp_path: Path, subjects: tuple[str, ...] = ("s1", "s2")):
     )
 
 
+def surface_zip(path: Path, subject: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, "w") as archive:
+        for relative in REQUIRED_OUTPUTS:
+            archive.writestr(f"freesurfer/sub-{subject}/{relative}", "result")
+
+
 def test_review_is_regenerated_from_external_anatomical_derivative(tmp_path):
     config = configuration(tmp_path)
     derivative = tmp_path / "campaign/derivatives/fMRIPrep-25.2.5+anat"
     for subject in config.subjects:
         artifact = derivative / f"sub-{subject}_fMRIPrep-25.2.5+anat.zip"
-        artifact.parent.mkdir(parents=True, exist_ok=True)
-        artifact.write_text("result")
+        surface_zip(artifact, subject)
 
     result = generate_surface_review(config, derivative)
     manifest, metadata = result.outputs
@@ -34,7 +42,11 @@ def test_review_is_regenerated_from_external_anatomical_derivative(tmp_path):
     assert manifest.parent == config.mechababs.study_dir / "code/network_fmri"
     rows = manifest.read_text().splitlines()
     assert str(derivative / "sub-s1_fMRIPrep-25.2.5+anat.zip") in rows[1]
-    assert rows[1].split("\t")[2:4] == ["complete", "no"]
+    header = rows[0].split("\t")
+    values = rows[1].split("\t")
+    assert values[header.index("status")] == "complete"
+    assert values[header.index("approved")] == "no"
+    assert len(values[header.index("surface_fingerprint")]) == 64
     assert json.loads(metadata.read_text())["surface_root"] == str(derivative.resolve())
 
 
@@ -42,7 +54,7 @@ def test_review_marks_missing_subject_artifact_incomplete(tmp_path):
     config = configuration(tmp_path)
     derivative = tmp_path / "anat"
     derivative.mkdir()
-    (derivative / "sub-s1_anat.zip").write_text("result")
+    surface_zip(derivative / "sub-s1_anat.zip", "s1")
 
     result = generate_surface_review(config, derivative)
     rows = result.outputs[0].read_text().splitlines()
@@ -57,7 +69,7 @@ def test_surface_review_requires_explicit_approval_for_every_subject(tmp_path):
     derivative = tmp_path / "anat"
     derivative.mkdir()
     for subject in config.subjects:
-        (derivative / f"sub-{subject}_anat.zip").write_text("result")
+        surface_zip(derivative / f"sub-{subject}_anat.zip", subject)
     manifest = generate_surface_review(config, derivative).outputs[0]
 
     lines = manifest.read_text().splitlines()
@@ -80,7 +92,7 @@ def test_surface_review_rejects_non_object_metadata(tmp_path):
     config = configuration(tmp_path, ("s1",))
     derivative = tmp_path / "anat"
     derivative.mkdir()
-    (derivative / "sub-s1_anat.zip").write_text("result")
+    surface_zip(derivative / "sub-s1_anat.zip", "s1")
     result = generate_surface_review(config, derivative)
     result.outputs[1].write_text("[]\n")
 

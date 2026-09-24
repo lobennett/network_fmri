@@ -113,16 +113,16 @@ def test_missing_and_extra_rows_are_both_reported(tmp_path):
 
 
 def test_surface_migration_regenerates_against_anatomical_derivative(tmp_path):
-    header = "subject\tsurface_dir\tstatus\tapproved\treviewer\treviewed_at\tnotes\n"
+    header = "subject\tsurface_dir\tstatus\tsurface_fingerprint\tapproved\treviewer\treviewed_at\tnotes\n"
     source = tmp_path / "old-surfaces.tsv"
-    source.write_text(header + "sub-s01\t/old/s01\tcomplete\tyes\tLB\t2026-09-23T12:00:00Z\tgood\n")
+    source.write_text(header + "sub-s01\t/old/s01\tcomplete\tabc\tyes\tLB\t2026-09-23T12:00:00Z\tgood\n")
     destination = tmp_path / "study/code/network_fmri/surface_review.tsv"
     seen = []
 
     def regenerate(raw, derivative):
         seen.append((raw, derivative))
         destination.parent.mkdir(parents=True)
-        destination.write_text(header + "sub-s01\t/new/s01\tcomplete\tno\t\t\t\n")
+        destination.write_text(header + "sub-s01\t/new/s01\tcomplete\tabc\tno\t\t\t\n")
         return StageResult("surface-review-generated", (destination,))
 
     result = ReviewMigrator().migrate_surface(
@@ -135,4 +135,4 @@ def test_surface_migration_regenerates_against_anatomical_derivative(tmp_path):
 
     assert result.approved is True
     assert seen[0][1].name == "fMRIPrep-25.2.5+anat"
-    assert "/new/s01\tcomplete\tyes\tLB\t" in destination.read_text()
+    assert "/new/s01\tcomplete\tabc\tyes\tLB\t" in destination.read_text()
