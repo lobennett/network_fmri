@@ -37,6 +37,18 @@ def test_decisions_validate_calls_the_sealing_stage(tmp_path, monkeypatch):
     assert saved[0][1].name == "scan-decisions-approved"
 
 
+def test_decisions_generate_writes_mriqc_review_manifest(tmp_path, monkeypatch):
+    observed = []
+    result = StageResult("scan-decisions-generated", (tmp_path / "manifest.tsv",))
+    monkeypatch.setattr(cli, "generate_decisions", lambda path: observed.append(path) or result)
+    saved = []
+    monkeypatch.setattr(cli.pipeline, "save_stage_result", lambda bids, stage: saved.append((bids, stage)))
+
+    assert cli.main(["decisions", "generate", str(tmp_path / "bids")]) == 0
+    assert observed == [tmp_path / "bids"]
+    assert saved == [(tmp_path / "bids", result)]
+
+
 def test_surfaces_validate_seals_the_configured_dataset(tmp_path, monkeypatch):
     config = type("Config", (), {"paths": type("Paths", (), {"bids_dir": tmp_path / "bids"})()})()
     result = StageResult("surface-review-approved", (tmp_path / "surface_review.tsv",))
@@ -54,10 +66,10 @@ def test_surfaces_validate_seals_the_configured_dataset(tmp_path, monkeypatch):
 
 def test_curate_uses_only_the_governed_manifest_path(tmp_path, monkeypatch):
     observed: list[tuple[Path, Path, Path]] = []
-    monkeypatch.setattr(
-        cli, "apply_curation",
-        lambda bids, manifest, image: observed.append((bids, manifest, image)),
-    )
+    result = StageResult("bids-curated-validated", (tmp_path / "report.json",))
+    monkeypatch.setattr(cli, "apply_curation", lambda bids, manifest, image: observed.append((bids, manifest, image)) or result)
+    saved = []
+    monkeypatch.setattr(cli.pipeline, "save_stage_result", lambda bids, stage: saved.append((bids, stage)))
 
     image = tmp_path / "validator.sif"
     assert cli.main([
@@ -68,6 +80,7 @@ def test_curate_uses_only_the_governed_manifest_path(tmp_path, monkeypatch):
         tmp_path / "bids" / "code" / "network_fmri" / "scan_decisions.tsv",
         image,
     )]
+    assert saved == [(tmp_path / "bids", result)]
 
 
 def test_study_init_uses_selected_pilot_and_prints_identity(tmp_path, monkeypatch, capsys):

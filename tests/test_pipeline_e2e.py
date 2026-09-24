@@ -15,9 +15,6 @@ from network_fmri.config import (
     VerifiedContainerConfig, WorkflowConfig, WorkflowPaths,
 )
 from network_fmri.milestones import receipt_path
-from network_fmri.qa.fmriprep import (
-    _native_echo_preprocessed_bold_path, _standard_preprocessed_bold_paths,
-)
 
 
 def _config(tmp_path: Path) -> WorkflowConfig:
@@ -315,61 +312,29 @@ def _stage(name: str, config_path: Path, apps: FakeApplications) -> None:
     assert pipeline.stage_main(args, runner=apps) == 0
 
 
-def test_synthetic_pilot_executes_assembly_through_fmriprep(tmp_path, monkeypatch):
+def test_synthetic_pilot_prepares_and_validates_raw_bids(tmp_path, monkeypatch):
     config = _config(tmp_path)
     config_path = tmp_path / "workflow.toml"
     config_path.write_text("synthetic")
     apps = FakeApplications(config)
     monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
     monkeypatch.setitem(sys.modules, "nibabel", _SyntheticNibabel)
-    # The upstream publisher is an integration boundary; use the same exclusive
-    # directory move that the tiny synthetic tree needs without importing it.
 
     assert pipeline.main(["submit", str(config_path), "--pilot-subject", "s7"], runner=apps) == 0
     initial = pipeline.read_record(pipeline.record_path(config))
     assert initial.pilot_subject == "s7"
     assert all("--pilot-subject s7" in " ".join(command) for command in initial.commands.values())
 
-    generated = pipeline.STAGE_ORDER.index("scan-decisions-generated")
-    for name in pipeline.STAGE_ORDER[: generated + 1]:
+    for name in pipeline.STAGE_ORDER:
         _stage(name, config_path, apps)
-    _stage("scan-decisions-approved", config_path, apps)
 
     created = apps.calls.index(("datalad", "create", "-c", "text2git", "--force", str(config.paths.bids_dir)))
     first_save = next(index for index, command in enumerate(apps.calls) if command[:2] == ("datalad", "save"))
     assert created < first_save
-
-    receipt = json.loads(
-        apps.committed[receipt_path(config.paths.bids_dir, "scan-decisions-approved").relative_to(config.paths.bids_dir).as_posix()]
-    )
-    manifest = config.paths.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
-    assert receipt["validation"]["manifest_sha256"] == pipeline._sha256(manifest.read_bytes())
-
-    assert pipeline.main(
-        ["submit", str(config_path), "--pilot-subject", "s7", "--resume"], runner=apps,
-    ) == 0
-    curated = pipeline.STAGE_ORDER.index("mriqc-curated")
-    surface_generated = pipeline.STAGE_ORDER.index("surface-review-generated")
-    for name in pipeline.STAGE_ORDER[curated: surface_generated + 1]:
-        _stage(name, config_path, apps)
-    review = config.paths.bids_dir / "code/network_fmri/surface_review.tsv"
-    lines = review.read_text().splitlines()
-    lines[1] = lines[1].replace("\tno\t\t\t", "\tyes\treviewer\t2026-09-23T12:00:00Z\t")
-    review.write_text("\n".join(lines) + "\n")
-    _stage("surface-review-approved", config_path, apps)
-    assert pipeline.main(
-        ["submit", str(config_path), "--pilot-subject", "s7", "--resume"], runner=apps,
-    ) == 0
-    for name in pipeline.STAGE_ORDER[pipeline.STAGE_ORDER.index("fmriprep-array"):]:
-        _stage(name, config_path, apps)
-
     assert apps.milestones == [
-        "bids-assembled", "behavioral-sourcedata-ingested", "participants-ingested", "gs-pretrim",
-        "dummy-volumes-trimmed", "bids-events-generated", "gs-posttrim",
-        "b0-fieldmaps-linked", "bids-precuration-validated", "mriqc-complete",
-        "scan-decisions-generated", "scan-decisions-approved", "mriqc-curated",
-        "freesurfer-complete", "surface-review-generated", "surface-review-approved",
-        "fmriprep-complete",
+        "bids-assembled", "behavioral-sourcedata-ingested", "participants-ingested",
+        "gs-pretrim", "dummy-volumes-trimmed", "bids-events-generated",
+        "gs-posttrim", "b0-fieldmaps-linked", "bids-precuration-validated",
     ]
     assembled_receipt = json.loads(
         receipt_path(config.paths.bids_dir, "bids-assembled").read_text()
@@ -384,8 +349,7 @@ def test_synthetic_pilot_executes_assembly_through_fmriprep(tmp_path, monkeypatc
     assert (config.paths.bids_dir / "participants.tsv").read_text().splitlines() == [
         "participant_id\tage", "sub-s7\t30",
     ]
-    assert (config.paths.bids_dir / "derivatives" / "fmriprep" / "sub-s7.html").is_file()
-
+    assert not (config.paths.bids_dir / "derivatives" / "mriqc").exists()
 
 def test_pilot_selection_is_carried_to_workers_and_resume_is_bound_to_it(tmp_path, monkeypatch):
     config = _config(tmp_path)

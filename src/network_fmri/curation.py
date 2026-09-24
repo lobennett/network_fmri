@@ -132,7 +132,7 @@ def apply_curation(
         raise
     transaction.commit()
     return StageResult(
-        "mriqc-curated",
+        "bids-curated-validated",
         (bids_dir, validation.report, validation.log),
         {"removed_files": len(plan), "dropped_acquisitions": len(drops), "b0": b0},
     )

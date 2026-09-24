@@ -22,17 +22,8 @@ STAGE_ORDER = (
     "fw2bids-array", "bids-assembled", "behavioral-sourcedata-ingested",
     "participants-ingested", "gs-pretrim", "dummy-volumes-trimmed", "bids-events-generated",
     "gs-posttrim", "b0-fieldmaps-linked", "bids-precuration-validated",
-    "mriqc-array", "mriqc-complete", "scan-decisions-generated",
-    "scan-decisions-approved", "mriqc-curated", "bids-curated-validated",
-    "freesurfer-array", "freesurfer-complete", "surface-review-generated",
-    "surface-review-approved",
-    "fmriprep-array", "fmriprep-complete",
 )
 
-_FIRST_SUBMISSION_END = "scan-decisions-generated"
-_POST_APPROVAL_START = "mriqc-curated"
-_SURFACE_REVIEW_END = "surface-review-generated"
-_POST_SURFACE_APPROVAL_START = "fmriprep-array"
 _TERMINAL_FAILURE_STATES = frozenset({
     "FAILED", "CANCELLED", "TIMEOUT", "OUT_OF_MEMORY", "NODE_FAIL", "BOOT_FAIL",
     "DEADLINE", "DEPENDENCY_NEVER_SATISFIED", "INVALID_DEPEND", "LAUNCH_FAILED",
@@ -64,7 +55,7 @@ def build_plan(
     jobs: list[PlannedJob] = []
     predecessor: str | None = None
     for name in STAGE_ORDER:
-        is_array = name in {"fw2bids-array", "mriqc-array", "freesurfer-array", "fmriprep-array"}
+        is_array = name == "fw2bids-array"
         command = (
             "network-fmri", "_stage", name, source,
             *(("--array-index", "${SLURM_ARRAY_TASK_ID}") if is_array else ()),
@@ -99,27 +90,9 @@ def _validate_plan(plan: tuple[PlannedJob, ...], config: WorkflowConfig) -> None
 
 
 def initial_submission(plan: tuple[PlannedJob, ...]) -> tuple[PlannedJob, ...]:
-    """Return jobs through evidence generation, deliberately excluding approval."""
+    """Return the complete raw BIDS preparation graph."""
 
-    stop = next(index for index, job in enumerate(plan) if job.name == _FIRST_SUBMISSION_END)
-    return plan[: stop + 1]
-
-
-def post_approval_submission(plan: tuple[PlannedJob, ...]) -> tuple[PlannedJob, ...]:
-    """Return curated work through generation of the surface-review checklist."""
-
-    start = next(index for index, job in enumerate(plan) if job.name == _POST_APPROVAL_START)
-    stop = next(index for index, job in enumerate(plan) if job.name == _SURFACE_REVIEW_END)
-    return plan[start: stop + 1]
-
-
-def post_surface_approval_submission(plan: tuple[PlannedJob, ...]) -> tuple[PlannedJob, ...]:
-    """Return fMRIPrep work allowed after reviewed surfaces are sealed."""
-
-    start = next(
-        index for index, job in enumerate(plan) if job.name == _POST_SURFACE_APPROVAL_START
-    )
-    return plan[start:]
+    return plan
 
 
 def approval_command(config: WorkflowConfig) -> tuple[str, ...]:
@@ -368,45 +341,7 @@ def main(argv: list[str] | None = None, *, runner=None) -> int:
             )
         completed = _completed_prefix(config, plan, previous, command_runner)
         first_missing = len(completed)
-        approval_index = STAGE_ORDER.index("scan-decisions-approved")
-        generated_index = STAGE_ORDER.index("scan-decisions-generated")
-        surface_approval_index = STAGE_ORDER.index("surface-review-approved")
-        surface_generated_index = STAGE_ORDER.index("surface-review-generated")
-        if first_missing <= generated_index:
-            selected = initial_submission(plan)[first_missing:]
-        else:
-            # A queued scan-decisions-generated job is never an approval.  The
-            # committed manifest receipt is independently checked before curation.
-            if first_missing == approval_index:
-                if runner is None:
-                    require_committed_approval(config)
-                else:
-                    require_committed_approval(config, command_runner)
-                completed = _completed_prefix(config, plan, previous, command_runner)
-                first_missing = len(completed)
-            if first_missing <= approval_index:
-                raise RuntimeError("scan decisions are not approved and committed")
-            if runner is None:
-                require_committed_approval(config)
-            else:
-                require_committed_approval(config, command_runner)
-            if first_missing <= surface_generated_index:
-                selected = plan[first_missing: surface_generated_index + 1]
-            else:
-                if first_missing == surface_approval_index:
-                    if runner is None:
-                        require_committed_surface_approval(config)
-                    else:
-                        require_committed_surface_approval(config, command_runner)
-                    completed = _completed_prefix(config, plan, previous, command_runner)
-                    first_missing = len(completed)
-                if first_missing <= surface_approval_index:
-                    raise RuntimeError("FreeSurfer surfaces are not approved and committed")
-                if runner is None:
-                    require_committed_surface_approval(config)
-                else:
-                    require_committed_surface_approval(config, command_runner)
-                selected = plan[first_missing:]
+        selected = plan[first_missing:]
         existing = {name: job_id for name, job_id in existing.items() if name in completed}
         complete = tuple(completed)
     else:
@@ -468,38 +403,6 @@ def _stage_completed(config: WorkflowConfig, job: PlannedJob, record: Submission
 
     if job.name == "fw2bids-array":
         return _array_job_completed(record.jobs.get(job.name), runner) and _part_roster_exists(config)
-    if job.name == "mriqc-array":
-        return _array_job_completed(record.jobs.get(job.name), runner) and _worker_receipts_exist(
-            config.paths.bids_dir / "derivatives" / "mriqc", "mriqc", config.subjects,
-        )
-    if job.name == "freesurfer-array":
-        return _array_job_completed(record.jobs.get(job.name), runner) and _worker_receipts_exist(
-            config.paths.bids_dir / "derivatives" / "freesurfer",
-            "freesurfer", config.subjects,
-        )
-    if job.name == "fmriprep-array":
-        return _array_job_completed(record.jobs.get(job.name), runner) and _worker_receipts_exist(
-            config.paths.bids_dir / "derivatives" / "fmriprep", "fmriprep", config.subjects,
-        )
-    if job.name == "bids-curated-validated":
-        report = config.paths.bids_dir / "derivatives" / "bids-validator" / "desc-curated_validation.json"
-        return (
-            _job_completed(record.jobs.get(job.name), runner)
-            and _valid_json_object(report)
-            and report.with_suffix(".log").is_file()
-        )
-    if job.name == "scan-decisions-approved":
-        try:
-            require_committed_approval(config, runner)
-        except RuntimeError:
-            return False
-        return True
-    if job.name == "surface-review-approved":
-        try:
-            require_committed_surface_approval(config, runner)
-        except RuntimeError:
-            return False
-        return True
     return _successful_milestone(receipt_path(config.paths.bids_dir, job.name), job.name)
 
 
@@ -511,13 +414,6 @@ def _successful_milestone(path: Path, stage: str) -> bool:
     return isinstance(value, dict) and value.get("stage") == stage and value.get("status") == "success"
 
 
-def _valid_json_object(path: Path) -> bool:
-    try:
-        return isinstance(json.loads(path.read_text()), dict)
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return False
-
-
 def _part_roster_exists(config: WorkflowConfig) -> bool:
     try:
         return (
@@ -527,19 +423,6 @@ def _part_roster_exists(config: WorkflowConfig) -> bool:
         )
     except OSError:
         return False
-
-
-def _worker_receipts_exist(root: Path, application: str, subjects: tuple[str, ...]) -> bool:
-    from network_fmri.containers import receipt_path
-
-    for subject in subjects:
-        try:
-            receipt = json.loads(receipt_path(root, application, subject).read_text())
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            return False
-        if not isinstance(receipt, dict) or receipt.get("status") != "success" or receipt.get("subject") != subject:
-            return False
-    return True
 
 
 def _array_job_completed(job_id: str | None, runner) -> bool:
@@ -563,11 +446,6 @@ def _active_stages(record: SubmissionRecord | None, runner) -> tuple[str, ...]:
             for state in _job_states(job_id, runner)
         )
     )
-
-
-def _job_completed(job_id: str | None, runner) -> bool:
-    states = _job_states(job_id, runner)
-    return bool(states) and all(state == "COMPLETED" for state in states)
 
 
 def _job_states(job_id: str | None, runner) -> tuple[str, ...]:
@@ -639,7 +517,7 @@ def stage_main(argv: list[str] | None = None, *, runner=None) -> int:
     config = WorkflowConfig.load(args.config)
     if args.pilot_subject:
         config = pilot_config(config, args.pilot_subject)
-    array_stages = {"fw2bids-array", "mriqc-array", "freesurfer-array", "fmriprep-array"}
+    array_stages = {"fw2bids-array"}
     if (args.stage in array_stages) != (args.array_index is not None):
         stage_parser().error("--array-index is required only for array stages")
     try:
@@ -660,7 +538,7 @@ def stage_main(argv: list[str] | None = None, *, runner=None) -> int:
             [error.result.report, error.result.log], **kwargs,
         )
         raise
-    if args.stage not in array_stages | {"bids-curated-validated"}:
+    if args.stage not in array_stages:
         kwargs = {} if runner is None else {"runner": runner}
         save_stage_result(config.paths.bids_dir, result, config=config, **kwargs)
     return 0
@@ -671,26 +549,11 @@ def _run_stage(
 ):
     """Dispatch one graph node to the focused stage module that owns its work."""
 
-    from network_fmri.containers import current_datalad_commit, write_subject_receipt
-    from network_fmri.curation import apply_curation
     from network_fmri.prepare.b0link import link_b0
     from network_fmri.prepare.trim import trim_dataset
-    from network_fmri.qa.fmriprep import (
-        fmriprep_participant_command, fmriprep_subject_receipt, verify_fmriprep,
-    )
-    from network_fmri.qa.freesurfer import (
-        freesurfer_participant_command, freesurfer_subject_receipt,
-        generate_surface_review, validate_surface_review, verify_freesurfer,
-        write_freesurfer_description,
-    )
-    from network_fmri.qa.mriqc import (
-        mriqc_group_command, mriqc_group_receipt, mriqc_participant_command,
-        mriqc_subject_receipt, verify_mriqc,
-    )
     from network_fmri.qa.validate import validate_bids
     from network_fmri.stages.assembly import assemble_dataset, convert_subject
     from network_fmri.stages.behavior import ingest_behavior
-    from network_fmri.stages.decisions import generate_decisions, validate_decisions
     from network_fmri.stages.events import generate_events
     from network_fmri.stages.global_signal import run_global_signal
     from network_fmri.stages.participants import ingest_participants
@@ -719,62 +582,6 @@ def _run_stage(
                 config.paths.bids_dir, "precuration", config.validator.image, runner,
             ),
         )
-    if name == "mriqc-array":
-        subject = _array_subject(config, array_index)
-        runner(mriqc_participant_command(config, subject), check=True)
-        commit = current_datalad_commit(config.paths.bids_dir, runner)
-        root = config.paths.bids_dir / "derivatives" / "mriqc"
-        from network_fmri.containers import receipt_path
-        write_subject_receipt(receipt_path(root, "mriqc", subject), mriqc_subject_receipt(config, subject, commit))
-        return _array_result(name, subject)
-    if name == "mriqc-complete":
-        runner(mriqc_group_command(config), check=True)
-        commit = current_datalad_commit(config.paths.bids_dir, runner)
-        from network_fmri.containers import group_receipt_path
-        root = config.paths.bids_dir / "derivatives" / "mriqc"
-        write_subject_receipt(group_receipt_path(root, "mriqc"), mriqc_group_receipt(config, commit))
-        return verify_mriqc(config, runner)
-    if name == "scan-decisions-generated":
-        return generate_decisions(config.paths.bids_dir, runner)
-    if name == "scan-decisions-approved":
-        return validate_decisions(config.paths.bids_dir, runner)
-    if name == "mriqc-curated":
-        manifest = config.paths.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
-        return apply_curation(config.paths.bids_dir, manifest, config.validator.image, runner)
-    if name == "bids-curated-validated":
-        return _validation_result(
-            "bids-curated-validated", validate_bids(
-                config.paths.bids_dir, "curated", config.validator.image, runner,
-            ),
-        )
-    if name == "freesurfer-array":
-        subject = _array_subject(config, array_index)
-        runner(freesurfer_participant_command(config, subject), check=True)
-        commit = current_datalad_commit(config.paths.bids_dir, runner)
-        root = config.paths.bids_dir / "derivatives" / "freesurfer"
-        from network_fmri.containers import receipt_path
-        write_subject_receipt(
-            receipt_path(root, "freesurfer", subject),
-            freesurfer_subject_receipt(config, subject, commit),
-        )
-        return _array_result(name, subject)
-    if name == "freesurfer-complete":
-        write_freesurfer_description(config)
-        return verify_freesurfer(config, runner)
-    if name == "surface-review-generated":
-        return generate_surface_review(config)
-    if name == "surface-review-approved":
-        return validate_surface_review(config)
-    if name == "fmriprep-array":
-        subject = _array_subject(config, array_index)
-        runner(fmriprep_participant_command(config, subject), check=True)
-        commit = current_datalad_commit(config.paths.bids_dir, runner)
-        root = config.paths.bids_dir / "derivatives" / "fmriprep"
-        from network_fmri.containers import receipt_path
-        write_subject_receipt(receipt_path(root, "fmriprep", subject), fmriprep_subject_receipt(config, subject, commit))
-        return _array_result(name, subject)
-    if name == "fmriprep-complete":
-        return verify_fmriprep(config, runner)
     raise ValueError(f"unsupported pipeline stage: {name}")
 
 

@@ -13,11 +13,9 @@ from network_fmri.config import (
     VerifiedContainerConfig, WorkflowConfig, WorkflowPaths,
 )
 from network_fmri.pipeline import (
-    STAGE_ORDER, build_plan, initial_submission, post_approval_submission,
-    save_stage_result,
+    STAGE_ORDER, build_plan, initial_submission, save_stage_result,
 )
 from network_fmri.models import StageResult
-from network_fmri.qa.validate import ValidationError, ValidationResult
 from network_fmri.slurm import submit_plan
 from network_fmri.slurm import SubmissionRecord
 
@@ -47,19 +45,15 @@ def configuration(tmp_path: Path) -> WorkflowConfig:
     )
 
 
-def test_graph_has_the_fixed_order_and_human_gate(tmp_path):
+def test_graph_ends_at_precuration_validation(tmp_path):
     plan = build_plan(configuration(tmp_path))
     names = tuple(job.name for job in plan)
 
     assert names == STAGE_ORDER
     assert names.index("behavioral-sourcedata-ingested") < names.index("participants-ingested")
     assert names.index("participants-ingested") < names.index("gs-pretrim")
-    assert names.index("scan-decisions-approved") < names.index("mriqc-curated")
-    assert names.index("mriqc-curated") < names.index("fmriprep-array")
-    assert names.index("mriqc-curated") < names.index("bids-curated-validated")
-    assert names.index("bids-curated-validated") < names.index("freesurfer-array")
-    assert names.index("freesurfer-array") < names.index("surface-review-generated")
-    assert names.index("surface-review-approved") < names.index("fmriprep-array")
+    assert names[-1] == "bids-precuration-validated"
+    assert not ({"mriqc-array", "freesurfer-array", "fmriprep-array"} & set(names))
     assert all(
         job.dependencies == (() if index == 0 else (names[index - 1],))
         for index, job in enumerate(plan)
@@ -70,17 +64,13 @@ def test_array_workers_never_call_datalad(tmp_path):
     plan = build_plan(configuration(tmp_path))
 
     assert all("datalad" not in " ".join(job.command).lower() for job in plan if job.array)
-    assert {job.name for job in plan if job.array} == {
-        "fw2bids-array", "mriqc-array", "freesurfer-array", "fmriprep-array",
-    }
+    assert {job.name for job in plan if job.array} == {"fw2bids-array"}
 
 
-def test_first_submission_stops_for_human_review_and_resume_starts_after_it(tmp_path):
+def test_initial_submission_contains_the_complete_raw_preparation_graph(tmp_path):
     plan = build_plan(configuration(tmp_path))
 
-    assert initial_submission(plan)[-1].name == "scan-decisions-generated"
-    assert "scan-decisions-approved" not in {job.name for job in initial_submission(plan)}
-    assert post_approval_submission(plan)[0].name == "mriqc-curated"
+    assert initial_submission(plan) == plan
 
 
 def test_plan_carries_the_submission_context_needed_for_a_dry_run(tmp_path):
@@ -190,19 +180,6 @@ def test_dry_submit_does_not_create_the_log_directory(tmp_path, monkeypatch):
     assert not config.paths.log_dir.exists()
 
 
-def test_curated_validation_is_a_graph_node_without_a_second_milestone(tmp_path, monkeypatch):
-    config = configuration(tmp_path)
-    monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
-    monkeypatch.setattr(
-        pipeline, "_run_stage", lambda *_: StageResult("bids-curated-validated", (tmp_path / "report.json",)),
-    )
-    saved = []
-    monkeypatch.setattr(pipeline, "save_stage_result", lambda *args, **kwargs: saved.append(args))
-
-    assert pipeline.stage_main(["bids-curated-validated", str(tmp_path / "workflow.toml")]) == 0
-    assert saved == []
-
-
 def test_conversion_stage_creates_and_removes_secure_node_local_tmp(tmp_path, monkeypatch):
     created = tmp_path / "network-fmri-123-test"
 
@@ -220,22 +197,6 @@ def test_conversion_stage_creates_and_removes_secure_node_local_tmp(tmp_path, mo
 
     assert "SLURM_TMPDIR" not in os.environ
     assert not created.exists()
-
-
-def test_curated_validation_failure_saves_its_rolled_back_diagnostics(tmp_path, monkeypatch):
-    config = configuration(tmp_path)
-    report, log = tmp_path / "report.json", tmp_path / "report.log"
-    report.write_text("{}")
-    log.write_text("failure")
-    error = ValidationError(ValidationResult("curated", report, log, 1))
-    monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
-    monkeypatch.setattr(pipeline, "_run_stage", lambda *_args, **_kwargs: (_ for _ in ()).throw(error))
-    saved = []
-    monkeypatch.setattr("network_fmri.milestones.save_diagnostic", lambda *args, **kwargs: saved.append(args))
-
-    with pytest.raises(ValidationError):
-        pipeline.stage_main(["mriqc-curated", str(tmp_path / "workflow.toml")])
-    assert saved == [(config.paths.bids_dir, "mriqc-curated", [report, log])]
 
 
 def test_resume_resubmits_a_failed_array_and_all_of_its_descendants(tmp_path, monkeypatch):
@@ -272,21 +233,6 @@ def test_status_exposes_submission_status_and_error(tmp_path, monkeypatch, capsy
     ]
 
 
-def test_resume_does_not_treat_a_queued_decision_job_as_approval(tmp_path, monkeypatch):
-    config = configuration(tmp_path)
-    pipeline.write_record(
-        pipeline.record_path(config), SubmissionRecord(jobs={"scan-decisions-generated": "123"}),
-    )
-    monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
-    called = []
-    monkeypatch.setattr(pipeline, "require_committed_approval", lambda _: called.append(True))
-    monkeypatch.setattr(pipeline, "submit_plan", lambda *args, **kwargs: SubmissionRecord(dry_run=True))
-
-    failed = lambda *_args, **_kwargs: SimpleNamespace(stdout="FAILED\n")
-    assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"], runner=failed) == 0
-    assert called == []
-
-
 def test_resume_starts_at_the_first_missing_milestone_after_verified_array_work(tmp_path, monkeypatch):
     config = configuration(tmp_path)
     config.paths.parts_dir.mkdir()
@@ -314,27 +260,6 @@ def test_resume_starts_at_the_first_missing_milestone_after_verified_array_work(
     )
     assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"], runner=runner) == 0
     assert selected[0] == "behavioral-sourcedata-ingested"
-
-
-def test_resume_does_not_accept_failed_curated_validator_artifacts_as_success(tmp_path):
-    config = configuration(tmp_path)
-    report = config.paths.bids_dir / "derivatives" / "bids-validator" / "desc-curated_validation.json"
-    report.parent.mkdir(parents=True)
-    report.write_text("{}")
-    report.with_suffix(".log").write_text("validator failed")
-    job = next(job for job in build_plan(config) if job.name == "bids-curated-validated")
-    record = SubmissionRecord(jobs={job.name: "123"})
-
-    def failed(command, **_kwargs):
-        assert command[0] == "sacct"
-        return SimpleNamespace(stdout="FAILED\n")
-
-    def completed(command, **_kwargs):
-        assert command[0] == "sacct"
-        return SimpleNamespace(stdout="COMPLETED\n")
-
-    assert not pipeline._stage_completed(config, job, record, failed)
-    assert pipeline._stage_completed(config, job, record, completed)
 
 
 def test_resume_refuses_to_duplicate_an_active_slurm_stage(tmp_path, monkeypatch):
@@ -393,28 +318,6 @@ def test_resume_fails_closed_when_scheduler_state_cannot_be_verified(tmp_path, m
 
     with pytest.raises(pipeline.ResumeError, match="cannot verify|returned no state"):
         pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume"], runner=unknown)
-
-
-def test_resume_does_not_trust_a_queued_curation_job_without_a_milestone(tmp_path, monkeypatch):
-    config = configuration(tmp_path)
-    pipeline.write_record(
-        pipeline.record_path(config),
-        SubmissionRecord(jobs={"scan-decisions-generated": "123", "mriqc-curated": "456"}),
-    )
-    monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
-    monkeypatch.setattr(
-        pipeline, "require_committed_approval",
-        lambda _: pytest.fail("queued jobs are not completion evidence"),
-    )
-    selected = []
-    monkeypatch.setattr(
-        pipeline, "submit_plan",
-        lambda jobs, **kwargs: selected.extend(job.name for job in jobs) or SubmissionRecord(dry_run=True),
-    )
-
-    failed = lambda *_args, **_kwargs: SimpleNamespace(stdout="FAILED\n")
-    assert pipeline.main(["submit", str(tmp_path / "workflow.toml"), "--resume", "--dry-run"], runner=failed) == 0
-    assert selected[0] == "fw2bids-array"
 
 
 def test_committed_approval_requires_a_receipt_present_in_head(tmp_path, monkeypatch):

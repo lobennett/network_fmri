@@ -9,7 +9,7 @@ from pathlib import Path
 
 from network_fmri import pipeline
 from network_fmri.curation import apply_curation
-from network_fmri.stages.decisions import validate_decisions
+from network_fmri.stages.decisions import generate_decisions, validate_decisions
 from network_fmri.config import WorkflowConfig
 from network_fmri.qa.freesurfer import validate_surface_review
 from network_fmri.processing import ProcessingManager
@@ -39,8 +39,9 @@ def get_parser() -> argparse.ArgumentParser:
     )
     decisions = commands.add_parser("decisions", help="validate reviewed scan decisions")
     decision_commands = decisions.add_subparsers(dest="decision_command", required=True)
-    validate = decision_commands.add_parser("validate")
-    validate.add_argument("bids_dir", type=Path)
+    for name in ("generate", "validate"):
+        decision = decision_commands.add_parser(name)
+        decision.add_argument("bids_dir", type=Path)
     surfaces = commands.add_parser("surfaces", help="validate reviewed FreeSurfer surfaces")
     surface_commands = surfaces.add_subparsers(dest="surface_command", required=True)
     surface_validate = surface_commands.add_parser("validate")
@@ -96,7 +97,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{result.stage}\t{action}\t{result.previous_state}")
         return 0
     if parsed.command == "decisions":
-        result = validate_decisions(parsed.bids_dir)
+        result = (
+            generate_decisions(parsed.bids_dir)
+            if parsed.decision_command == "generate"
+            else validate_decisions(parsed.bids_dir)
+        )
         pipeline.save_stage_result(parsed.bids_dir, result)
         return 0
     if parsed.command == "surfaces":
@@ -112,7 +117,8 @@ def main(argv: list[str] | None = None) -> int:
         pipeline.save_stage_result(review_dataset, result, config=config)
         return 0
     manifest = parsed.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
-    apply_curation(parsed.bids_dir, manifest, parsed.validator_image)
+    result = apply_curation(parsed.bids_dir, manifest, parsed.validator_image)
+    pipeline.save_stage_result(parsed.bids_dir, result)
     return 0
 
 

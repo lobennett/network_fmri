@@ -84,7 +84,7 @@ def test_drop_removes_echo_bundle_events_and_sidecars_but_keeps_raw_behavior(tmp
 
     result = apply_curation(tmp_path, manifest, tmp_path / "validator.sif", runner)
 
-    assert result.name == "mriqc-curated"
+    assert result.name == "bids-curated-validated"
     assert not list(func.glob(f"{stem}*"))
     assert not event_qc.exists()
     assert behavior.is_file()
