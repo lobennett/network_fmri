@@ -3,6 +3,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --time=2-00:00:00
+#SBATCH --propagate=NONE
 #SBATCH --output=network-mriqc-handoff-%j.log
 
 # Submit from the pinned network_fmri checkout with DataLad/git-annex on PATH.

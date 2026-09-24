@@ -58,6 +58,10 @@ MRIQC archives into the study. `prepare-review` extracts reports
 and metrics into a separate DataLad derivative and records their source commits.
 Generate the scan review there, edit every `review` row, then seal and commit it.
 
+Run curation/BIDS validation in a compute-node allocation with
+`--propagate=NONE`. Sherlock's login-node virtual-memory limit can prevent Deno
+from reserving its heap, even when physical memory is available.
+
 ```bash
 RAW=/scratch/groups/russpold/network_fmri/bids
 STUDY=/scratch/users/logben/network-study
