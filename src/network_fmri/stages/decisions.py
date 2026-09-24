@@ -38,11 +38,16 @@ def generate_decisions(
     )
 
 
-def validate_decisions(bids_dir: Path, runner: Runner = subprocess.run) -> StageResult:
+def validate_decisions(
+    bids_dir: Path,
+    runner: Runner = subprocess.run,
+    *,
+    manifest: Path | None = None,
+) -> StageResult:
     """Validate reviewed decisions and atomically seal their approval sidecar."""
 
     bids_dir = Path(bids_dir)
-    manifest = manifest_path(bids_dir)
+    manifest = Path(manifest) if manifest is not None else manifest_path(bids_dir)
     command = [
         "network-qa", "decisions", "approve", "--manifest", str(manifest),
         "--metadata", str(manifest.with_suffix(".meta.json")), "--bids-dir", str(bids_dir),

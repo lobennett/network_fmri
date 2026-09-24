@@ -42,14 +42,19 @@ network-study/
 │   ├── raw/                       # canonical raw BIDS DataLad subdataset
 │   ├── sourcedata+subjects.tsv
 │   └── sourcedata+subjects+sessions.tsv
-├── derivatives/                   # MechaBABS/BABS derivative subdatasets
+├── derivatives/                   # installed merged derivative subdatasets
 ├── code/network_fmri/
 │   ├── scan_decisions.tsv
 │   ├── analysis_exclusions.tsv
 │   ├── surface_review.tsv
 │   └── records/
-└── .mechababs/campaigns/<label>/  # copied configs and locked environment
 ```
+
+The MechaBABS campaign is a separate DataLad dataset at `campaign_dir`. It clones
+the wrapper beneath `studies/`, runs BABS there, and records scheduler provenance.
+After a stage merges, `processing advance` installs that derivative as a subdataset
+under the wrapper's `derivatives/`. The wrapper is therefore the canonical analysis
+dataset; the campaign remains its reproducible processing record.
 
 The raw dataset retains the canonical in-scanner and out-of-scanner behavioral
 subdatasets under `sourcedata/behavioral/`, their pinned commits, participant data,
@@ -60,8 +65,8 @@ Migration is additive. A command creates a new study and installs the raw datase
 `sourcedata/raw`; it does not move, rewrite, or delete the existing dataset. It fails
 if the destination exists with a different DataLad identity or subdataset commit.
 The pilot migration uses a fresh study and campaign before the 46-subject study is
-created. Existing absolute-path review metadata is regenerated against the installed
-raw and derivative inputs. Previously approved decision values and reviewer identity
+created. Existing absolute-path review metadata is regenerated against the raw
+subdataset and installed derivatives. Previously approved decision values and reviewer identity
 are reapplied only when their BIDS acquisition keys and generated evidence rows match,
 then the review is sealed again in the study.
 

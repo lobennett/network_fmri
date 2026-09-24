@@ -98,7 +98,7 @@ def initial_submission(plan: tuple[PlannedJob, ...]) -> tuple[PlannedJob, ...]:
 def approval_command(config: WorkflowConfig) -> tuple[str, ...]:
     """The read-only gate checked immediately before curation is queued."""
 
-    manifest = config.paths.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
+    manifest = decision_manifest(config)
     return (
         "network-qa", "decisions", "validate", "--manifest", str(manifest),
         "--metadata", str(manifest.with_suffix(".meta.json")),
@@ -123,14 +123,16 @@ def require_committed_approval(config: WorkflowConfig, runner=subprocess.run) ->
     require_approved_decisions(config, runner)
     from network_fmri.milestones import receipt_path
 
-    bids_dir = config.paths.bids_dir
-    receipt = receipt_path(bids_dir, "scan-decisions-approved")
-    manifest = bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
+    review_dataset = (
+        config.mechababs.study_dir if config.mechababs is not None else config.paths.bids_dir
+    )
+    receipt = receipt_path(review_dataset, "scan-decisions-approved")
+    manifest = decision_manifest(config)
     metadata = manifest.with_suffix(".meta.json")
     try:
-        value = json.loads(_head_file(bids_dir, receipt, runner).decode("utf-8"))
-        committed_manifest = _head_file(bids_dir, manifest, runner)
-        committed_metadata = _head_file(bids_dir, metadata, runner)
+        value = json.loads(_head_file(review_dataset, receipt, runner).decode("utf-8"))
+        committed_manifest = _head_file(review_dataset, manifest, runner)
+        committed_metadata = _head_file(review_dataset, metadata, runner)
         working_manifest = manifest.read_bytes()
         working_metadata = metadata.read_bytes()
     except (OSError, subprocess.CalledProcessError, UnicodeError, json.JSONDecodeError) as error:
@@ -148,6 +150,13 @@ def require_committed_approval(config: WorkflowConfig, runner=subprocess.run) ->
         raise RuntimeError("committed scan-decision approval hashes do not match HEAD")
     if _sha256(working_manifest) != expected["manifest_sha256"] or _sha256(working_metadata) != expected["metadata_sha256"]:
         raise RuntimeError("working scan decisions differ from the committed approval milestone")
+
+
+def decision_manifest(config: WorkflowConfig) -> Path:
+    """Return the governed manifest in the wrapper study when configured."""
+
+    root = config.mechababs.study_dir if config.mechababs is not None else config.paths.bids_dir
+    return root / "code" / "network_fmri" / "scan_decisions.tsv"
 
 
 def require_committed_surface_approval(

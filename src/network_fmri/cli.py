@@ -45,6 +45,9 @@ def get_parser() -> argparse.ArgumentParser:
         if name == "generate":
             decision.add_argument("--mriqc-dir", type=Path)
             decision.add_argument("--output", type=Path)
+        else:
+            decision.add_argument("--manifest", type=Path)
+            decision.add_argument("--approval-dataset", type=Path)
     surfaces = commands.add_parser("surfaces", help="validate reviewed FreeSurfer surfaces")
     surface_commands = surfaces.add_subparsers(dest="surface_command", required=True)
     for name in ("generate", "validate"):
@@ -55,6 +58,7 @@ def get_parser() -> argparse.ArgumentParser:
             surface.add_argument("--anatomical-derivative", required=True, type=Path)
     curate = commands.add_parser("curate", help="apply approved drop decisions")
     curate.add_argument("bids_dir", type=Path)
+    curate.add_argument("--manifest", type=Path)
     curate.add_argument("--validator-image", required=True, type=Path)
     return parser
 
@@ -111,8 +115,10 @@ def main(argv: list[str] | None = None) -> int:
             }
             result = generate_decisions(parsed.bids_dir, **options)
         else:
-            result = validate_decisions(parsed.bids_dir)
-        pipeline.save_stage_result(parsed.bids_dir, result)
+            options = {"manifest": parsed.manifest} if parsed.manifest is not None else {}
+            result = validate_decisions(parsed.bids_dir, **options)
+        approval_dataset = getattr(parsed, "approval_dataset", None)
+        pipeline.save_stage_result(approval_dataset or parsed.bids_dir, result)
         return 0
     if parsed.command == "surfaces":
         config = WorkflowConfig.load(parsed.config)
@@ -130,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         pipeline.save_stage_result(review_dataset, result, config=config)
         return 0
-    manifest = parsed.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
+    manifest = parsed.manifest or parsed.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
     result = apply_curation(parsed.bids_dir, manifest, parsed.validator_image)
     pipeline.save_stage_result(parsed.bids_dir, result)
     return 0

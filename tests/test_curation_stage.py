@@ -230,3 +230,12 @@ def test_curation_rejects_an_edited_or_unsealed_manifest_before_mutation(tmp_pat
         apply_curation(tmp_path, manifest, tmp_path / "validator.sif", RejectApproval())
 
     assert list(func.glob(f"{stem}*"))
+
+
+def test_curation_accepts_approved_manifest_from_wrapper_study(tmp_path):
+    _dataset(tmp_path)
+    manifest = _manifest(tmp_path / "wrapper/code/network_fmri/scan_decisions.tsv")
+
+    result = apply_curation(tmp_path, manifest, tmp_path / "validator.sif", Runner())
+
+    assert result.name == "bids-curated-validated"

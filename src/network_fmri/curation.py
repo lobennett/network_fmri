@@ -148,9 +148,8 @@ def _require_dataset(bids_dir: Path) -> None:
 def _require_approval(
     bids_dir: Path, manifest: Path, runner: Runner,
 ) -> ApprovalSnapshot:
-    expected = bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"
-    if manifest != expected:
-        raise StageError("curation manifest must be code/network_fmri/scan_decisions.tsv")
+    if manifest.name != "scan_decisions.tsv":
+        raise StageError("curation requires the governed scan_decisions.tsv manifest")
     metadata = manifest.with_suffix(".meta.json")
     try:
         manifest_bytes = manifest.read_bytes()

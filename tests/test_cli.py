@@ -37,6 +37,25 @@ def test_decisions_validate_calls_the_sealing_stage(tmp_path, monkeypatch):
     assert saved[0][1].name == "scan-decisions-approved"
 
 
+def test_decisions_validate_saves_wrapper_approval(tmp_path, monkeypatch):
+    manifest = tmp_path / "study/code/network_fmri/scan_decisions.tsv"
+    result = StageResult("scan-decisions-approved", (manifest,))
+    observed = []
+    monkeypatch.setattr(
+        cli, "validate_decisions",
+        lambda raw, **kwargs: observed.append((raw, kwargs)) or result,
+    )
+    saved = []
+    monkeypatch.setattr(cli.pipeline, "save_stage_result", lambda root, stage: saved.append((root, stage)))
+
+    assert cli.main([
+        "decisions", "validate", str(tmp_path / "raw"),
+        "--manifest", str(manifest), "--approval-dataset", str(tmp_path / "study"),
+    ]) == 0
+    assert observed == [(tmp_path / "raw", {"manifest": manifest})]
+    assert saved == [(tmp_path / "study", result)]
+
+
 def test_decisions_generate_writes_mriqc_review_manifest(tmp_path, monkeypatch):
     observed = []
     result = StageResult("scan-decisions-generated", (tmp_path / "manifest.tsv",))
@@ -118,6 +137,23 @@ def test_curate_uses_only_the_governed_manifest_path(tmp_path, monkeypatch):
         image,
     )]
     assert saved == [(tmp_path / "bids", result)]
+
+
+def test_curate_accepts_wrapper_manifest(tmp_path, monkeypatch):
+    observed = []
+    result = StageResult("bids-curated-validated", (tmp_path / "report.json",))
+    monkeypatch.setattr(
+        cli, "apply_curation",
+        lambda bids, manifest, image: observed.append((bids, manifest, image)) or result,
+    )
+    monkeypatch.setattr(cli.pipeline, "save_stage_result", lambda *args: None)
+    manifest = tmp_path / "study/code/network_fmri/scan_decisions.tsv"
+
+    assert cli.main([
+        "curate", str(tmp_path / "raw"), "--manifest", str(manifest),
+        "--validator-image", str(tmp_path / "validator.sif"),
+    ]) == 0
+    assert observed[0][1] == manifest
 
 
 def test_study_init_uses_selected_pilot_and_prints_identity(tmp_path, monkeypatch, capsys):

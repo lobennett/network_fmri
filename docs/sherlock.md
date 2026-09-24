@@ -1,88 +1,86 @@
 # Sherlock operations
 
-## Prepare
+Use a clean checkout, the reviewed TOML, pinned containers, and a valid FreeSurfer
+license. Keep `FLYWHEEL_API_TOKEN` out of files and logs.
 
-Use a Sherlock allocation, a pinned `uv` environment, a clean checkout, readable
-behavioral DataLad repositories, a clean canonical participant-metadata repository,
-configured annex remotes, and the containers named in the reviewed TOML.
-The BIDS Validator runs from its configured Apptainer image because Sherlock's host
-glibc cannot run the validator's Deno binary directly.
+## One-subject pilot
+
+Prepare raw BIDS first. DICOMs and undefaced NIfTIs may exist only in
+`$SLURM_TMPDIR`; inspect the defaced T1w and T2w images before continuing.
 
 ```bash
-cd /path/to/network_fmri
 uv sync --frozen
 export FLYWHEEL_API_TOKEN="$(< /secure/path/flywheel-token)"
-uv run --frozen network-fmri pipeline plan /path/to/workflow.toml
-uv run --frozen network-fmri pipeline submit /path/to/workflow.toml --dry-run
+uv run --frozen network-fmri pipeline submit workflow.toml --pilot-subject s03
+uv run --frozen network-fmri pipeline status workflow.toml
 ```
 
-Keep the token out of TOML files, shell history, Slurm commands, receipts, and logs.
-
-## Run the privacy pilot
-
-Verify that the PyDeface image digest matches `[pydeface]`:
+Verify the FreeSurfer license with the pinned fMRIPrep image before creating a
+campaign:
 
 ```bash
-sha256sum /home/groups/russpold/singularity_images/pydeface-2.1.0-fsl-2602.1.sif
+apptainer exec --cleanenv \
+  --bind /home/groups/russpold/license.txt:/license.txt:ro \
+  /oak/stanford/groups/russpold/shared/containers/fmriprep-25.2.5.sif \
+  bash -lc 'export FS_LICENSE=/license.txt; mri_convert --version'
 ```
 
-Slurm must provide `$SLURM_TMPDIR`. Flywheel archives, DICOMs, undefaced NIfTIs, and
-PyDeface temporary files may exist only there. Persistent subject parts contain defaced
-anatomy only.
-
-Copy the reviewed TOML, give the pilot separate BIDS, parts, work, and log paths, keep
-the 46-subject roster, and select one subject:
+Create the wrapper study and its separate campaign, then advance MRIQC. One
+`advance` call performs one reconciler transition, so inspect status and repeat it
+until MRIQC is complete.
 
 ```bash
-uv run --frozen network-fmri pipeline submit /path/to/pilot.toml \
-  --pilot-subject s03 --dry-run
-uv run --frozen network-fmri pipeline submit /path/to/pilot.toml \
-  --pilot-subject s03
+uv run --frozen network-fmri study init workflow.toml --pilot-subject s03
+uv run --frozen network-fmri processing plan workflow.toml --pilot-subject s03
+uv run --frozen network-fmri processing advance workflow.toml --stage mriqc
+uv run --frozen network-fmri processing status workflow.toml
 ```
 
-Check Flywheel access, container binds, DataLad saves, validator output, Slurm logs,
-defacing receipts, and sidecars:
+The final `advance` call installs the merged MRIQC derivative in the wrapper.
+Generate the review there, edit every `review` row, then seal and commit it.
 
 ```bash
-jq . /path/to/pilot-bids/code/network_fw2bids/defacing/sub-s03.json
-find /path/to/pilot-bids/sub-s03 -path '*/anat/*_T?w.json' \
-  -print -exec jq '.Defaced' {} \;
+RAW=/scratch/groups/russpold/network_fmri/bids
+STUDY=/scratch/users/logben/network-study
+MRIQC=$STUDY/derivatives/MRIQC-24.0.2
+REVIEW=$STUDY/code/network_fmri/scan_decisions.tsv
+
+uv run --frozen network-fmri decisions generate "$RAW" \
+  --mriqc-dir "$MRIQC" --output "$REVIEW"
+uv run --frozen network-fmri decisions validate "$RAW" \
+  --manifest "$REVIEW" --approval-dataset "$STUDY"
+uv run --frozen network-fmri curate "$RAW" --manifest "$REVIEW" \
+  --validator-image /home/groups/russpold/singularity_images/bids-validator-3.0.1.sif
 ```
 
-View every pilot T1w and T2w image. Automated checks cannot judge defacing quality.
-
-## Submit and resume
+Advance anatomical preprocessing until complete. Generate the surface checklist
+from its derivative, inspect every subject, set `approved=yes` with reviewer and
+timestamp, and seal it before full fMRIPrep.
 
 ```bash
-uv run --frozen network-fmri pipeline submit /path/to/workflow.toml
-uv run --frozen network-fmri pipeline status /path/to/workflow.toml
+uv run --frozen network-fmri processing advance workflow.toml --stage anatomical
+uv run --frozen network-fmri processing status workflow.toml
+
+ANAT=$STUDY/derivatives/fMRIPrep-25.2.5+anat
+uv run --frozen network-fmri surfaces generate workflow.toml \
+  --pilot-subject s03 --anatomical-derivative "$ANAT"
+uv run --frozen network-fmri surfaces validate workflow.toml --pilot-subject s03
+uv run --frozen network-fmri processing advance workflow.toml --stage fmriprep
 ```
 
-The first graph stops at `scan-decisions-generated`. Review MRIQC evidence, resolve all
-`review` rows in `code/network_fmri/scan_decisions.tsv`, then continue:
+Repeat `processing status` and `processing advance` until each stage is merged.
+Failed cells require explicit intervention; the command does not retry them silently.
 
-```bash
-uv run --frozen network-fmri decisions validate /path/to/bids
-uv run --frozen network-fmri pipeline submit /path/to/workflow.toml --resume
-```
+## Pilot acceptance
 
-Repeat `--pilot-subject s03` when resuming a pilot. Use the configured log directory and
-`squeue --me` to monitor jobs. `--resume` verifies milestones, array receipts, and Slurm
-completion before submitting missing stages. Validator reports remain in
-`derivatives/bids-validator/`, including failed runs.
+Before starting 46 subjects, require:
 
-After curation, the graph runs standalone FreeSurfer and stops at
-`surface-review-generated`. Inspect each subject under `derivatives/freesurfer/`, then
-complete `code/network_fmri/surface_review.tsv`. Every row needs `approved=yes`, a
-reviewer, and a review timestamp. Seal the checklist and resume fMRIPrep:
+- valid DataLad identities and clean raw, study, and campaign worktrees;
+- defacing receipts and visually acceptable defaced anatomy;
+- committed scan and surface approvals whose hashes match their receipts;
+- merged MRIQC, anatomical, and full fMRIPrep cells with no failed BABS jobs;
+- readable derivative subdatasets and campaign Git pins matching `workflow.toml`.
 
-```bash
-uv run --frozen network-fmri surfaces validate /path/to/workflow.toml
-uv run --frozen network-fmri pipeline submit /path/to/workflow.toml --resume
-```
-
-For a pilot, add `--pilot-subject s03` to both commands. fMRIPrep reads the reviewed
-subjects from `derivatives/freesurfer/`.
-
-Before curation, confirm that a durable DataLad annex remote has all raw content. The
-pre-curation state depends on that remote.
+Use `squeue --me`, `sacct`, `network-fmri processing status`, and the paths printed
+by MechaBABS to investigate jobs. The Oak sibling is the durable copy; scratch is the
+working copy.

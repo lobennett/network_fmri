@@ -355,6 +355,18 @@ def test_committed_approval_requires_a_receipt_present_in_head(tmp_path, monkeyp
     assert calls[1][:2] == ["git", "-C"]
 
 
+def test_mechababs_approval_gate_reads_wrapper_study(tmp_path):
+    config = configuration(tmp_path)
+    object.__setattr__(
+        config, "mechababs", SimpleNamespace(study_dir=tmp_path / "study")
+    )
+
+    command = pipeline.approval_command(config)
+
+    manifest = tmp_path / "study/code/network_fmri/scan_decisions.tsv"
+    assert command[command.index("--manifest") + 1] == str(manifest)
+
+
 def test_committed_receipt_rejects_a_new_uncommitted_seal(tmp_path):
     config = configuration(tmp_path)
     manifest = config.paths.bids_dir / "code" / "network_fmri" / "scan_decisions.tsv"

@@ -62,6 +62,17 @@ def test_validate_decisions_seals_the_reviewed_manifest(tmp_path):
     ]]
 
 
+def test_validate_decisions_accepts_wrapper_manifest(tmp_path):
+    runner = Runner()
+    raw = tmp_path / "study/sourcedata/raw"
+    manifest = tmp_path / "study/code/network_fmri/scan_decisions.tsv"
+
+    result = validate_decisions(raw, runner, manifest=manifest)
+
+    assert result.outputs == (manifest, manifest.with_suffix(".meta.json"))
+    assert runner.calls[0][runner.calls[0].index("--manifest") + 1] == str(manifest)
+
+
 def test_decision_command_failures_are_stage_errors(tmp_path):
     with pytest.raises(StageError, match="scan-decision"):
         generate_decisions(tmp_path, Runner(fail=True))

@@ -145,6 +145,23 @@ def test_advance_rejects_stage_until_previous_pipeline_is_merged(tmp_path, monke
         manager.advance("anatomical")
 
 
+def test_complete_stage_installs_derivative_in_canonical_study(tmp_path, monkeypatch):
+    config = setup(tmp_path, (("studies/study-raw/derivatives/MRIQC-24.0.2", "done"), ("", ""), ("", "")))
+    source = config.mechababs.campaign_dir / "studies/study-raw/derivatives/MRIQC-24.0.2"
+    source.mkdir(parents=True)
+    runner = Runner()
+    monkeypatch.setattr("network_fmri.processing.require_stage_gate", lambda *_: None)
+
+    result = ProcessingManager(config, runner=runner).advance("mriqc")
+
+    assert result.advanced is False
+    clone = next(command for command, _ in runner.commands if command[:2] == ("datalad", "clone"))
+    assert clone == (
+        "datalad", "clone", "-d", str(config.mechababs.study_dir), str(source),
+        "derivatives/MRIQC-24.0.2",
+    )
+
+
 @pytest.mark.parametrize("stage", ["mriqc", "anatomical", "fmriprep"])
 def test_advance_checks_the_named_gate(tmp_path, monkeypatch, stage):
     values = {

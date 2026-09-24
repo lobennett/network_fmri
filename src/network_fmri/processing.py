@@ -103,6 +103,7 @@ class ProcessingManager:
             if predecessor.state != "complete":
                 raise RuntimeError(f"{predecessor.stage} must be complete before {stage}")
         if selected.state == "complete":
+            self._install_derivative(selected)
             return AdvanceResult(stage, False, selected.state)
         if selected.state == "intervention-required":
             raise RuntimeError(f"{stage} requires intervention before it can advance")
@@ -117,6 +118,46 @@ class ProcessingManager:
             check=True,
         )
         return AdvanceResult(stage, True, selected.state)
+
+    def _install_derivative(self, stage: ProcessingStage) -> None:
+        """Register one merged BABS result in the canonical wrapper study."""
+
+        source = self.config.campaign_dir / stage.project
+        destination = self.config.study_dir / "derivatives" / stage.application
+        if not source.is_dir():
+            raise RuntimeError(f"merged derivative is unavailable: {source}")
+        if destination.exists():
+            source_id = self._output(("git", "config", "--get", "datalad.dataset.id"), source)
+            destination_id = self._output(
+                ("git", "config", "--get", "datalad.dataset.id"), destination
+            )
+            source_commit = self._output(("git", "rev-parse", "HEAD"), source)
+            destination_commit = self._output(("git", "rev-parse", "HEAD"), destination)
+            if (source_id, source_commit) != (destination_id, destination_commit):
+                raise RuntimeError(
+                    f"installed derivative does not match merged {stage.application} result"
+                )
+            return
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        self.runner(
+            (
+                "datalad", "clone", "-d", str(self.config.study_dir), str(source),
+                str(destination.relative_to(self.config.study_dir)),
+            ),
+            cwd=str(self.config.study_dir), check=True,
+        )
+        self.runner(
+            (
+                "datalad", "save", "-d", str(self.config.study_dir), "-m",
+                f"Install merged {stage.application} derivative",
+            ),
+            check=True,
+        )
+
+    def _output(self, command: tuple[str, ...], cwd: Path) -> str:
+        return str(self.runner(
+            command, cwd=str(cwd), check=True, capture_output=True, text=True,
+        ).stdout).strip()
 
     def _ledger_row(self) -> dict[str, str]:
         try:
