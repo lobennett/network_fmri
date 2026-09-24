@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from network_fmri.records.entities import entity_from_path
@@ -30,9 +30,9 @@ class RecordSet:
 def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") -> RecordSet:
     study = Path(study).resolve()
     raw = study / "sourcedata" / raw_slot
-    dataset_id = _git(runner, study, ("git", "config", "--get", "datalad.dataset.id"))
+    dataset_id = _git(runner, study, ("git", "config", "--file", ".datalad/config", "--get", "datalad.dataset.id"))
     study_commit = _git(runner, study, ("git", "rev-parse", "HEAD"))
-    raw_id = _git(runner, raw, ("git", "config", "--get", "datalad.dataset.id"))
+    raw_id = _git(runner, raw, ("git", "config", "--file", ".datalad/config", "--get", "datalad.dataset.id"))
     raw_commit = _git(runner, raw, ("git", "rev-parse", "HEAD"))
     entities: dict[str, Entity] = {}
     attempts: list[StageAttempt] = []
@@ -43,7 +43,10 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
         Artifact("raw", f"sourcedata/{raw_slot}", kind=f"dataset:{raw_id}", commit=raw_commit),
     ]
 
-    for path in sorted(raw.glob("code/network_fmri/milestones/*.json")):
+    for path in sorted(
+        path for root in (raw, study)
+        for path in root.glob("code/network_fmri/milestones/*.json")
+    ):
         value = _json(path, "milestone receipt")
         stage = _required(value, "stage", path)
         attempts.append(StageAttempt(stage, "dataset", 1, str(value.get("status", "unknown"))))
@@ -73,26 +76,33 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
         ))
 
     _collect_decisions(study / "code/network_fmri/scan_decisions.tsv", study, entities, decisions)
-    _collect_exclusions(study / "code/network_fmri/analysis_exclusions.tsv", study, entities, decisions)
+    exclusions = study / "code/network_fmri/analysis_exclusions.tsv"
+    if not exclusions.exists():
+        exclusions = raw / "code/network_fmri/analysis_exclusions.tsv"
+    _collect_exclusions(exclusions, study, entities, decisions)
     _collect_surfaces(study / "code/network_fmri/surface_review.tsv", study, entities, decisions)
 
     for path in sorted(raw.glob("**/*_desc-truncation.json")):
         value = _json(path, "behavior truncation")
         try:
-            counts = {key: value[key] for key in ("dropped_trials", "kept_trials", "total_trials")}
+            counts = {key: value[key] for key in (
+                "NTestTrialsExpected", "NTestTrialsRetained", "FractionTestTrialsDropped",
+                "ScanDurationSeconds", "NScanTestTrialsDropped", "FractionScanTestTrialsDropped",
+            )}
         except KeyError as error:
             raise CollectionError(f"malformed behavior truncation: {path}") from error
-        entity = entity_from_path(path.relative_to(raw))
+        entity = replace(entity_from_path(path.relative_to(raw)), datatype="func", suffix="bold")
         entities[entity.key] = entity
         findings.append(Finding(
-            entity.key, "behavior-truncation", "exclude-first-level", _relative(path, study),
+            entity.key, "behavior-truncation", "metric", _relative(path, study),
             json.dumps(counts, sort_keys=True, separators=(",", ":")),
         ))
-    for path in sorted(raw.glob("**/*.error.json")):
-        _json(path, "event error")
-        entity = entity_from_path(path.relative_to(raw))
+    errors = raw / "sourcedata/events_qc/conversion_errors.tsv"
+    for row in _tsv(errors, "event errors", required=("subject", "session", "task", "run")):
+        entity = _row_entity(row)
         entities[entity.key] = entity
-        findings.append(Finding(entity.key, "event-error", "error", _relative(path, study), "{}"))
+        # The producer's message/source_path can contain behavioral content or private paths.
+        findings.append(Finding(entity.key, "event-error", "error", _relative(errors, study), "{}"))
     return RecordSet(
         dataset_id, study_commit, tuple(sorted(entities.values(), key=lambda item: item.key)),
         tuple(attempts), tuple(findings), tuple(decisions), tuple(artifacts),
@@ -111,12 +121,12 @@ def _collect_decisions(path, study, entities, decisions):
 
 
 def _collect_exclusions(path, study, entities, decisions):
-    for row in _tsv(path, "analysis exclusions", required=("subject", "decision")):
+    for row in _tsv(path, "analysis exclusions", required=("subject", "analysis_scope", "reason_code")):
         entity = _row_entity(row)
         entities[entity.key] = entity
         decisions.append(Decision(
-            entity.key, "first-level", row["decision"], row.get("reviewer") or None,
-            row.get("reason") or None, row.get("reviewed_at") or None,
+            entity.key, row["analysis_scope"], "exclude", row.get("reviewer") or None,
+            row.get("reason_detail") or row.get("reason_code") or None, row.get("reviewed_at") or None,
         ))
 
 
@@ -134,10 +144,10 @@ def _row_entity(row: dict[str, str]) -> Entity:
     def value(name, prefix=""):
         item = (row.get(name) or "").strip()
         return item.removeprefix(prefix) or None
-    run = value("run")
+    run = value("run", "run-")
     return Entity(
         "raw", value("subject", "sub-"), value("session", "ses-"), row.get("datatype") or "func",
-        value("task"), str(int(run)) if run and run.isdigit() else run,
+        value("task", "task-"), str(int(run)) if run and run.isdigit() else run,
         value("acquisition"), value("echo"), value("suffix") or "bold",
     )
 
