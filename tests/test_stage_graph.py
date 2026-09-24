@@ -148,6 +148,7 @@ def test_approval_milestone_binds_the_exact_manifest_and_metadata_bytes(tmp_path
 
 
 def test_real_submit_creates_logs_and_persists_each_callback(tmp_path, monkeypatch):
+    monkeypatch.setattr("network_fmri.provenance.activate_git_annex", lambda: None)
     config = configuration(tmp_path)
     updates = []
     monkeypatch.setattr(pipeline.WorkflowConfig, "load", lambda _: config)
@@ -200,6 +201,7 @@ def test_conversion_stage_creates_and_removes_secure_node_local_tmp(tmp_path, mo
 
 
 def test_resume_resubmits_a_failed_array_and_all_of_its_descendants(tmp_path, monkeypatch):
+    monkeypatch.setattr("network_fmri.provenance.activate_git_annex", lambda: None)
     config = configuration(tmp_path)
     pipeline.write_record(
         pipeline.record_path(config),

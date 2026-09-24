@@ -14,13 +14,13 @@ class Manager:
         return self.value
 
 
-def test_collects_every_job_attempt_and_cell_without_overwriting_failures():
+def test_collects_reported_jobs_and_scope():
     jobs = (
-        {"pipeline": "MRIQC-24.0.2", "subject": "s01", "session": "01", "job_id": "10",
-         "state": "FAILED", "submitted_at": "2026-01-01", "log_path": "logs/10.log", "error": "oom"},
-        {"pipeline": "MRIQC-24.0.2", "subject": "s01", "session": "01", "job_id": "11",
+        {"app": "MRIQC-24.0.2", "sub_id": "s01", "ses_id": "01", "job_id": "10",
+         "state": "FAILED", "submitted_at": "2026-01-01", "logs": "logs/10.log", "error": "oom"},
+        {"app": "MRIQC-24.0.2", "sub_id": "s01", "ses_id": "01", "job_id": "11",
          "state": "COMPLETED", "submitted_at": "2026-01-02", "finished_at": "2026-01-03",
-         "result_branch": "job-11", "output_commit": "a" * 40, "log_path": "logs/11.log"},
+         "result_branch": "job-11", "output_commit": "a" * 40, "logs": "logs/11.log"},
     )
     manager = Manager(ProcessingStatus(
         (ProcessingStage("mriqc", "MRIQC-24.0.2", "complete", "derivatives/mriqc"),), jobs,
@@ -31,8 +31,9 @@ def test_collects_every_job_attempt_and_cell_without_overwriting_failures():
     assert manager.calls == 1
     assert [item.attempt for item in attempts] == [1, 2]
     assert [item.state for item in attempts] == ["failed", "completed"]
-    assert attempts[0].error == "oom"
-    assert attempts[1].output_commit == "a" * 40
+    assert attempts[0].log_path == "logs/10.log"
+    assert attempts[0].scope == "sub-s01/ses-01"
+    assert attempts[1].output_commit is None
 
 
 def test_records_cells_without_jobs_including_intervention_state():

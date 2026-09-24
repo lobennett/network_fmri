@@ -1,28 +1,14 @@
-"""Small gated adapter around one MechaBABS campaign."""
+"""Study-specific review gates around upstream MechaBABS commands."""
 
 from __future__ import annotations
 
-import csv
-import io
 import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
 
+from network_fmri.campaign import Campaign, read_table
 from network_fmri.config import WorkflowConfig
-
-
-_STAGES = (
-    ("mriqc", "MRIQC-24.0.2"),
-    ("anatomical", "fMRIPrep-25.2.5+anat"),
-    ("fmriprep", "fMRIPrep-25.2.5+full"),
-)
-_FAILURE_STATES = frozenset({
-    "FAILED", "CANCELLED", "TIMEOUT", "OUT_OF_MEMORY", "NODE_FAIL",
-    "BOOT_FAIL", "DEADLINE", "DEPENDENCY_NEVER_SATISFIED", "INVALID_DEPEND",
-    "LAUNCH_FAILED",
-})
 
 
 @dataclass(frozen=True)
@@ -47,77 +33,66 @@ class AdvanceResult:
 
 
 class ProcessingManager:
-    """Plan, inspect, and advance one ordered MechaBABS cell at a time."""
+    """Retain human gates; delegate scheduling, locks, and derivatives upstream."""
 
-    def __init__(self, config: WorkflowConfig, *, runner=subprocess.run) -> None:
+    def __init__(self, config: WorkflowConfig, *, runner=subprocess.run):
         if config.mechababs is None:
             raise ValueError("workflow configuration is missing [mechababs]")
         self.workflow = config
         self.config = config.mechababs
         self.runner = runner
-
-    @property
-    def ledger_path(self) -> Path:
-        return self.config.campaign_dir / "desc-mechababs_datasets.tsv"
-
-    @property
-    def executable(self) -> Path:
-        return self.config.campaign_dir / ".venv" / "bin" / "mechababs"
+        self.campaign = Campaign(self.config, runner=runner)
 
     def plan(self) -> tuple[ProcessingStage, ...]:
-        """Return stage readiness from the current campaign ledger."""
-
-        return self._stages(self._ledger_row(), ())
+        rows = read_table(self.campaign.run("status").stdout)
+        source = f"sourcedata/{self.config.raw_slot}"
+        by_app = {row["app"]: row for row in rows if row["source_dataset"] == source}
+        if set(by_app) != {app.file.stem for app in self.config.apps}:
+            raise RuntimeError("campaign does not contain the configured source and apps")
+        stages = []
+        predecessors_complete = True
+        for app in self.config.apps:
+            row = by_app[app.file.stem]
+            state = row["state"]
+            if row.get("jobs") == "babs status unavailable":
+                state = "intervention-required"
+            elif state == "merged":
+                state = "complete"
+            elif state == "FAILED":
+                state = "intervention-required"
+            elif state == "not started":
+                state = "ready" if predecessors_complete else "blocked"
+            elif state.startswith("waiting"):
+                state = "blocked"
+            source_suffix = "" if self.config.raw_slot in {"raw", "rawbids"} else f"+{self.config.raw_slot}"
+            project = f"derivatives/{app.file.stem}{source_suffix}+{self.config.campaign}"
+            stages.append(ProcessingStage(app.name, app.file.stem, state, project))
+            predecessors_complete = predecessors_complete and state == "complete"
+        return tuple(stages)
 
     def status(self) -> ProcessingStatus:
-        """Refresh BABS jobs and combine them with the campaign ledger."""
-
-        result = self.runner(
-            (
-                str(self.executable), "status", "--campaign-path",
-                str(self.config.campaign_dir), "--output", "tsv",
-            ),
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        returncode = getattr(result, "returncode", 0)
-        if returncode not in {0, 1} or (returncode == 1 and str(result.stdout).strip()):
-            raise subprocess.CalledProcessError(
-                returncode, "mechababs status", output=result.stdout
-            )
-        jobs = self._parse_jobs(str(result.stdout))
-        return ProcessingStatus(self._stages(self._ledger_row(), jobs), jobs)
+        stages = self.plan()
+        output = self.campaign.run("jobs").stdout
+        jobs = read_table(output) if output.strip() else ()
+        source = f"sourcedata/{self.config.raw_slot}"
+        return ProcessingStatus(stages, tuple(job for job in jobs if job["source_dataset"] == source))
 
     def advance(self, stage: str) -> AdvanceResult:
-        """Validate one named gate and run exactly one reconciler transition."""
-
-        names = tuple(name for name, _ in _STAGES)
+        names = [app.name for app in self.config.apps]
         if stage not in names:
             raise ValueError("stage must be one of: " + ", ".join(names))
-        self._require_clean_inputs()
-        self._sync_raw_subdataset()
-        self._require_pins()
-        status = self.status()
-        selected = status.stages[names.index(stage)]
-        for predecessor in status.stages[: names.index(stage)]:
+        stages = self.plan()
+        selected = stages[names.index(stage)]
+        for predecessor in stages[:names.index(stage)]:
             if predecessor.state != "complete":
                 raise RuntimeError(f"{predecessor.stage} must be complete before {stage}")
         if selected.state == "complete":
-            self._install_derivative(selected)
             return AdvanceResult(stage, False, selected.state)
-        if selected.state == "intervention-required":
-            raise RuntimeError(f"{stage} requires intervention before it can advance")
         if selected.state not in {"ready", "active"}:
             raise RuntimeError(f"{stage} is {selected.state} and cannot advance")
         require_stage_gate(self.workflow, stage, self.runner)
-        self.runner(
-            (
-                str(self.executable), "iterate", "--campaign-path",
-                str(self.config.campaign_dir), "--batch", "1",
-            ),
-            check=True,
-        )
+        self._sync_raw_subdataset()
+        self.campaign.run("iterate", "--app", selected.application, "--batch", "1")
         return AdvanceResult(stage, True, selected.state)
 
     def _sync_raw_subdataset(self) -> None:
@@ -125,6 +100,9 @@ class ProcessingManager:
 
         source = self.workflow.paths.bids_dir
         installed = self.config.study_dir / "sourcedata" / self.config.raw_slot
+        for dataset in (source, installed):
+            if self._output(("git", "status", "--porcelain", "--ignore-submodules=none"), dataset):
+                raise RuntimeError(f"raw dataset is dirty: {dataset}")
         source_commit = self._output(("git", "rev-parse", "HEAD"), source)
         installed_commit = self._output(("git", "rev-parse", "HEAD"), installed)
         if source_commit == installed_commit:
@@ -139,42 +117,7 @@ class ProcessingManager:
         self.runner(
             (
                 "datalad", "save", "-d", str(self.config.study_dir), "-m",
-                "Update canonical raw BIDS subdataset",
-            ),
-            check=True,
-        )
-
-    def _install_derivative(self, stage: ProcessingStage) -> None:
-        """Register one merged BABS result in the canonical wrapper study."""
-
-        source = self.config.campaign_dir / stage.project
-        destination = self.config.study_dir / "derivatives" / stage.application
-        if not source.is_dir():
-            raise RuntimeError(f"merged derivative is unavailable: {source}")
-        if destination.exists():
-            source_id = self._output(("git", "config", "--get", "datalad.dataset.id"), source)
-            destination_id = self._output(
-                ("git", "config", "--get", "datalad.dataset.id"), destination
-            )
-            source_commit = self._output(("git", "rev-parse", "HEAD"), source)
-            destination_commit = self._output(("git", "rev-parse", "HEAD"), destination)
-            if (source_id, source_commit) != (destination_id, destination_commit):
-                raise RuntimeError(
-                    f"installed derivative does not match merged {stage.application} result"
-                )
-            return
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        self.runner(
-            (
-                "datalad", "clone", "-d", str(self.config.study_dir), str(source),
-                str(destination.relative_to(self.config.study_dir)),
-            ),
-            cwd=str(self.config.study_dir), check=True,
-        )
-        self.runner(
-            (
-                "datalad", "save", "-d", str(self.config.study_dir), "-m",
-                f"Install merged {stage.application} derivative",
+                "Update canonical raw BIDS subdataset", str(installed),
             ),
             check=True,
         )
@@ -184,84 +127,6 @@ class ProcessingManager:
             command, cwd=str(cwd), check=True, capture_output=True, text=True,
         ).stdout).strip()
 
-    def _ledger_row(self) -> dict[str, str]:
-        try:
-            with self.ledger_path.open(newline="") as stream:
-                rows = list(csv.DictReader(stream, delimiter="\t", strict=True))
-        except (OSError, UnicodeError, csv.Error) as error:
-            raise RuntimeError(f"cannot read MechaBABS ledger: {self.ledger_path}") from error
-        if len(rows) != 1:
-            raise RuntimeError("MechaBABS campaign must contain exactly one canonical dataset")
-        return rows[0]
-
-    def _stages(
-        self, row: Mapping[str, str], jobs: tuple[dict[str, str], ...]
-    ) -> tuple[ProcessingStage, ...]:
-        stages = []
-        predecessors_complete = True
-        for name, application in _STAGES:
-            project = row.get(f"{application}_babs", "")
-            merged = row.get(f"{application}_babs-merged", "")
-            failed = any(
-                job.get("pipeline") == application
-                and (
-                    (job.get("state") or job.get("status", "")).upper() in _FAILURE_STATES
-                    or job.get("is_failed", "").lower() == "true"
-                )
-                for job in jobs
-            )
-            if merged:
-                state = "complete"
-            elif failed:
-                state = "intervention-required"
-            elif project:
-                state = "active"
-            elif predecessors_complete:
-                state = "ready"
-            else:
-                state = "blocked"
-            stages.append(ProcessingStage(name, application, state, project))
-            predecessors_complete = predecessors_complete and state == "complete"
-        return tuple(stages)
-
-    @staticmethod
-    def _parse_jobs(value: str) -> tuple[dict[str, str], ...]:
-        if not value.strip():
-            return ()
-        reader = csv.DictReader(io.StringIO(value), delimiter="\t", strict=True)
-        if not reader.fieldnames:
-            raise RuntimeError("MechaBABS status returned no header")
-        return tuple(dict(row) for row in reader)
-
-    def _require_clean_inputs(self) -> None:
-        roots = [
-            self.config.study_dir,
-            self.workflow.paths.bids_dir,
-            self.config.campaign_dir,
-        ]
-        behavioral = self.workflow.paths.bids_dir / "sourcedata" / "behavioral"
-        if behavioral.is_dir():
-            roots.extend(path for path in behavioral.iterdir() if path.is_dir())
-        for root in roots:
-            result = self.runner(
-                ("git", "status", "--porcelain"), cwd=str(root),
-                check=True, capture_output=True, text=True,
-            )
-            if str(result.stdout).strip():
-                raise RuntimeError(f"processing input is dirty: {root}")
-
-    def _require_pins(self) -> None:
-        for name, expected in (
-            ("mechababs", self.config.mechababs_commit),
-            ("babs", self.config.babs_commit),
-        ):
-            root = self.config.campaign_dir / "code" / name
-            actual = self.runner(
-                ("git", "rev-parse", "HEAD"), cwd=str(root),
-                check=True, capture_output=True, text=True,
-            )
-            if str(actual.stdout).strip() != expected:
-                raise RuntimeError(f"campaign {name} pin does not match workflow configuration")
 
 
 def require_stage_gate(config: WorkflowConfig, stage: str, runner=subprocess.run) -> None:

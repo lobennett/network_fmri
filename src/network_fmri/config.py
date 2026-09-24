@@ -93,18 +93,18 @@ class MechaBABSConfig:
     """Pinned study and campaign inputs for post-BIDS processing."""
 
     study_dir: Path
-    campaign_dir: Path
     durable_sibling: Path
-    bootstrap_script: Path
     campaign: str
     raw_slot: str
     container_dataset: Path
     mechababs_commit: str
     babs_commit: str
-    mechababs_ref: str
-    babs_ref: str
     cluster_file: Path
     apps: tuple[MechaBABSAppConfig, ...]
+
+    @property
+    def campaign_dir(self) -> Path:
+        return self.study_dir / ".mechababs" / "campaigns" / self.campaign
 
 
 @dataclass(frozen=True)
@@ -289,8 +289,8 @@ def _parse_mechababs(raw: dict[str, Any]) -> MechaBABSConfig:
     _unknown_keys(
         raw,
         {
-            "study_dir", "campaign_dir", "durable_sibling", "bootstrap_script", "campaign", "raw_slot",
-            "container_dataset", "mechababs_commit", "babs_commit", "mechababs_ref", "babs_ref",
+            "study_dir", "durable_sibling", "campaign", "raw_slot",
+            "container_dataset", "mechababs_commit", "babs_commit",
             "cluster_file", "apps",
         },
         name,
@@ -308,19 +308,16 @@ def _parse_mechababs(raw: dict[str, Any]) -> MechaBABSConfig:
     if not _SLOT.fullmatch(raw_slot):
         raise ValueError("mechababs.raw_slot must be one path component")
     campaign = _nonempty_string(raw, "campaign", name)
-    campaign_dir = _path(raw, "campaign_dir", name)
+    if not _SLOT.fullmatch(campaign):
+        raise ValueError("mechababs.campaign must be one path component")
     return MechaBABSConfig(
         study_dir=_path(raw, "study_dir", name),
-        campaign_dir=campaign_dir,
         durable_sibling=_path(raw, "durable_sibling", name),
-        bootstrap_script=_path(raw, "bootstrap_script", name),
         campaign=campaign,
         raw_slot=raw_slot,
         container_dataset=_path(raw, "container_dataset", name),
         mechababs_commit=_commit(raw, "mechababs_commit", name),
         babs_commit=_commit(raw, "babs_commit", name),
-        mechababs_ref=_nonempty_string(raw, "mechababs_ref", name),
-        babs_ref=_nonempty_string(raw, "babs_ref", name),
         cluster_file=_project_path(raw, "cluster_file", name),
         apps=apps,
     )

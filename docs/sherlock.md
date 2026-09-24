@@ -25,7 +25,10 @@ apptainer exec --cleanenv \
   bash -lc 'export FS_LICENSE=/license.txt; mri_convert --version'
 ```
 
-Create the wrapper study and its separate campaign, then advance MRIQC. One
+The following derivative paths assume campaign `network-v1`; use the label in
+`workflow.toml`.
+
+Create the study and its embedded campaign, then advance MRIQC. One
 `advance` call performs one reconciler transition, so inspect status and repeat it
 until MRIQC is complete.
 
@@ -36,13 +39,13 @@ uv run --frozen network-fmri processing advance workflow.toml --stage mriqc
 uv run --frozen network-fmri processing status workflow.toml
 ```
 
-The final `advance` call installs the merged MRIQC derivative in the wrapper.
+MechaBABS merges MRIQC directly into the study’s derivatives.
 Generate the review there, edit every `review` row, then seal and commit it.
 
 ```bash
 RAW=/scratch/groups/russpold/network_fmri/bids
 STUDY=/scratch/users/logben/network-study
-MRIQC=$STUDY/derivatives/MRIQC-24.0.2
+MRIQC=$STUDY/derivatives/MRIQC-24.0.2+network-v1
 REVIEW=$STUDY/code/network_fmri/scan_decisions.tsv
 
 uv run --frozen network-fmri decisions generate "$RAW" \
@@ -68,7 +71,7 @@ timestamp, and seal it before full fMRIPrep.
 uv run --frozen network-fmri processing advance workflow.toml --stage anatomical
 uv run --frozen network-fmri processing status workflow.toml
 
-ANAT=$STUDY/derivatives/fMRIPrep-25.2.5+anat
+ANAT=$STUDY/derivatives/fMRIPrep-25.2.5+anat+network-v1
 uv run --frozen network-fmri surfaces generate workflow.toml \
   --pilot-subject s03 --anatomical-derivative "$ANAT"
 uv run --frozen network-fmri surfaces validate workflow.toml --pilot-subject s03

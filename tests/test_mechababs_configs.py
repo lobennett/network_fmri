@@ -33,7 +33,7 @@ def test_mriqc_config_pins_version_image_and_resources():
         "source": "{{CONTAINER_DATASET}}",
         "name": "bids-mriqc",
     }
-    assert config["zip_foldernames"] == {"mriqc": "24-0-2"}
+    assert config["zip_foldernames"] == {"MRIQC-24.0.2": "24-0-2"}
     assert config["bids_app_args"]["--n_cpus"] == "4"
     assert config["bids_app_args"]["--mem_gb"] == "16"
 
@@ -42,6 +42,7 @@ def test_anatomical_config_produces_reusable_freesurfer_output():
     config = load(APPS / "fMRIPrep-25.2.5+anat.yaml")
 
     assert config["mechababs"]["container"]["name"] == "bids-fmriprep"
+    assert config["mechababs"]["depends_on"] == "MRIQC-24.0.2"
     assert config["bids_app_args"]["--anat-only"] == ""
     assert config["bids_app_args"]["--fs-license-file"] == "{{FREESURFER_LICENSE}}"
     assert config["zip_foldernames"] == {"fMRIPrep-25.2.5+anat": "25-2-5"}
@@ -51,6 +52,7 @@ def test_full_config_consumes_anatomical_derivative_and_surfaces():
     config = load(APPS / "fMRIPrep-25.2.5+full.yaml")
     upstream = config["input_datasets"]["fMRIPrep-25.2.5+anat"]
 
+    assert config["mechababs"]["depends_on"] == "fMRIPrep-25.2.5+anat"
     assert upstream["is_zipped"] is True
     assert upstream["path_in_babs"] == "sourcedata/fMRIPrep-25.2.5+anat"
     assert upstream["required_files"] == ["*fMRIPrep-25.2.5+anat*.zip"]

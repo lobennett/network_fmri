@@ -38,4 +38,4 @@ cluster_resources:
 
 all_results_in_one_zip: true
 zip_foldernames:
-  mriqc: "24-0-2"
+  MRIQC-24.0.2: "24-0-2"

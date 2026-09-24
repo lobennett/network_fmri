@@ -6,6 +6,8 @@ import csv
 import json
 import re
 import subprocess
+import tempfile
+import tomllib
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
@@ -14,8 +16,8 @@ from network_fmri.config import MechaBABSConfig
 
 
 _ECHO = re.compile(r"_echo-[^_]+")
-_MECHABABS_URL = "https://github.com/lobennett/mechababs.git"
-_BABS_URL = "https://github.com/lobennett/babs.git"
+_MECHABABS_URL = "https://github.com/con/mechababs.git"
+_BABS_URL = "https://github.com/PennLINC/babs.git"
 
 
 @dataclass(frozen=True)
@@ -31,7 +33,7 @@ class StudyResult:
 
 
 class StudyManager:
-    """Build an additive study wrapper and its separate campaign."""
+    """Build an additive study wrapper with an upstream-managed campaign."""
 
     def __init__(
         self,
@@ -90,7 +92,7 @@ class StudyManager:
         self._run(
             ("datalad", "save", "-d", str(self.config.study_dir), "-m", "Create canonical BIDS study")
         )
-        self._bootstrap_campaign()
+        self._initialize_campaign()
         return StudyResult(
             self.config.study_dir,
             self.config.campaign_dir,
@@ -113,8 +115,6 @@ class StudyManager:
         missing = [subject for subject in subjects if not (self.raw_bids_dir / f"sub-{subject}").is_dir()]
         if missing:
             raise RuntimeError("raw BIDS dataset is missing subjects: " + ", ".join(missing))
-        if not self.config.bootstrap_script.is_file():
-            raise RuntimeError(f"MechaBABS bootstrap script is missing: {self.config.bootstrap_script}")
 
     def _identity(
         self, raw_commit: str, raw_dataset_id: str, subjects: tuple[str, ...]
@@ -132,8 +132,6 @@ class StudyManager:
             "subjects": list(subjects),
             "mechababs_commit": self.config.mechababs_commit,
             "babs_commit": self.config.babs_commit,
-            "mechababs_ref": self.config.mechababs_ref,
-            "babs_ref": self.config.babs_ref,
             "cluster_file": self.config.cluster_file.as_posix(),
             "apps": [asdict(app) | {"file": app.file.as_posix()} for app in self.config.apps],
         }
@@ -187,35 +185,21 @@ class StudyManager:
         )
 
     def _verify_campaign(self) -> None:
-        if self._output(("git", "status", "--porcelain"), cwd=self.config.campaign_dir):
-            raise RuntimeError("existing study does not match: campaign is dirty")
-        for name, expected in (
-            ("mechababs", self.config.mechababs_commit),
-            ("babs", self.config.babs_commit),
-        ):
-            if self._output(
-                ("git", "rev-parse", "HEAD"), cwd=self.config.campaign_dir / "code" / name
-            ) != expected:
-                raise RuntimeError(f"existing study does not match: campaign {name} pin changed")
-        for kind, relative, expected in self._rendered_configs():
-            path = self.config.campaign_dir / "code" / "mechababs" / kind / relative.name
-            try:
-                actual = path.read_text()
-            except OSError as error:
-                raise RuntimeError(f"existing study does not match: missing config {path}") from error
-            if actual != expected:
-                raise RuntimeError(f"existing study does not match: config changed: {path}")
-        identity = self.config.campaign_dir / "code" / "network_fmri" / "campaign.json"
+        # Upstream verifies the selected environment against its committed uv.lock.
+        from network_fmri.campaign import Campaign
+
+        path = self.config.campaign_dir / "pyproject.toml"
         try:
-            value = json.loads(identity.read_text())
-        except (OSError, json.JSONDecodeError) as error:
-            raise RuntimeError("existing study does not match: campaign identity missing") from error
-        if value != {
-            "campaign": self.config.campaign,
-            "mechababs_commit": self.config.mechababs_commit,
-            "babs_commit": self.config.babs_commit,
-        }:
-            raise RuntimeError("existing study does not match: campaign identity changed")
+            sources = tomllib.loads(path.read_text())["tool"]["uv"]["sources"]
+            expected = {
+                "mechababs": {"git": _MECHABABS_URL, "rev": self.config.mechababs_commit},
+                "babs": {"git": _BABS_URL, "rev": self.config.babs_commit},
+            }
+            if any(sources.get(name) != value for name, value in expected.items()):
+                raise ValueError("changed tool pins")
+        except (OSError, KeyError, ValueError) as error:
+            raise RuntimeError("campaign tool pins do not match workflow configuration") from error
+        Campaign(self.config, runner=self.runner).run("status")
 
     def _write_study_files(self, subjects: tuple[str, ...]) -> None:
         description = {
@@ -229,11 +213,7 @@ class StudyManager:
         source = self.config.study_dir / "sourcedata"
         source.mkdir(parents=True, exist_ok=True)
         session_rows = list(self._session_rows(subjects))
-        self._write_tsv(
-            source / "sourcedata+subjects+sessions.tsv",
-            ("subject_id", "session_id", "datatypes", "t1w_num", "bold_num"),
-            session_rows,
-        )
+        # Upstream infers subject-level jobs when only the subject table exists.
         subject_rows = []
         for subject in subjects:
             rows = [row for row in session_rows if row["subject_id"] == subject]
@@ -278,85 +258,48 @@ class StudyManager:
             writer.writeheader()
             writer.writerows(rows)
 
-    def _bootstrap_campaign(self) -> None:
-        self._run(
-            (
-                "bash", str(self.config.bootstrap_script), str(self.config.campaign_dir),
-                "--mechababs", f"{_MECHABABS_URL}@{self.config.mechababs_ref}",
-                "--babs", f"{_BABS_URL}@{self.config.babs_ref}",
-                "--system-site-packages",
-            )
-        )
-        self.config.campaign_dir.mkdir(parents=True, exist_ok=True)
-        for name, expected in (
-            ("mechababs", self.config.mechababs_commit),
-            ("babs", self.config.babs_commit),
-        ):
-            actual = self._output(
-                ("git", "rev-parse", "HEAD"), cwd=self.config.campaign_dir / "code" / name
-            )
-            if actual != expected:
-                raise RuntimeError(
-                    f"bootstrap resolved {name} at {actual}, expected {expected}"
-                )
-        self._install_configs()
-        executable = self.config.campaign_dir / ".venv" / "bin" / "mechababs"
-        self._run(
-            (
-                str(executable), "configure", "--campaign-path", str(self.config.campaign_dir),
-                "--pipelines", ",".join(app.file.as_posix() for app in self.config.apps),
-                "--cluster", self.config.cluster_file.as_posix(),
-            )
-        )
-        self._run(
-            (
-                str(executable), "add-dataset", str(self.raw_bids_dir),
-                "--campaign-path", str(self.config.campaign_dir),
-                "--study", str(self.config.study_dir),
-                "--processing-level", "session",
-            )
-        )
+    def _initialize_campaign(self) -> None:
+        """Let upstream own campaign copies, environment locks, and registration."""
 
-    def _install_configs(self) -> None:
-        """Copy and render package-owned app and cluster configs into the campaign."""
+        from network_fmri.campaign import Campaign
 
-        destination_root = self.config.campaign_dir / "code" / "mechababs"
-        for kind, relative, content in self._rendered_configs():
-            destination = destination_root / kind / relative.name
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(content)
-        identity = self.config.campaign_dir / "code" / "network_fmri" / "campaign.json"
-        identity.parent.mkdir(parents=True, exist_ok=True)
-        identity.write_text(json.dumps({
-            "campaign": self.config.campaign,
-            "mechababs_commit": self.config.mechababs_commit,
-            "babs_commit": self.config.babs_commit,
-        }, indent=2, sort_keys=True) + "\n")
-        self._run((
-            "datalad", "save", "-d", str(self.config.campaign_dir), "-m",
-            f"Configure {self.config.campaign} campaign",
-        ))
+        with tempfile.TemporaryDirectory(prefix="network-mechababs-") as temporary:
+            directory = Path(temporary)
+            for kind, relative, content in self._rendered_configs():
+                target = directory / kind / relative.name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content)
+            self._run((
+                "uvx", "--from", f"git+{_MECHABABS_URL}@{self.config.mechababs_commit}",
+                "mechababs", "campaign", "init", self.config.campaign,
+                "-d", str(self.config.study_dir),
+                "--apps", ",".join(str(directory / "apps" / app.file.name) for app in self.config.apps),
+                "--cluster", str(directory / "clusters" / self.config.cluster_file.name),
+                "--mechababs", f"{_MECHABABS_URL}@{self.config.mechababs_commit}",
+                "--babs", f"{_BABS_URL}@{self.config.babs_commit}",
+            ), cwd=self.config.study_dir)
+        Campaign(self.config, runner=self.runner).run(
+            "add-dataset", "--sourcedata", f"sourcedata/{self.config.raw_slot}"
+        )
 
     def _rendered_configs(self) -> list[tuple[str, Path, str]]:
         source_root = Path(__file__).with_name("mechababs")
         replacements = {
             "{{CONTAINER_DATASET}}": str(self.config.container_dataset),
             "{{FREESURFER_LICENSE}}": str(self.freesurfer_license),
-            "{{MECHABABS_VENV}}": str(self.config.campaign_dir / ".venv"),
         }
         requested = [("clusters", self.config.cluster_file)] + [
-            ("pipelines", app.file) for app in self.config.apps
+            ("apps", app.file) for app in self.config.apps
         ]
         rendered = []
         for kind, relative in requested:
-            source_kind = "apps" if kind == "pipelines" else kind
-            source = source_root / source_kind / relative.name
-            if not source.is_file():
-                raise RuntimeError(f"packaged MechaBABS config is missing: {source}")
+            source = source_root / kind / relative.name
             content = source.read_text()
             for marker, value in replacements.items():
                 content = content.replace(marker, value)
-            if re.search(r"\{\{[A-Z_]+\}\}", content):
+            # MECHABABS_VENV is an upstream composition placeholder.
+            remaining = re.findall(r"\{\{([A-Z_]+)\}\}", content)
+            if set(remaining) - {"MECHABABS_VENV"}:
                 raise RuntimeError(f"unresolved placeholder in MechaBABS config: {source}")
             rendered.append((kind, relative, content))
         return rendered

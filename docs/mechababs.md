@@ -1,160 +1,81 @@
-# MechaBABS processing design
+# MechaBABS processing
 
-`network_fmri` prepares one canonical raw BIDS dataset. MechaBABS and BABS run
-containerized processing after that dataset passes pre-curation BIDS validation.
-The study and its DataLad history remain the source of truth; a dashboard database
-is a rebuildable index.
-
-## Ownership boundary
-
-`network_fmri` continues to author the raw dataset because MechaBABS only adds
-derivatives to an existing study. It owns Flywheel conversion, immediate defacing,
-behavior and participant ingestion, dummy-volume trimming, events, B0 links, global
-signal reports, BIDS validation, review manifests, and approved raw-data curation.
-
-MechaBABS owns MRIQC, anatomical preprocessing with FreeSurfer, and full fMRIPrep.
-BABS owns their subject jobs, scheduler state, result branches, merge, and compute
-provenance. Its native `datalad run` records are retained. `network_fmri` uses
-ordinary DataLad saves for authoring and human-review milestones.
-
-The processing sequence is:
+`network_fmri` prepares raw BIDS and enforces human review. Upstream
+[con/mechababs](https://github.com/con/mechababs) owns campaigns, app dependencies,
+Slurm submission through BABS, result merging, and compute provenance.
 
 ```text
-Flywheel -> prepared raw BIDS -> BIDS validation
-          -> MechaBABS MRIQC -> scan review -> raw curation -> BIDS validation
-          -> MechaBABS fMRIPrep anatomical stage -> surface review
-          -> MechaBABS full fMRIPrep
+Raw BIDS validation → MRIQC → scan approval → curation + validation
+                   → anatomical fMRIPrep/FreeSurfer → surface approval
+                   → full fMRIPrep
 ```
 
-High-motion scans may remain eligible for preprocessing. Analysis exclusions are
-separate records and do not remove imaging from fMRIPrep.
+High motion and analysis exclusions do not automatically exclude a scan from
+preprocessing. Scan and surface approvals remain separate, committed review gates.
 
-## Dataset layout
-
-The current raw BIDS repository becomes a subdataset rather than the study root.
-The active study lives on Sherlock scratch and has a durable DataLad sibling on Oak.
-All paths are configuration values.
+## Layout
 
 ```text
 network-study/
-├── dataset_description.json       # DatasetType: study
+├── dataset_description.json          # DatasetType: study
 ├── sourcedata/
-│   ├── raw/                       # canonical raw BIDS DataLad subdataset
-│   ├── sourcedata+subjects.tsv
-│   └── sourcedata+subjects+sessions.tsv
-├── derivatives/                   # installed merged derivative subdatasets
-├── code/network_fmri/
-│   ├── scan_decisions.tsv
-│   ├── analysis_exclusions.tsv
-│   ├── surface_review.tsv
-│   └── records/
+│   ├── raw/                          # canonical raw BIDS subdataset
+│   └── sourcedata+subjects.tsv
+├── derivatives/                      # upstream-managed BABS subdatasets
+├── .mechababs/campaigns/network-v1/    # configs, uv.lock, environment, state
+└── code/network_fmri/                 # identity, reviews, exclusions, receipts
 ```
 
-The MechaBABS campaign is a separate DataLad dataset at `campaign_dir`. It clones
-the wrapper beneath `studies/`, runs BABS there, and records scheduler provenance.
-After a stage merges, `processing advance` installs that derivative as a subdataset
-under the wrapper's `derivatives/`. The wrapper is therefore the canonical analysis
-dataset; the campaign remains its reproducible processing record.
-
-The raw dataset retains the canonical in-scanner and out-of-scanner behavioral
-subdatasets under `sourcedata/behavioral/`, their pinned commits, participant data,
-events, event-QC sidecars, and defacing receipts. Processing derivatives no longer
-live inside the raw repository.
-
-Migration is additive. A command creates a new study and installs the raw dataset at
-`sourcedata/raw`; it does not move, rewrite, or delete the existing dataset. It fails
-if the destination exists with a different DataLad identity or subdataset commit.
-The pilot migration uses a fresh study and campaign before the 46-subject study is
-created. Existing absolute-path review metadata is regenerated against the raw
-subdataset and installed derivatives. Previously approved decision values and reviewer identity
-are reapplied only when their BIDS acquisition keys and generated evidence rows match,
-then the review is sealed again in the study.
-
-## Campaign and gates
-
-Package-owned MechaBABS templates live in
-`src/network_fmri/mechababs/{clusters,apps}/`. `study init` renders their configured
-container and license paths into the pinned campaign. The Sherlock cluster file is adapted from the
-existing `sherlock-compat` work. App files cover MRIQC 24.0.2, fMRIPrep 25.2.5
-anatomical processing, and fMRIPrep 25.2.5 full processing. The campaign pins the
-MechaBABS and BABS Git revisions and container dataset.
-
-The anatomical app produces the FreeSurfer surfaces that fMRIPrep will later reuse.
-The full app declares the anatomical result as a chained input, which is also the
-MechaBABS ordering dependency. `network_fmri` advances one named app at a time:
-
-1. MRIQC can advance after prepared-BIDS validation.
-2. The anatomical app can advance only after scan decisions are sealed and the
-   curated raw dataset passes validation.
-3. Full fMRIPrep can advance only after `surface_review.tsv` is sealed.
-
-The chained input remains a second ordering check; it does not replace either human
-gate. Failed cells remain in BABS for inspection and explicit intervention.
+Behavioral subdatasets, participant data, events, and defacing receipts stay with
+raw BIDS. The study works on scratch and has a durable DataLad sibling on Oak.
+Initialization clones the raw dataset without moving or deleting its source.
+Only subject metadata is written: upstream infers subject-level jobs from it,
+keeping all sessions together for anatomical processing and surface reuse.
 
 ## Configuration and commands
 
-`workflow.toml` gains a `[mechababs]` table containing the study path, durable Oak
-sibling, campaign label, raw slot, container-dataset source, Git pins, cluster file,
-and app files. All configured paths are absolute on Sherlock except files resolved
-inside the installed `network_fmri` checkout.
+The `[mechababs]` section in [workflow.example.toml](../config/workflow.example.toml)
+sets paths, campaign label, Git commits, and app/cluster templates. `study init`
+renders the templates and calls upstream `campaign init` and `add-dataset`.
+Upstream creates and checks the campaign's locked environment. No fork, bootstrap
+script, or separate campaign repository is required.
 
-The command interface is:
-
-```text
-network-fmri study init CONFIG [--pilot-subject SUBJECT]
-network-fmri processing plan CONFIG [--pilot-subject SUBJECT]
-network-fmri processing advance CONFIG --stage mriqc|anatomical|fmriprep
-network-fmri processing status CONFIG
-network-fmri records build CONFIG --output PATH
+```bash
+network-fmri study init workflow.toml --pilot-subject s03
+network-fmri processing plan workflow.toml
+network-fmri processing advance workflow.toml --stage mriqc
+network-fmri processing status workflow.toml
 ```
 
-`study init` creates or verifies the wrapper study, metadata tables, raw subdataset,
-campaign, and durable sibling. `processing advance` checks the relevant sealed review
-before invoking MechaBABS for one app. It never loops indefinitely; repeated calls
-reconcile campaign state until a cell is merged or requires intervention.
+`advance` checks the selected stage's committed evidence, synchronizes the raw
+subdataset, and calls `mechababs iterate --app APP --batch 1`. Repeat after checking
+status. Anatomical processing requires scan approval and curated-BIDS validation;
+full fMRIPrep requires surface approval. App `depends_on` settings also enforce
+upstream ordering. The full app consumes the anatomical derivative to reuse surfaces.
+Use `processing advance` to preserve these human gates; calling upstream `iterate`
+directly does not enforce them.
 
-## Dashboard record contract
+Derivatives use upstream names, for example
+`derivatives/fMRIPrep-25.2.5+anat+network-v1`. MechaBABS installs and merges them in
+the study; `network_fmri` does not copy them elsewhere. Failed jobs require review.
+See [Sherlock operations](sherlock.md) for the pilot and approval commands.
 
-Every durable fact is stored in the study. The dashboard reads these sources:
+## Dashboard records
 
-- `network_fmri` milestone receipts and defacing receipts;
-- MechaBABS campaign state and refreshed BABS job status;
-- BIDS validator reports and MRIQC metrics;
-- scan decisions, analysis exclusions, and surface decisions;
-- event conversion errors and `*_desc-truncation.json` sidecars;
-- DataLad dataset identities and commits.
+`network-fmri records build workflow.toml --output /local/path/records.sqlite`
+builds a disposable SQLite index of entities, current jobs, findings, decisions,
+and artifacts. The study and DataLad history remain authoritative. Upstream's jobs
+table reports current job records, not a complete retry history; unavailable
+attempt timestamps and commit IDs remain empty.
 
-`records build` normalizes them into one SQLite file for querying. The database is a
-cache and is never committed or treated as provenance. It is written by one collector
-on local disk, not concurrently on Oak or Sherlock's shared filesystem. A future API
-server can rebuild or refresh it from the study.
+Event timing findings, scan exclusions, and surface decisions remain distinct
+records linked by BIDS identity. The collector stores artifact paths and evidence,
+not raw behavioral or imaging content. Use one collector on local disk.
 
-The normalized tables are:
+## Verification
 
-| Table | Key | Purpose |
-|---|---|---|
-| `entities` | subject, session, task, run, acquisition | BIDS identities |
-| `stage_attempts` | stage, scope, attempt | job state, times, commits, logs |
-| `findings` | entity, finding type, evidence path | MRIQC, behavior, validation findings |
-| `decisions` | entity, decision scope | reviewer decisions and reasons |
-| `artifacts` | stage, path | reports, images, derivatives, receipts |
-
-Behavioral timing is represented as evidence rather than inferred from names. A
-nonmonotonic finding records total, kept, and dropped test trials from its truncation
-sidecar. Its scan decision and task-first-level exclusion remain distinct rows. Query
-results can be exported to TSV or JSON without changing the canonical behavior tree.
-
-No credentials, participant identifiers beyond BIDS IDs, raw behavioral content, or
-imaging content enter the index. Paths point to access-controlled study artifacts.
-
-## Failure and validation rules
-
-- Study creation is idempotent only when DataLad identities and commits match.
-- A dirty raw dataset, campaign, or nested behavioral dataset blocks advancement.
-- Missing app dependencies or an unlocked campaign environment block submission.
-- The Sherlock job preamble supplies modern Git, git-annex, the campaign environment,
-  local scratch, and the valid FreeSurfer license.
-- The pilot must complete MRIQC, both review gates, anatomical processing, and full
-  fMRIPrep before creating the 46-subject campaign.
-- Tests use temporary DataLad repositories and fake command runners; the Sherlock
-  pilot is the integration test for BABS, containers, Slurm, and the license.
+The configured upstream commits are pinned for reproducibility. Local tests check
+command contracts and review gates; a Sherlock pilot must still verify containers,
+Slurm, the FreeSurfer license, and all three processing stages before the full sample.
+Existing campaigns using the former fork layout need a fresh upstream campaign;
+they are not silently converted.

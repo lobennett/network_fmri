@@ -81,16 +81,12 @@ sha256 = "{pydeface_sha256}"
 
 [mechababs]
 study_dir = "{tmp_path / 'study'}"
-campaign_dir = "{tmp_path / 'campaign'}"
 durable_sibling = "{tmp_path / 'study-storage'}"
-bootstrap_script = "{tmp_path / 'mechababs' / 'bootstrap.sh'}"
 campaign = "network-v1"
 raw_slot = "raw"
 container_dataset = "{tmp_path / 'containers'}"
 mechababs_commit = "{'d' * 40}"
 babs_commit = "{'e' * 40}"
-mechababs_ref = "sherlock-compat"
-babs_ref = "fix/plus-regex-zipname"
 cluster_file = "sherlock.yaml"
 apps = [
   {{ name = "mriqc", file = "MRIQC-24.0.2.yaml" }},
@@ -121,16 +117,13 @@ def test_loads_single_dataset_configuration(tmp_path):
     assert config.participants.source == tmp_path / "canonical-demographics"
     assert config.participants.commit == "c" * 40
     assert config.mechababs.study_dir == tmp_path / "study"
-    assert config.mechababs.campaign_dir == tmp_path / "campaign"
+    assert config.mechababs.campaign_dir == tmp_path / "study" / ".mechababs" / "campaigns" / "network-v1"
     assert config.mechababs.durable_sibling == tmp_path / "study-storage"
-    assert config.mechababs.bootstrap_script == tmp_path / "mechababs" / "bootstrap.sh"
     assert config.mechababs.container_dataset == tmp_path / "containers"
     assert config.mechababs.campaign == "network-v1"
     assert config.mechababs.raw_slot == "raw"
     assert config.mechababs.mechababs_commit == "d" * 40
     assert config.mechababs.babs_commit == "e" * 40
-    assert config.mechababs.mechababs_ref == "sherlock-compat"
-    assert config.mechababs.babs_ref == "fix/plus-regex-zipname"
     assert tuple(app.name for app in config.mechababs.apps) == (
         "mriqc", "anatomical", "fmriprep",
     )
@@ -138,7 +131,7 @@ def test_loads_single_dataset_configuration(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "field", ["study_dir", "campaign_dir", "durable_sibling", "container_dataset", "bootstrap_script"]
+    "field", ["study_dir", "durable_sibling", "container_dataset"]
 )
 def test_rejects_relative_mechababs_runtime_paths(tmp_path, field):
     from network_fmri.config import WorkflowConfig

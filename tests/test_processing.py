@@ -1,226 +1,144 @@
+"""Contracts for the upstream command interface and study-specific gates."""
 from pathlib import Path
-import subprocess
 from types import SimpleNamespace
 
 import pytest
 
+from network_fmri.campaign import read_table
 from network_fmri.config import MechaBABSAppConfig, MechaBABSConfig
 from network_fmri.processing import ProcessingManager
 
+SHORTS = ('MRIQC-24.0.2', 'fMRIPrep-25.2.5+anat', 'fMRIPrep-25.2.5+full')
 
-SHORTS = ("MRIQC-24.0.2", "fMRIPrep-25.2.5+anat", "fMRIPrep-25.2.5+full")
+
+def configuration(tmp_path):
+    mechababs = MechaBABSConfig(
+        study_dir=tmp_path / 'study', durable_sibling=tmp_path / 'oak',
+        campaign='network-v1', raw_slot='raw', container_dataset=tmp_path / 'containers',
+        mechababs_commit='d' * 40, babs_commit='e' * 40, cluster_file=Path('sherlock.yaml'),
+        apps=tuple(MechaBABSAppConfig(name, Path(short + '.yaml')) for name, short in
+                   zip(('mriqc', 'anatomical', 'fmriprep'), SHORTS)),
+    )
+    return SimpleNamespace(mechababs=mechababs, paths=SimpleNamespace(bids_dir=tmp_path / 'raw'))
+
+
+def table(rows, columns):
+    # Upstream status.render format, including blank cells.
+    widths = {c: max(len(c), *(len(r.get(c, '')) for r in rows)) for c in columns}
+    return '\n'.join('  '.join(row.get(c, '').ljust(widths[c]) for c in columns).rstrip()
+                     for row in [dict(zip(columns, columns)), *rows]) + '\n'
 
 
 class Runner:
-    def __init__(self, status="pipeline\tstate\tjob_id\n", status_returncode=0):
-        self.commands = []
-        self.status = status
-        self.status_returncode = status_returncode
+    def __init__(self, states=('not started', 'waiting on MRIQC-24.0.2', 'waiting on fMRIPrep-25.2.5+anat')):
+        self.calls = []
+        self.states = states
 
     def __call__(self, command, **kwargs):
-        command = tuple(str(value) for value in command)
-        self.commands.append((command, kwargs))
-        if command[:3] == ("git", "rev-parse", "HEAD"):
-            cwd = str(kwargs.get("cwd", ""))
-            stdout = ("d" * 40 if cwd.endswith("mechababs") else "e" * 40) + "\n"
+        self.calls.append((command, kwargs))
+        if command[1] == 'status' and command[0] != 'git':
+            stdout = table([dict(source_dataset='sourcedata/raw', app=app, state=state, jobs='')
+                            for app, state in zip(SHORTS, self.states)],
+                           ('source_dataset', 'app', 'state', 'jobs'))
+        elif command[1] == 'jobs':
+            stdout = table([dict(source_dataset='sourcedata/raw', app=SHORTS[0], sub_id='sub-s01',
+                                ses_id='', job_id='12_1', state='R', logs='/scratch/logs')],
+                           ('source_dataset', 'app', 'sub_id', 'ses_id', 'job_id', 'state', 'logs'))
         else:
-            stdout = (
-                self.status
-                if command[0] != "git" and len(command) > 1 and command[1] == "status"
-                else ""
-            )
-        returncode = self.status_returncode if command[0] != "git" and len(command) > 1 and command[1] == "status" else 0
-        if returncode and kwargs.get("check"):
-            raise subprocess.CalledProcessError(returncode, command, output=stdout)
-        return SimpleNamespace(
-            stdout=stdout,
-            returncode=returncode,
-        )
+            stdout = 'a' * 40 + '\n' if command[:2] == ('git', 'rev-parse') else ''
+        return SimpleNamespace(stdout=stdout, returncode=0)
 
 
-def setup(tmp_path: Path, values=(("", ""), ("", ""), ("", ""))):
-    campaign = tmp_path / "campaign"
-    campaign.mkdir()
-    (campaign / ".venv/bin").mkdir(parents=True)
-    (campaign / "code/mechababs").mkdir(parents=True)
-    (campaign / "code/babs").mkdir()
-    study = tmp_path / "study"
-    raw = study / "sourcedata/raw"
-    raw.mkdir(parents=True)
-    columns = ["dataset_id", "study_url", "processing_level", "n_subjects", "n_sessions"]
-    row = ["raw", str(study), "session", "2", "4"]
-    for short, value in zip(SHORTS, values, strict=True):
-        columns.extend((f"{short}_babs", f"{short}_babs-merged"))
-        row.extend(value)
-    (campaign / "desc-mechababs_datasets.tsv").write_text(
-        "\t".join(columns) + "\n" + "\t".join(row) + "\n"
-    )
-    for root in (study, raw, campaign):
-        (root / ".git").mkdir(exist_ok=True)
-    mechababs = MechaBABSConfig(
-        study_dir=study,
-        campaign_dir=campaign,
-        durable_sibling=tmp_path / "oak",
-        bootstrap_script=tmp_path / "bootstrap.sh",
-        campaign="network-v1",
-        raw_slot="raw",
-        container_dataset=tmp_path / "containers",
-        mechababs_commit="d" * 40,
-        babs_commit="e" * 40,
-        mechababs_ref="sherlock-compat",
-        babs_ref="fix/plus-regex-zipname",
-        cluster_file=Path("sherlock.yaml"),
-        apps=tuple(
-            MechaBABSAppConfig(name, Path(file))
-            for name, file in zip(
-                ("mriqc", "anatomical", "fmriprep"),
-                ("MRIQC-24.0.2.yaml", "fMRIPrep-25.2.5+anat.yaml", "fMRIPrep-25.2.5+full.yaml"),
-                strict=True,
-            )
-        ),
-    )
-    config = SimpleNamespace(
-        mechababs=mechababs,
-        paths=SimpleNamespace(bids_dir=raw),
-        subjects=("s01", "s02"),
-    )
-    return config
-
-
-def test_plan_reports_ordered_stage_state(tmp_path):
-    manager = ProcessingManager(setup(tmp_path, (("mriqc", "done"), ("", ""), ("", ""))), runner=Runner())
-
-    plan = manager.plan()
-
-    assert [(item.stage, item.state) for item in plan] == [
-        ("mriqc", "complete"),
-        ("anatomical", "ready"),
-        ("fmriprep", "blocked"),
-    ]
-
-
-def test_status_refreshes_jobs_and_marks_failed_cell_for_intervention(tmp_path):
-    runner = Runner("pipeline\tstate\tjob_id\nfMRIPrep-25.2.5+anat\tFAILED\t123\n")
-    manager = ProcessingManager(
-        setup(tmp_path, (("mriqc", "done"), ("anat", ""), ("", ""))), runner=runner
-    )
-
-    status = manager.status()
-
-    assert status.stages[1].state == "intervention-required"
-    assert status.jobs[0]["job_id"] == "123"
-    assert any("status" in command and "--output" in command for command, _ in runner.commands)
-
-
-def test_status_accepts_an_unscaffolded_campaign_with_no_job_table(tmp_path):
-    manager = ProcessingManager(setup(tmp_path), runner=Runner(status="", status_returncode=1))
-
-    status = manager.status()
-
-    assert status.jobs == ()
-    assert status.stages[0].state == "ready"
-
-
-def test_advance_runs_one_reconciler_transition_for_requested_stage(tmp_path, monkeypatch):
+def test_status_reads_upstream_status_and_jobs(tmp_path):
     runner = Runner()
-    config = setup(tmp_path)
-    checked = []
-    monkeypatch.setattr("network_fmri.processing.require_stage_gate", lambda *_args, **_kwargs: checked.append("mriqc"))
-    manager = ProcessingManager(config, runner=runner)
-
-    result = manager.advance("mriqc")
-
-    assert result.stage == "mriqc"
-    assert result.advanced is True
-    assert checked == ["mriqc"]
-    command = runner.commands[-1][0]
-    assert command[-2:] == ("--batch", "1")
+    config = configuration(tmp_path)
+    status = ProcessingManager(config, runner=runner).status()
+    assert [s.state for s in status.stages] == ['ready', 'blocked', 'blocked']
+    assert status.jobs[0]['ses_id'] == ''
+    assert status.jobs[0]['job_id'] == '12_1'
+    for command, kwargs in runner.calls:
+        assert '--campaign-path' not in command and '--output' not in command
+        assert kwargs['cwd'] == str(config.mechababs.study_dir)
+        assert kwargs['env']['MECHABABS_CAMPAIGN'] == 'network-v1'
+        assert kwargs['env']['PATH'].startswith(str(config.mechababs.campaign_dir / '.venv/bin'))
 
 
-def test_advance_rejects_stage_until_previous_pipeline_is_merged(tmp_path, monkeypatch):
-    monkeypatch.setattr("network_fmri.processing.require_stage_gate", lambda *_args, **_kwargs: None)
-    manager = ProcessingManager(setup(tmp_path), runner=Runner())
-
-    with pytest.raises(RuntimeError, match="mriqc must be complete"):
-        manager.advance("anatomical")
-
-
-def test_complete_stage_installs_derivative_in_canonical_study(tmp_path, monkeypatch):
-    config = setup(tmp_path, (("studies/study-raw/derivatives/MRIQC-24.0.2", "done"), ("", ""), ("", "")))
-    source = config.mechababs.campaign_dir / "studies/study-raw/derivatives/MRIQC-24.0.2"
-    source.mkdir(parents=True)
-    runner = Runner()
-    monkeypatch.setattr("network_fmri.processing.require_stage_gate", lambda *_: None)
-
-    result = ProcessingManager(config, runner=runner).advance("mriqc")
-
-    assert result.advanced is False
-    clone = next(command for command, _ in runner.commands if command[:2] == ("datalad", "clone"))
-    assert clone == (
-        "datalad", "clone", "-d", str(config.mechababs.study_dir), str(source),
-        "derivatives/MRIQC-24.0.2",
-    )
+@pytest.mark.parametrize('stage,index', [('mriqc', 0), ('anatomical', 1), ('fmriprep', 2)])
+def test_only_requested_app_advances_after_gate(tmp_path, monkeypatch, stage, index):
+    runner = Runner(tuple('merged' if n < index else 'not started' for n in range(3)))
+    gates = []
+    monkeypatch.setattr('network_fmri.processing.require_stage_gate', lambda _, name, __: gates.append(name))
+    result = ProcessingManager(configuration(tmp_path), runner=runner).advance(stage)
+    assert result.advanced
+    assert gates == [stage]
+    assert runner.calls[-1][0][1:] == ('iterate', '--app', SHORTS[index], '--batch', '1')
 
 
-def test_advance_updates_wrapper_raw_pointer_before_anatomical_stage(tmp_path, monkeypatch):
-    config = setup(tmp_path, (("mriqc", "done"), ("", ""), ("", "")))
-    config.paths.bids_dir = tmp_path / "raw-source"
-    config.paths.bids_dir.mkdir()
-    (config.paths.bids_dir / ".git").mkdir()
-
-    class ChangedRawRunner(Runner):
-        updated = False
-
-        def __call__(self, command, **kwargs):
-            if tuple(command[:3]) == ("datalad", "update", "--how"):
-                self.updated = True
-            if tuple(command[:3]) == ("git", "rev-parse", "HEAD"):
-                cwd = Path(kwargs["cwd"])
-                if cwd == config.paths.bids_dir:
-                    return SimpleNamespace(stdout="b" * 40 + "\n", returncode=0)
-                if cwd == config.mechababs.study_dir / "sourcedata/raw":
-                    value = "b" if self.updated else "a"
-                    return SimpleNamespace(stdout=value * 40 + "\n", returncode=0)
-            return super().__call__(command, **kwargs)
-
-    runner = ChangedRawRunner()
-    monkeypatch.setattr("network_fmri.processing.require_stage_gate", lambda *_: None)
-    ProcessingManager(config, runner=runner).advance("anatomical")
-
-    commands = [command for command, _ in runner.commands]
-    assert any(command[:3] == ("datalad", "update", "--how") for command in commands)
-    assert any(command[:2] == ("datalad", "save") for command in commands)
+def test_predecessor_blocks_advancement(tmp_path):
+    with pytest.raises(RuntimeError, match='mriqc must be complete'):
+        ProcessingManager(configuration(tmp_path), runner=Runner()).advance('anatomical')
 
 
-@pytest.mark.parametrize("stage", ["mriqc", "anatomical", "fmriprep"])
-def test_advance_checks_the_named_gate(tmp_path, monkeypatch, stage):
-    values = {
-        "mriqc": (("", ""), ("", ""), ("", "")),
-        "anatomical": (("mriqc", "done"), ("", ""), ("", "")),
-        "fmriprep": (("mriqc", "done"), ("anat", "done"), ("", "")),
-    }[stage]
-    calls = []
-    monkeypatch.setattr(
-        "network_fmri.processing.require_stage_gate",
-        lambda _config, requested, _runner: calls.append(requested),
-    )
-
-    ProcessingManager(setup(tmp_path, values), runner=Runner()).advance(stage)
-
-    assert calls == [stage]
+def test_failure_blocks_advancement(tmp_path):
+    with pytest.raises(RuntimeError, match='intervention-required'):
+        ProcessingManager(configuration(tmp_path), runner=Runner(('FAILED', 'not started', 'not started'))).advance('mriqc')
 
 
-def test_advance_rejects_dirty_study_before_gate_or_submission(tmp_path, monkeypatch):
-    class DirtyRunner(Runner):
-        def __call__(self, command, **kwargs):
-            result = super().__call__(command, **kwargs)
-            if tuple(command[:3]) == ("git", "status", "--porcelain"):
-                return SimpleNamespace(stdout=" M changed\n")
-            return result
+def test_merged_derivative_is_already_in_study(tmp_path):
+    runner = Runner(('merged', 'not started', 'not started'))
+    result = ProcessingManager(configuration(tmp_path), runner=runner).advance('mriqc')
+    assert not result.advanced
+    assert not any(command[0] == 'datalad' for command, _ in runner.calls)
 
-    called = []
-    monkeypatch.setattr("network_fmri.processing.require_stage_gate", lambda *_: called.append(True))
 
-    with pytest.raises(RuntimeError, match="is dirty"):
-        ProcessingManager(setup(tmp_path), runner=DirtyRunner()).advance("mriqc")
-    assert called == []
+def test_unexpected_table_is_rejected():
+    with pytest.raises(RuntimeError, match='schema'):
+        read_table('unexpected output\n')
+
+
+def test_fresh_campaign_has_no_jobs(tmp_path):
+    base = Runner()
+
+    def runner(command, **kwargs):
+        if command[1] == "jobs":
+            return SimpleNamespace(stdout="", returncode=0)
+        return base(command, **kwargs)
+
+    assert ProcessingManager(configuration(tmp_path), runner=runner).status().jobs == ()
+
+
+def test_dirty_raw_blocks_submission(tmp_path, monkeypatch):
+    base = Runner()
+    monkeypatch.setattr('network_fmri.processing.require_stage_gate', lambda *args: None)
+
+    def runner(command, **kwargs):
+        if command[:2] == ('git', 'status'):
+            return SimpleNamespace(stdout=' M participants.tsv\n', returncode=0)
+        return base(command, **kwargs)
+
+    with pytest.raises(RuntimeError, match='raw dataset is dirty'):
+        ProcessingManager(configuration(tmp_path), runner=runner).advance('mriqc')
+    assert not any('iterate' in command for command, _ in base.calls)
+
+
+def test_raw_update_saves_only_raw_subdataset(tmp_path):
+    config = configuration(tmp_path)
+    installed = config.mechababs.study_dir / 'sourcedata/raw'
+    commands = []
+    installed_reads = 0
+
+    def runner(command, **kwargs):
+        nonlocal installed_reads
+        commands.append(command)
+        output = ''
+        if command[:2] == ('git', 'rev-parse'):
+            output = 'a' * 40
+            if kwargs['cwd'] == str(installed):
+                installed_reads += 1
+                if installed_reads == 1:
+                    output = 'b' * 40
+        return SimpleNamespace(stdout=output, returncode=0)
+
+    ProcessingManager(config, runner=runner)._sync_raw_subdataset()
+    assert commands[-1][-1] == str(installed)
+    assert commands[-1][:2] == ('datalad', 'save')

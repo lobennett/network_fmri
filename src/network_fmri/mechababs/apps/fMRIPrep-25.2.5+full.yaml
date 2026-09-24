@@ -1,4 +1,5 @@
 mechababs:
+  depends_on: fMRIPrep-25.2.5+anat
   selection:
     require_datatypes: [anat, func]
     require_positive: [t1w_num, bold_num]

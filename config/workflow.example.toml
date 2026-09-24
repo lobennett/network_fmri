@@ -44,16 +44,12 @@ sha256 = "8a253111015321ee9bd4c735f1bcaeb40972ac1c5c4d248a83b4cdd64fc851fe"
 
 [mechababs]
 study_dir = "/scratch/users/logben/network-study"
-campaign_dir = "/scratch/users/logben/mechababs-work/network-v1"
 durable_sibling = "/oak/stanford/groups/russpold/data/network_grant/network-study"
-bootstrap_script = "/scratch/users/logben/mechababs/bootstrap.sh"
 campaign = "network-v1"
 raw_slot = "raw"
 container_dataset = "/scratch/users/logben/mechababs-work/repronim-containers-shim"
-mechababs_commit = "841ba3b853932b114342517e68a72fd23e85f135"
-babs_commit = "618dcd744f287e0d241e5a5a2a476606d537c762"
-mechababs_ref = "sherlock-compat"
-babs_ref = "fix/plus-regex-zipname"
+mechababs_commit = "41324c9f580ff7cffc439017d1d52f06b3bca203"
+babs_commit = "2e481a57d329d6ca8c484da3c31d73359d1459f8"
 cluster_file = "sherlock.yaml"
 apps = [
   { name = "mriqc", file = "MRIQC-24.0.2.yaml" },
