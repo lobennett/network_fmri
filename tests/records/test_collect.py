@@ -139,5 +139,7 @@ def test_babs_raw_input_sidecars_are_not_mriqc_metrics(tmp_path):
     study = fixture_study(tmp_path)
     write(study / "derivatives/MRIQC/sourcedata/raw/sub-s01/func/sub-s01_task-rest_bold.json",
           json.dumps({"RepetitionTime": 1.49, "TaskName": "rest"}))
+    write(study / "derivatives/MRIQC/sourcedata/raw/derivatives/mriqc/sub-s01_task-rest_bold.json",
+          json.dumps({"fd_mean": 99.0}))
     records = collect_study(study, runner=GitRunner())
     assert len([row for row in records.findings if row.finding_type == "mriqc"]) == 1

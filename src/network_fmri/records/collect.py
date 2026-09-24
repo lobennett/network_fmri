@@ -65,6 +65,8 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
         artifacts.append(Artifact("bids-validator", _relative(path, study), kind="report"))
 
     for path in sorted((study / "derivatives").glob("**/*.json")):
+        if {"sourcedata", "containers", ".git", ".babs"}.intersection(path.relative_to(study / "derivatives").parts):
+            continue
         if "mriqc" not in path.as_posix().lower() or not path.name.startswith("sub-"):
             continue
         value = _mriqc_metrics(_json(path, "MRIQC metric"))
