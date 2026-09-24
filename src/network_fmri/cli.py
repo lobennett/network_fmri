@@ -11,7 +11,9 @@ from network_fmri import pipeline
 from network_fmri.curation import apply_curation
 from network_fmri.stages.decisions import generate_decisions, validate_decisions, verify_decisions
 from network_fmri.config import WorkflowConfig
-from network_fmri.qa.freesurfer import generate_surface_review, validate_surface_review
+from network_fmri.qa.freesurfer import (
+    generate_surface_review, surface_fingerprints, validate_surface_review,
+)
 from network_fmri.processing import ProcessingManager
 from network_fmri.records import build_index
 from network_fmri.reviews import ReviewMigrator
@@ -37,6 +39,7 @@ def get_parser() -> argparse.ArgumentParser:
     surface_migration = review_commands.add_parser("migrate-surfaces")
     surface_migration.add_argument("config", type=Path)
     surface_migration.add_argument("--source-manifest", required=True, type=Path)
+    surface_migration.add_argument("--source-anatomical-derivative", required=True, type=Path)
     surface_migration.add_argument("--anatomical-derivative", required=True, type=Path)
     study = commands.add_parser("study", help="create or verify the MechaBABS input study")
     study_commands = study.add_subparsers(dest="study_command", required=True)
@@ -130,6 +133,9 @@ def main(argv: list[str] | None = None) -> int:
                 approve=lambda: validate_surface_review(config),
                 save_approval=lambda stage: pipeline.save_stage_result(
                     study, stage, config=config
+                ),
+                source_fingerprints=surface_fingerprints(
+                    config, parsed.source_anatomical_derivative
                 ),
             )
         print(json.dumps({

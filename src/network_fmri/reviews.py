@@ -8,7 +8,7 @@ import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Mapping
 
 from network_fmri.models import StageResult
 
@@ -63,6 +63,7 @@ class ReviewMigrator:
         validate_source: Callable[[], object],
         approve: Callable[[], StageResult],
         save_approval: Callable[[StageResult], object],
+        source_fingerprints: Mapping[str, str] | None = None,
     ) -> ReviewMigrationResult:
         validate_source()
         return self._migrate(
@@ -70,6 +71,7 @@ class ReviewMigrator:
             regenerate(installed_raw, anatomical_derivative),
             approve=approve,
             save_approval=save_approval,
+            source_fingerprints=source_fingerprints,
         )
 
     def _migrate(
@@ -79,11 +81,22 @@ class ReviewMigrator:
         *,
         approve: Callable[[], StageResult],
         save_approval: Callable[[StageResult], object],
+        source_fingerprints: Mapping[str, str] | None = None,
     ) -> ReviewMigrationResult:
         manifest = _manifest_output(generated)
         report = manifest.with_name(manifest.stem + ".migration.json")
         source_fields, source_rows = _read_tsv(source_manifest)
         generated_fields, generated_rows = _read_tsv(manifest)
+        if (
+            source_fingerprints is not None
+            and "surface_fingerprint" not in source_fields
+            and "surface_fingerprint" in generated_fields
+        ):
+            source_fields = generated_fields
+            for row in source_rows:
+                fingerprint = source_fingerprints.get(row["subject"])
+                if fingerprint:
+                    row["surface_fingerprint"] = fingerprint
         mismatches = _compare(source_fields, source_rows, generated_fields, generated_rows)
         if mismatches:
             _write_json_atomic(report, {"schema_version": 1, "mismatches": mismatches})

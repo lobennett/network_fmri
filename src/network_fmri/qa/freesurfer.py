@@ -33,6 +33,7 @@ def generate_surface_review(
     root = surface_review_directory(config)
     root.mkdir(parents=True, exist_ok=True)
     manifest = root / "surface_review.tsv"
+    evidence = surface_fingerprints(config, derivative)
     with manifest.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=REVIEW_COLUMNS, delimiter="\t", lineterminator="\n")
         writer.writeheader()
@@ -43,7 +44,7 @@ def generate_surface_review(
                     f"anatomical derivative has multiple artifacts for sub-{subject}: "
                     + ", ".join(map(str, artifacts))
                 )
-            fingerprint = _surface_fingerprint(artifacts[0], subject) if artifacts else None
+            fingerprint = evidence.get(f"sub-{subject}")
             writer.writerow({
                 "subject": f"sub-{subject}",
                 "surface_dir": str(artifacts[0]) if artifacts else "",
@@ -60,6 +61,24 @@ def generate_surface_review(
     return StageResult(
         "surface-review-generated", (manifest, metadata), {"subjects": len(config.subjects)},
     )
+
+
+def surface_fingerprints(
+    config: WorkflowConfig, anatomical_derivative: Path
+) -> dict[str, str]:
+    """Return verified, content-derived surface evidence by BIDS subject."""
+
+    derivative = Path(anatomical_derivative).resolve()
+    evidence = {}
+    for subject in config.subjects:
+        artifacts = _subject_artifacts(derivative, subject)
+        if len(artifacts) > 1:
+            raise StageError(f"anatomical derivative has multiple artifacts for sub-{subject}")
+        if artifacts:
+            fingerprint = _surface_fingerprint(artifacts[0], subject)
+            if fingerprint:
+                evidence[f"sub-{subject}"] = fingerprint
+    return evidence
 
 
 def validate_surface_review(

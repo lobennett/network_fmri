@@ -113,9 +113,10 @@ def test_missing_and_extra_rows_are_both_reported(tmp_path):
 
 
 def test_surface_migration_regenerates_against_anatomical_derivative(tmp_path):
+    old_header = "subject\tsurface_dir\tstatus\tapproved\treviewer\treviewed_at\tnotes\n"
     header = "subject\tsurface_dir\tstatus\tsurface_fingerprint\tapproved\treviewer\treviewed_at\tnotes\n"
     source = tmp_path / "old-surfaces.tsv"
-    source.write_text(header + "sub-s01\t/old/s01\tcomplete\tabc\tyes\tLB\t2026-09-23T12:00:00Z\tgood\n")
+    source.write_text(old_header + "sub-s01\t/old/s01\tcomplete\tyes\tLB\t2026-09-23T12:00:00Z\tgood\n")
     destination = tmp_path / "study/code/network_fmri/surface_review.tsv"
     seen = []
 
@@ -131,6 +132,7 @@ def test_surface_migration_regenerates_against_anatomical_derivative(tmp_path):
         regenerate=regenerate, validate_source=lambda: None,
         approve=lambda: StageResult("surface-review-approved", (destination,)),
         save_approval=lambda _: None,
+        source_fingerprints={"sub-s01": "abc"},
     )
 
     assert result.approved is True

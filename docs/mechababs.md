@@ -88,8 +88,8 @@ MechaBABS ordering dependency. `network_fmri` advances one named app at a time:
    curated raw dataset passes validation.
 3. Full fMRIPrep can advance only after `surface_review.tsv` is sealed.
 
-MechaBABS `depends_on` remains a second ordering check; it does not replace either
-human gate. Failed cells remain in BABS for inspection and explicit intervention.
+The chained input remains a second ordering check; it does not replace either human
+gate. Failed cells remain in BABS for inspection and explicit intervention.
 
 ## Configuration and commands
 
