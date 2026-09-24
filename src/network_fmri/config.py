@@ -93,7 +93,9 @@ class MechaBABSConfig:
     """Pinned study and campaign inputs for post-BIDS processing."""
 
     study_dir: Path
+    campaign_dir: Path
     durable_sibling: Path
+    bootstrap_script: Path
     campaign: str
     raw_slot: str
     container_dataset: Path
@@ -285,7 +287,7 @@ def _parse_mechababs(raw: dict[str, Any]) -> MechaBABSConfig:
     _unknown_keys(
         raw,
         {
-            "study_dir", "durable_sibling", "campaign", "raw_slot",
+            "study_dir", "campaign_dir", "durable_sibling", "bootstrap_script", "campaign", "raw_slot",
             "container_dataset", "mechababs_commit", "babs_commit",
             "cluster_file", "apps",
         },
@@ -305,7 +307,9 @@ def _parse_mechababs(raw: dict[str, Any]) -> MechaBABSConfig:
         raise ValueError("mechababs.raw_slot must be one path component")
     return MechaBABSConfig(
         study_dir=_path(raw, "study_dir", name),
+        campaign_dir=_path(raw, "campaign_dir", name),
         durable_sibling=_path(raw, "durable_sibling", name),
+        bootstrap_script=_path(raw, "bootstrap_script", name),
         campaign=_nonempty_string(raw, "campaign", name),
         raw_slot=raw_slot,
         container_dataset=_path(raw, "container_dataset", name),

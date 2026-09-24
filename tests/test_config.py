@@ -81,17 +81,19 @@ sha256 = "{pydeface_sha256}"
 
 [mechababs]
 study_dir = "{tmp_path / 'study'}"
+campaign_dir = "{tmp_path / 'campaign'}"
 durable_sibling = "{tmp_path / 'study-storage'}"
+bootstrap_script = "{tmp_path / 'mechababs' / 'bootstrap.sh'}"
 campaign = "network-v1"
 raw_slot = "raw"
 container_dataset = "{tmp_path / 'containers'}"
 mechababs_commit = "{'d' * 40}"
 babs_commit = "{'e' * 40}"
-cluster_file = "config/mechababs/clusters/sherlock.yaml"
+cluster_file = "sherlock.yaml"
 apps = [
-  {{ name = "mriqc", file = "config/mechababs/apps/mriqc-24.0.2.yaml" }},
-  {{ name = "anatomical", file = "config/mechababs/apps/fmriprep-25.2.5-anatomical.yaml" }},
-  {{ name = "fmriprep", file = "config/mechababs/apps/fmriprep-25.2.5-full.yaml" }},
+  {{ name = "mriqc", file = "MRIQC-24.0.2.yaml" }},
+  {{ name = "anatomical", file = "fMRIPrep-25.2.5+anat.yaml" }},
+  {{ name = "fmriprep", file = "fMRIPrep-25.2.5+full.yaml" }},
 ]
 
 [slurm]
@@ -117,7 +119,9 @@ def test_loads_single_dataset_configuration(tmp_path):
     assert config.participants.source == tmp_path / "canonical-demographics"
     assert config.participants.commit == "c" * 40
     assert config.mechababs.study_dir == tmp_path / "study"
+    assert config.mechababs.campaign_dir == tmp_path / "campaign"
     assert config.mechababs.durable_sibling == tmp_path / "study-storage"
+    assert config.mechababs.bootstrap_script == tmp_path / "mechababs" / "bootstrap.sh"
     assert config.mechababs.container_dataset == tmp_path / "containers"
     assert config.mechababs.campaign == "network-v1"
     assert config.mechababs.raw_slot == "raw"
@@ -126,10 +130,12 @@ def test_loads_single_dataset_configuration(tmp_path):
     assert tuple(app.name for app in config.mechababs.apps) == (
         "mriqc", "anatomical", "fmriprep",
     )
-    assert config.mechababs.cluster_file == Path("config/mechababs/clusters/sherlock.yaml")
+    assert config.mechababs.cluster_file == Path("sherlock.yaml")
 
 
-@pytest.mark.parametrize("field", ["study_dir", "durable_sibling", "container_dataset"])
+@pytest.mark.parametrize(
+    "field", ["study_dir", "campaign_dir", "durable_sibling", "container_dataset", "bootstrap_script"]
+)
 def test_rejects_relative_mechababs_runtime_paths(tmp_path, field):
     from network_fmri.config import WorkflowConfig
 
@@ -166,7 +172,8 @@ def test_rejects_absolute_or_escaping_mechababs_config_paths(tmp_path, field):
     from network_fmri.config import WorkflowConfig
 
     path = write_config(tmp_path)
-    needle = f'{field} = "config/'
+    original = "sherlock.yaml" if field == "cluster_file" else "MRIQC-24.0.2.yaml"
+    needle = f'{field} = "{original}'
     for invalid in ("/tmp/config.yaml", "../config.yaml"):
         edited = path.read_text().replace(needle, f'{field} = "{invalid}', 1)
         candidate = tmp_path / f"{field}-{Path(invalid).name}.toml"

@@ -44,17 +44,19 @@ sha256 = "8a253111015321ee9bd4c735f1bcaeb40972ac1c5c4d248a83b4cdd64fc851fe"
 
 [mechababs]
 study_dir = "/scratch/users/logben/network-study"
+campaign_dir = "/scratch/users/logben/mechababs-work/network-v1"
 durable_sibling = "/oak/stanford/groups/russpold/data/network_grant/network-study"
+bootstrap_script = "/scratch/users/logben/mechababs/bootstrap.sh"
 campaign = "network-v1"
 raw_slot = "raw"
-container_dataset = "/oak/stanford/groups/russpold/shared/containers"
+container_dataset = "/scratch/users/logben/mechababs-work/repronim-containers-shim"
 mechababs_commit = "841ba3b853932b114342517e68a72fd23e85f135"
 babs_commit = "618dcd744f287e0d241e5a5a2a476606d537c762"
-cluster_file = "config/mechababs/clusters/sherlock.yaml"
+cluster_file = "sherlock.yaml"
 apps = [
-  { name = "mriqc", file = "config/mechababs/apps/mriqc-24.0.2.yaml" },
-  { name = "anatomical", file = "config/mechababs/apps/fmriprep-25.2.5-anatomical.yaml" },
-  { name = "fmriprep", file = "config/mechababs/apps/fmriprep-25.2.5-full.yaml" },
+  { name = "mriqc", file = "MRIQC-24.0.2.yaml" },
+  { name = "anatomical", file = "fMRIPrep-25.2.5+anat.yaml" },
+  { name = "fmriprep", file = "fMRIPrep-25.2.5+full.yaml" },
 ]
 
 [slurm]
