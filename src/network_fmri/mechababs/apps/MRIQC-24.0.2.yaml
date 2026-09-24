@@ -13,7 +13,7 @@ output_ria_path: ".babs/output_ria"
 bids_app_args:
   --no-datalad-get: ""
   $SUBJECT_SELECTION_FLAG: "--participant-label"
-  -w: ".git/tmp/wkdir"
+  -w: "$BABS_TMPDIR"
   --n_cpus: "4"
   --mem_gb: "16"
   -vv: ""

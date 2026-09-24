@@ -13,7 +13,7 @@ output_ria_path: ".babs/output_ria"
 
 bids_app_args:
   $SUBJECT_SELECTION_FLAG: "--participant-label"
-  -w: ".git/tmp/wkdir"
+  -w: "$BABS_TMPDIR"
   --anat-only: ""
   --output-spaces: "MNI152NLin2009cAsym:res-2 MNI152NLin6Asym:res-2"
   --cifti-output: "91k"
@@ -34,7 +34,6 @@ singularity_args:
   - --pwd "${PWD}"
   - -B $JOB_TMP:/tmp
   - -B /home/groups/russpold/templateflow:/templateflow
-  - -B {{FREESURFER_LICENSE}}:/SGLR/FREESURFER_HOME/license.txt
   - --env TEMPLATEFLOW_HOME=/templateflow
 
 cluster_resources:

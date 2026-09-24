@@ -20,7 +20,7 @@ campaign:
 
 ```bash
 apptainer exec --cleanenv \
-  --bind /home/groups/russpold/license.txt:/license.txt:ro \
+  --bind /home/users/logben/license.txt:/license.txt:ro \
   /oak/stanford/groups/russpold/shared/containers/fmriprep-25.2.5.sif \
   bash -lc 'export FS_LICENSE=/license.txt; mri_convert --version'
 ```

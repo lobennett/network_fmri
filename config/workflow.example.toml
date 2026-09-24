@@ -9,7 +9,7 @@ parts_dir = "/scratch/groups/russpold/network_fmri/parts"
 work_dir = "/scratch/groups/russpold/network_fmri/work"
 log_dir = "/scratch/groups/russpold/network_fmri/logs"
 templateflow_dir = "/home/groups/russpold/templateflow"
-freesurfer_license = "/home/groups/russpold/license.txt"
+freesurfer_license = "/home/users/logben/license.txt"
 
 [behavior.in_scanner]
 source = "/oak/stanford/groups/russpold/data/network_grant/behavioral_data/canonical"
