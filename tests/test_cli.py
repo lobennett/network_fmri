@@ -49,6 +49,43 @@ def test_decisions_generate_writes_mriqc_review_manifest(tmp_path, monkeypatch):
     assert saved == [(tmp_path / "bids", result)]
 
 
+def test_decisions_generate_accepts_campaign_paths(tmp_path, monkeypatch):
+    observed = []
+    result = StageResult("scan-decisions-generated", (tmp_path / "review.tsv",))
+    monkeypatch.setattr(
+        cli, "generate_decisions",
+        lambda raw, **kwargs: observed.append((raw, kwargs)) or result,
+    )
+    monkeypatch.setattr(cli.pipeline, "save_stage_result", lambda *args: None)
+
+    assert cli.main([
+        "decisions", "generate", str(tmp_path / "raw"),
+        "--mriqc-dir", str(tmp_path / "mriqc"),
+        "--output", str(tmp_path / "study/review.tsv"),
+    ]) == 0
+    assert observed == [(tmp_path / "raw", {
+        "mriqc_dir": tmp_path / "mriqc", "output": tmp_path / "study/review.tsv",
+    })]
+
+
+def test_surfaces_generate_uses_anatomical_derivative(tmp_path, monkeypatch):
+    config = SimpleNamespace(mechababs=SimpleNamespace(study_dir=tmp_path / "study"))
+    result = StageResult("surface-review-generated", (tmp_path / "surface_review.tsv",))
+    monkeypatch.setattr(cli.WorkflowConfig, "load", lambda _: config)
+    observed = []
+    monkeypatch.setattr(
+        cli, "generate_surface_review",
+        lambda value, derivative: observed.append((value, derivative)) or result,
+    )
+    monkeypatch.setattr(cli.pipeline, "save_stage_result", lambda *args, **kwargs: None)
+
+    assert cli.main([
+        "surfaces", "generate", str(tmp_path / "workflow.toml"),
+        "--anatomical-derivative", str(tmp_path / "anat"),
+    ]) == 0
+    assert observed == [(config, tmp_path / "anat")]
+
+
 def test_surfaces_validate_seals_the_configured_dataset(tmp_path, monkeypatch):
     config = type("Config", (), {"paths": type("Paths", (), {"bids_dir": tmp_path / "bids"})()})()
     result = StageResult("surface-review-approved", (tmp_path / "surface_review.tsv",))

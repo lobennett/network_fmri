@@ -16,14 +16,21 @@ def manifest_path(bids_dir: Path) -> Path:
     return Path(bids_dir) / "code" / "network_fmri" / "scan_decisions.tsv"
 
 
-def generate_decisions(bids_dir: Path, runner: Runner = subprocess.run) -> StageResult:
+def generate_decisions(
+    bids_dir: Path,
+    runner: Runner = subprocess.run,
+    *,
+    mriqc_dir: Path | None = None,
+    output: Path | None = None,
+) -> StageResult:
     """Compile MRIQC and behavioral evidence into an unapproved manifest."""
 
     bids_dir = Path(bids_dir)
-    manifest = manifest_path(bids_dir)
+    manifest = Path(output) if output is not None else manifest_path(bids_dir)
+    mriqc = Path(mriqc_dir) if mriqc_dir is not None else bids_dir / "derivatives" / "mriqc"
     command = [
         "network-qa", "decisions", "generate", "--bids-dir", str(bids_dir),
-        "--mriqc-dir", str(bids_dir / "derivatives" / "mriqc"), "--output", str(manifest),
+        "--mriqc-dir", str(mriqc), "--output", str(manifest),
     ]
     _run_checked(command, runner)
     return StageResult(

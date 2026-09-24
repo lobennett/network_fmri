@@ -34,6 +34,21 @@ def test_generate_decisions_delegates_evidence_compilation_to_network_qa(tmp_pat
     ]]
 
 
+def test_generate_decisions_accepts_installed_raw_external_mriqc_and_wrapper_output(tmp_path):
+    runner = Runner()
+    raw = tmp_path / "study/sourcedata/raw"
+    mriqc = tmp_path / "campaign/derivatives/MRIQC-24.0.2"
+    output = tmp_path / "study/code/network_fmri/scan_decisions.tsv"
+
+    result = generate_decisions(raw, runner, mriqc_dir=mriqc, output=output)
+
+    assert result.outputs[0] == output
+    assert runner.calls == [[
+        "network-qa", "decisions", "generate", "--bids-dir", str(raw),
+        "--mriqc-dir", str(mriqc), "--output", str(output),
+    ]]
+
+
 def test_validate_decisions_seals_the_reviewed_manifest(tmp_path):
     runner = Runner()
     manifest = tmp_path / "code" / "network_fmri" / "scan_decisions.tsv"

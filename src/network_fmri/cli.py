@@ -11,7 +11,7 @@ from network_fmri import pipeline
 from network_fmri.curation import apply_curation
 from network_fmri.stages.decisions import generate_decisions, validate_decisions
 from network_fmri.config import WorkflowConfig
-from network_fmri.qa.freesurfer import validate_surface_review
+from network_fmri.qa.freesurfer import generate_surface_review, validate_surface_review
 from network_fmri.processing import ProcessingManager
 from network_fmri.study import StudyManager
 
@@ -42,11 +42,17 @@ def get_parser() -> argparse.ArgumentParser:
     for name in ("generate", "validate"):
         decision = decision_commands.add_parser(name)
         decision.add_argument("bids_dir", type=Path)
+        if name == "generate":
+            decision.add_argument("--mriqc-dir", type=Path)
+            decision.add_argument("--output", type=Path)
     surfaces = commands.add_parser("surfaces", help="validate reviewed FreeSurfer surfaces")
     surface_commands = surfaces.add_subparsers(dest="surface_command", required=True)
-    surface_validate = surface_commands.add_parser("validate")
-    surface_validate.add_argument("config", type=Path)
-    surface_validate.add_argument("--pilot-subject")
+    for name in ("generate", "validate"):
+        surface = surface_commands.add_parser(name)
+        surface.add_argument("config", type=Path)
+        surface.add_argument("--pilot-subject")
+        if name == "generate":
+            surface.add_argument("--anatomical-derivative", required=True, type=Path)
     curate = commands.add_parser("curate", help="apply approved drop decisions")
     curate.add_argument("bids_dir", type=Path)
     curate.add_argument("--validator-image", required=True, type=Path)
@@ -97,18 +103,26 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{result.stage}\t{action}\t{result.previous_state}")
         return 0
     if parsed.command == "decisions":
-        result = (
-            generate_decisions(parsed.bids_dir)
-            if parsed.decision_command == "generate"
-            else validate_decisions(parsed.bids_dir)
-        )
+        if parsed.decision_command == "generate":
+            options = {
+                name: value for name, value in {
+                    "mriqc_dir": parsed.mriqc_dir, "output": parsed.output,
+                }.items() if value is not None
+            }
+            result = generate_decisions(parsed.bids_dir, **options)
+        else:
+            result = validate_decisions(parsed.bids_dir)
         pipeline.save_stage_result(parsed.bids_dir, result)
         return 0
     if parsed.command == "surfaces":
         config = WorkflowConfig.load(parsed.config)
         if parsed.pilot_subject:
             config = pipeline.pilot_config(config, parsed.pilot_subject)
-        result = validate_surface_review(config)
+        result = (
+            generate_surface_review(config, parsed.anatomical_derivative)
+            if parsed.surface_command == "generate"
+            else validate_surface_review(config)
+        )
         review_dataset = (
             config.mechababs.study_dir
             if getattr(config, "mechababs", None) is not None
