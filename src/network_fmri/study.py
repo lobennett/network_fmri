@@ -58,7 +58,7 @@ class StudyManager:
         self._require_raw_dataset()
         raw_commit = self._output(("git", "rev-parse", "HEAD"), cwd=self.raw_bids_dir)
         raw_id = self._output(
-            ("git", "config", "--get", "datalad.dataset.id"), cwd=self.raw_bids_dir
+            ("git", "config", "--file", ".datalad/config", "--get", "datalad.dataset.id"), cwd=self.raw_bids_dir
         )
         expected = self._identity(raw_commit, raw_id, subjects)
         if self.config.study_dir.exists():
@@ -84,7 +84,7 @@ class StudyManager:
             )
         )
         study_id = self._output(
-            ("git", "config", "--get", "datalad.dataset.id"), cwd=self.config.study_dir
+            ("git", "config", "--file", ".datalad/config", "--get", "datalad.dataset.id"), cwd=self.config.study_dir
         )
         expected["study_id"] = study_id
         self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -146,10 +146,10 @@ class StudyManager:
         try:
             installed_commit = self._output(("git", "rev-parse", "HEAD"), cwd=installed_raw)
             installed_id = self._output(
-                ("git", "config", "--get", "datalad.dataset.id"), cwd=installed_raw
+                ("git", "config", "--file", ".datalad/config", "--get", "datalad.dataset.id"), cwd=installed_raw
             )
             actual_study_id = self._output(
-                ("git", "config", "--get", "datalad.dataset.id"), cwd=self.config.study_dir
+                ("git", "config", "--file", ".datalad/config", "--get", "datalad.dataset.id"), cwd=self.config.study_dir
             )
             raw_url = self._output(
                 (

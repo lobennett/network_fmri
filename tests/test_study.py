@@ -30,7 +30,7 @@ class Runner:
             return SimpleNamespace(stdout="")
         if command[:3] == ("git", "rev-parse", "HEAD"):
             return SimpleNamespace(stdout=self.raw_commit + "\n")
-        if command[:4] == ("git", "config", "--get", "datalad.dataset.id"):
+        if command[-1] == "datalad.dataset.id":
             return SimpleNamespace(stdout=self.raw_id + "\n")
         if command[:3] == ("git", "config", "--file"):
             return SimpleNamespace(stdout=str(Path(kwargs["cwd"]).parent / "raw") + "\n")
@@ -169,3 +169,14 @@ def test_existing_campaign_rejects_changed_tool_pins(tmp_path):
     path.write_text(path.read_text().replace("d" * 40, "f" * 40))
     with pytest.raises(RuntimeError, match="campaign tool pins"):
         manager.initialize(subjects=("s01",))
+
+
+def test_reads_real_datalad_identity_from_tracked_config(tmp_path):
+    import subprocess
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    subprocess.run(("git", "init", str(raw)), check=True, capture_output=True)
+    (raw / ".datalad").mkdir()
+    (raw / ".datalad/config").write_text('[datalad "dataset"]\n id = real-dataset-id\n')
+    manager = StudyManager(mechababs(tmp_path), raw, tmp_path / "license.txt")
+    assert manager._output(("git", "config", "--file", ".datalad/config", "--get", "datalad.dataset.id"), cwd=raw) == "real-dataset-id"
