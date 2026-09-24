@@ -32,18 +32,26 @@ MRIQC 24.0.2 has a [known version-string bug](https://github.com/nipreps/mriqc/i
 it reports `24.1.0.dev0+gd5b13cb5.d20240826`. Preserve that reported version and
 record the image checksum and build source when verifying the container.
 
-Create the study and its embedded campaign, then advance MRIQC. One
-`advance` call performs one reconciler transition, so inspect status and repeat it
-until MRIQC is complete.
+Create the study and submit the MRIQC controller from the pinned checkout. It polls
+MechaBABS every five minutes, merges completed jobs, extracts evidence, generates
+scan decisions, and exits at review. Restart it after a controller timeout or
+interruption. Only one controller can operate on the study at a time.
 
 ```bash
 uv run --frozen network-fmri study init workflow.toml --pilot-subject s03
 uv run --frozen network-fmri processing plan workflow.toml --pilot-subject s03
-uv run --frozen network-fmri processing advance workflow.toml --stage mriqc --pilot-subject s03
+sbatch scripts/run_mriqc.sh workflow.toml --pilot-subject s03
 uv run --frozen network-fmri processing status workflow.toml
 ```
 
-MechaBABS merges MRIQC archives into the study. `prepare-review` extracts reports
+For a foreground run, use `network-fmri processing run-mriqc workflow.toml
+--pilot-subject s03`. Exit code 2 means the generated review contains an FD-threshold
+mismatch; correct the MRIQC app configuration (`--fd_thres: 0.5`) for the next run.
+This is the framewise cutoff; the mean-FD review threshold remains 0.2 mm.
+The controller never approves scans, retries failed jobs, or starts anatomical work.
+
+The following individual commands remain available for diagnosis. MechaBABS merges
+MRIQC archives into the study. `prepare-review` extracts reports
 and metrics into a separate DataLad derivative and records their source commits.
 Generate the scan review there, edit every `review` row, then seal and commit it.
 

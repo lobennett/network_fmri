@@ -9,6 +9,20 @@ from network_fmri import cli
 from network_fmri.models import StageResult
 
 
+@pytest.mark.parametrize('state,code', [('awaiting-scan-review', 0), ('evidence-error', 2)])
+def test_mriqc_controller_cli_propagates_review_state(monkeypatch, capsys, state, code):
+    from network_fmri import handoff
+    config = object()
+    monkeypatch.setattr(cli.WorkflowConfig, 'load', lambda path: config)
+    monkeypatch.setattr(cli, 'ProcessingManager', lambda value: None)
+    def run(value, *, interval):
+        assert value is config and interval == 10
+        return {'state': state}
+    monkeypatch.setattr(handoff, 'run_mriqc', run)
+    assert cli.main(['processing', 'run-mriqc', 'workflow.toml', '--poll-seconds', '10']) == code
+    assert state in capsys.readouterr().out
+
+
 def test_help_lists_the_small_public_surface(capsys):
     assert cli.main(["--help"]) == 0
     output = capsys.readouterr().out

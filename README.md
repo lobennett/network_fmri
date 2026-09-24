@@ -17,11 +17,13 @@ paths, and keep `FLYWHEEL_API_TOKEN` in the environment. Start with one subject:
 uv sync --frozen
 uv run --frozen network-fmri pipeline submit workflow.toml --pilot-subject s03
 uv run --frozen network-fmri study init workflow.toml --pilot-subject s03
-uv run --frozen network-fmri processing advance workflow.toml --stage mriqc --pilot-subject s03
+sbatch scripts/run_mriqc.sh workflow.toml --pilot-subject s03
 ```
 
-Call `processing advance` again after jobs finish until the stage reports complete.
-Then run `processing prepare-review`, generate and approve scan decisions, curate the raw data, advance the anatomical
+The controller submits, monitors, merges, extracts MRIQC evidence, and generates scan
+decisions, then stops for review. Restart the same command after interruptions;
+existing decisions are preserved. Failed jobs or changed evidence require intervention.
+After approving scan decisions, curate the raw data and advance the anatomical
 stage, inspect and approve surfaces, and advance full fMRIPrep. Do not start the full
 sample until this pilot passes.
 
