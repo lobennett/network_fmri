@@ -37,6 +37,7 @@ class StageAttempt:
     finished_at: str | None = None
     input_commit: str | None = None
     output_commit: str | None = None
+    result_branch: str | None = None
     job_id: str | None = None
     error: str | None = None
 
