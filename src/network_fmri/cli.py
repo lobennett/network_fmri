@@ -128,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
                 anatomical_derivative=parsed.anatomical_derivative,
                 regenerate=lambda _raw, derivative: generate_surface_review(config, derivative),
                 validate_source=lambda: validate_surface_review(
-                    config, parsed.source_manifest
+                    config, parsed.source_manifest, allow_legacy=True
                 ),
                 approve=lambda: validate_surface_review(config),
                 save_approval=lambda stage: pipeline.save_stage_result(

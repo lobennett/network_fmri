@@ -16,6 +16,9 @@ REVIEW_COLUMNS = (
     "subject", "surface_dir", "status", "surface_fingerprint", "approved", "reviewer",
     "reviewed_at", "notes",
 )
+LEGACY_REVIEW_COLUMNS = tuple(
+    column for column in REVIEW_COLUMNS if column != "surface_fingerprint"
+)
 REQUIRED_OUTPUTS = (
     "surf/lh.white", "surf/rh.white", "surf/lh.pial", "surf/rh.pial",
     "stats/aseg.stats", "mri/brain.mgz", "scripts/recon-all.done",
@@ -82,7 +85,7 @@ def surface_fingerprints(
 
 
 def validate_surface_review(
-    config: WorkflowConfig, manifest: Path | None = None
+    config: WorkflowConfig, manifest: Path | None = None, *, allow_legacy: bool = False
 ) -> StageResult:
     """Require an explicit named approval for every expected subject."""
 
@@ -91,7 +94,9 @@ def validate_surface_review(
     try:
         with manifest.open(encoding="utf-8", newline="") as stream:
             reader = csv.DictReader(stream, delimiter="\t", strict=True)
-            if tuple(reader.fieldnames or ()) != REVIEW_COLUMNS:
+            fields = tuple(reader.fieldnames or ())
+            allowed = {REVIEW_COLUMNS, LEGACY_REVIEW_COLUMNS} if allow_legacy else {REVIEW_COLUMNS}
+            if fields not in allowed:
                 raise StageError("surface review has an invalid header")
             rows = list(reader)
         value = json.loads(metadata.read_text())

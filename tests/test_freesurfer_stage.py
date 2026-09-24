@@ -98,3 +98,18 @@ def test_surface_review_rejects_non_object_metadata(tmp_path):
 
     with pytest.raises(StageError, match="missing or malformed"):
         validate_surface_review(config)
+
+
+def test_legacy_approved_review_can_be_validated_for_migration(tmp_path):
+    config = configuration(tmp_path, ("s1",))
+    manifest = tmp_path / "legacy/surface_review.tsv"
+    manifest.parent.mkdir()
+    manifest.write_text(
+        "subject\tsurface_dir\tstatus\tapproved\treviewer\treviewed_at\tnotes\n"
+        "sub-s1\t/old/sub-s1\tcomplete\tyes\tLB\t2026-09-23T12:00:00Z\tgood\n"
+    )
+    manifest.with_suffix(".meta.json").write_text('{"subjects":["sub-s1"]}\n')
+
+    result = validate_surface_review(config, manifest, allow_legacy=True)
+
+    assert result.name == "surface-review-approved"
