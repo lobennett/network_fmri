@@ -8,7 +8,7 @@
 
 **Design:** [docs/mechababs.md](../mechababs.md#dashboard-record-contract)
 
-## 1. Define stable records and identity rules
+## Task 1: Define stable records and identity rules
 
 **Files:** `src/network_fmri/records/models.py`, `src/network_fmri/records/entities.py`, `tests/records/test_entities.py`
 
@@ -17,7 +17,7 @@
 3. Make entity keys deterministic across raw data, MRIQC, fMRIPrep, scan review, surface review, and behavioral QC.
 4. Run `uv run pytest tests/records/test_entities.py` and commit `Define dashboard record identities`.
 
-## 2. Collect durable study evidence
+## Task 2: Collect durable study evidence
 
 **Files:** `src/network_fmri/records/collect.py`, `tests/records/test_collect.py`
 
@@ -27,7 +27,7 @@
 4. Record DataLad dataset IDs and commits as stage inputs/outputs. Store paths only, never imaging or raw behavioral content.
 5. Run `uv run pytest tests/records/test_collect.py` and commit `Collect canonical pipeline evidence`.
 
-## 3. Collect live MechaBABS and BABS state
+## Task 3: Collect live MechaBABS and BABS state
 
 **Files:** `src/network_fmri/records/mechababs.py`, `tests/records/test_mechababs.py`
 
@@ -36,7 +36,7 @@
 3. Preserve every attempt rather than overwriting failed attempts with the latest state.
 4. Run `uv run pytest tests/records/test_mechababs.py` and commit `Index MechaBABS processing attempts`.
 
-## 4. Build and validate SQLite atomically
+## Task 4: Build and validate SQLite atomically
 
 **Files:** `src/network_fmri/records/database.py`, `src/network_fmri/records/schema.sql`, `tests/records/test_database.py`
 
@@ -46,7 +46,7 @@
 4. Reject output paths inside the study or its subdatasets so the cache cannot enter DataLad history.
 5. Run `uv run pytest tests/records/test_database.py` and commit `Build the local dashboard index`.
 
-## 5. Add command and machine-readable exports
+## Task 5: Add command and machine-readable exports
 
 **Files:** `src/network_fmri/cli.py`, `src/network_fmri/records/__init__.py`, `tests/test_cli.py`, `tests/records/test_exports.py`
 
@@ -55,7 +55,7 @@
 3. Add an export function used by the future dashboard API and operator queries without mutating the study.
 4. Run `uv run pytest tests/test_cli.py tests/records/test_exports.py` and commit `Expose dashboard record builds`.
 
-## 6. Verify the index against the pilot study
+## Task 6: Verify the index against the pilot study
 
 **Files:** `docs/dashboard-records.md`, `README.md`
 
@@ -65,4 +65,3 @@
 4. Query one subject end to end and verify raw preparation, MRIQC findings, scan decisions, anatomical processing, surface review, full fMRIPrep, and behavioral truncation evidence against their source files.
 5. Confirm the database contains no credentials, names, raw behavioral values, image content, or paths outside the access-controlled study.
 6. Commit `Document dashboard records`, rerun the full suite, and push `main`.
-
