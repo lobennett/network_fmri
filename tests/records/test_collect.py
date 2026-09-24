@@ -133,3 +133,11 @@ def test_reads_dataset_ids_from_tracked_datalad_configs(tmp_path):
     records = collect_study(study)
     assert records.dataset_id == "study-id"
     assert next(item for item in records.artifacts if item.stage == "raw").kind == "dataset:raw-id"
+
+
+def test_babs_raw_input_sidecars_are_not_mriqc_metrics(tmp_path):
+    study = fixture_study(tmp_path)
+    write(study / "derivatives/MRIQC/sourcedata/raw/sub-s01/func/sub-s01_task-rest_bold.json",
+          json.dumps({"RepetitionTime": 1.49, "TaskName": "rest"}))
+    records = collect_study(study, runner=GitRunner())
+    assert len([row for row in records.findings if row.finding_type == "mriqc"]) == 1

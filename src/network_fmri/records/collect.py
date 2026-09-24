@@ -68,6 +68,8 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
         if "mriqc" not in path.as_posix().lower() or not path.name.startswith("sub-"):
             continue
         value = _mriqc_metrics(_json(path, "MRIQC metric"))
+        if not value:
+            continue
         entity = entity_from_path(path.relative_to(study))
         entities[entity.key] = entity
         findings.append(Finding(
