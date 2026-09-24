@@ -216,10 +216,10 @@ class StudyManager:
         # Upstream infers subject-level jobs when only the subject table exists.
         subject_rows = []
         for subject in subjects:
-            rows = [row for row in session_rows if row["subject_id"] == subject]
+            rows = [row for row in session_rows if row["subject_id"] == f"sub-{subject}"]
             datatypes = sorted({value for row in rows for value in row["datatypes"].split(",") if value})
             subject_rows.append({
-                "subject_id": subject,
+                "subject_id": f"sub-{subject}",
                 "datatypes": ",".join(datatypes),
                 "t1w_num": str(sum(int(row["t1w_num"]) for row in rows)),
                 "bold_num": str(sum(int(row["bold_num"]) for row in rows)),
@@ -244,7 +244,7 @@ class StudyManager:
                 }
                 datatypes = [name for name, present in (("anat", t1w), ("func", bold)) if present]
                 yield {
-                    "subject_id": subject,
+                    "subject_id": f"sub-{subject}",
                     "session_id": session.name.removeprefix("ses-") if session != subject_dir else "",
                     "datatypes": ",".join(datatypes),
                     "t1w_num": str(len(t1w)),

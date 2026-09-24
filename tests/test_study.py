@@ -83,7 +83,7 @@ def test_initialize_creates_study_metadata_raw_slot_campaign_and_sibling(tmp_pat
     assert (result.study_dir / "dataset_description.json").is_file()
     sessions = (result.study_dir / "sourcedata/sourcedata+subjects.tsv").read_text()
     assert sessions.splitlines()[0] == "subject_id\tdatatypes\tt1w_num\tbold_num"
-    assert "s01\tanat,func\t2\t2" in sessions
+    assert "sub-s01\tanat,func\t2\t2" in sessions
     assert not (result.study_dir / "sourcedata/sourcedata+subjects+sessions.tsv").exists()
     commands = [command for command, _ in runner.commands]
     assert any(command[:3] == ("datalad", "create", "-c") for command in commands)
