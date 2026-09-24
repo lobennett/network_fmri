@@ -3,6 +3,8 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from network_fmri import cli
 from network_fmri.models import StageResult
 
@@ -269,3 +271,29 @@ def test_processing_advance_passes_only_named_stage(tmp_path, monkeypatch, capsy
     ]) == 0
     assert calls == ["anatomical"]
     assert capsys.readouterr().out == "anatomical\tadvanced\tready\n"
+
+
+def test_prepare_review_cli_preserves_pilot_selection(tmp_path, monkeypatch, capsys):
+    config, pilot = object(), object()
+    monkeypatch.setattr(cli.WorkflowConfig, 'load', lambda _: config)
+    monkeypatch.setattr(cli.pipeline, 'pilot_config', lambda value, subject: pilot if value is config and subject == 's01' else None)
+    monkeypatch.setattr(cli, 'ProcessingManager', lambda _: None)
+    def prepare(value):
+        assert value is pilot
+        return SimpleNamespace(evidence_dir=tmp_path / 'review', source_dataset=tmp_path / 'babs',
+            source_commit='a' * 40, input_commit='b' * 40, archives=1, created=True)
+    monkeypatch.setattr(cli, 'prepare_mriqc_review', prepare)
+    assert cli.main(['processing', 'prepare-review', 'workflow.toml', '--pilot-subject', 's01']) == 0
+    assert 'evidence_dir\t' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('operation,extra', [('status', []), ('advance', ['--stage', 'mriqc']), ('prepare-review', [])])
+def test_processing_commands_accept_pilot_subject(operation, extra):
+    parsed = cli.get_parser().parse_args(['processing', operation, 'workflow.toml', '--pilot-subject', 's01', *extra])
+    assert parsed.pilot_subject == 's01'
+
+
+def test_generate_decisions_accepts_explicit_approval_dataset(tmp_path):
+    parsed = cli.get_parser().parse_args(['decisions', 'generate', str(tmp_path / 'raw'),
+                                    '--approval-dataset', str(tmp_path / 'study')])
+    assert parsed.approval_dataset == tmp_path / 'study'

@@ -13,7 +13,7 @@ freesurfer_license = "/home/users/logben/license.txt"
 
 [behavior.in_scanner]
 source = "/oak/stanford/groups/russpold/data/network_grant/behavioral_data/canonical"
-commit = "8edc76d2bc36c175195d384953c5f1834e6a2e51"
+commit = "c1dd431756e5b2015ad734f269ee0a6beb7d7f71"
 
 [behavior.out_of_scanner]
 source = "/oak/stanford/groups/russpold/data/network_grant/behavioral_data/canonical_out_of_scanner"

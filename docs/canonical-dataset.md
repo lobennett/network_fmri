@@ -4,7 +4,7 @@
 Flywheel, while the reconciled behavioral repositories are immutable inputs pinned by
 commit.
 
-## Final layout
+## Raw BIDS layout
 
 ```text
 <bids>/
@@ -21,7 +21,8 @@ commit.
 └── code/network_fmri/
 ```
 
-The root dataset is the single source of truth. Its Git tree records the exact commits
+This raw dataset is installed at `sourcedata/raw` in the canonical
+[MechaBABS study](mechababs.md). Its Git tree records the exact commits
 of both behavioral subdatasets. This retains their manifests, exceptions, QA evidence,
 and annex history without duplicating their contents or depending on absolute symlinks.
 
@@ -53,6 +54,6 @@ therefore be made upstream and rebuilt without editing the finalized source data
 
 | Input | Oak path | Commit |
 |---|---|---|
-| In-scanner behavior | `/oak/stanford/groups/russpold/data/network_grant/behavioral_data/canonical` | `8edc76d2bc36c175195d384953c5f1834e6a2e51` |
+| In-scanner behavior | `/oak/stanford/groups/russpold/data/network_grant/behavioral_data/canonical` | `c1dd431756e5b2015ad734f269ee0a6beb7d7f71` |
 | Out-of-scanner behavior | `/oak/stanford/groups/russpold/data/network_grant/behavioral_data/canonical_out_of_scanner` | `c2e14a7b0d437c3fd8b38a7b701a820d8acaea44` |
 | Participant metadata | `/oak/stanford/groups/russpold/data/network_grant/demographics/canonical` | `5179a94a37e525bbe59b30bf019d4bced6311972` |

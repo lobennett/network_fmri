@@ -35,21 +35,23 @@ until MRIQC is complete.
 ```bash
 uv run --frozen network-fmri study init workflow.toml --pilot-subject s03
 uv run --frozen network-fmri processing plan workflow.toml --pilot-subject s03
-uv run --frozen network-fmri processing advance workflow.toml --stage mriqc
+uv run --frozen network-fmri processing advance workflow.toml --stage mriqc --pilot-subject s03
 uv run --frozen network-fmri processing status workflow.toml
 ```
 
-MechaBABS merges MRIQC directly into the study’s derivatives.
-Generate the review there, edit every `review` row, then seal and commit it.
+MechaBABS merges MRIQC archives into the study. `prepare-review` extracts reports
+and metrics into a separate DataLad derivative and records their source commits.
+Generate the scan review there, edit every `review` row, then seal and commit it.
 
 ```bash
 RAW=/scratch/groups/russpold/network_fmri/bids
 STUDY=/scratch/users/logben/network-study
-MRIQC=$STUDY/derivatives/MRIQC-24.0.2+network-v1
+uv run --frozen network-fmri processing prepare-review workflow.toml --pilot-subject s03
+MRIQC=$STUDY/derivatives/MRIQC-24.0.2+network-v1+review
 REVIEW=$STUDY/code/network_fmri/scan_decisions.tsv
 
 uv run --frozen network-fmri decisions generate "$RAW" \
-  --mriqc-dir "$MRIQC" --output "$REVIEW"
+  --mriqc-dir "$MRIQC" --output "$REVIEW" --approval-dataset "$STUDY"
 uv run --frozen network-fmri decisions validate "$RAW" \
   --manifest "$REVIEW" --approval-dataset "$STUDY"
 uv run --frozen network-fmri curate "$RAW" --manifest "$REVIEW" \
@@ -68,14 +70,14 @@ from its derivative, inspect every subject, set `approved=yes` with reviewer and
 timestamp, and seal it before full fMRIPrep.
 
 ```bash
-uv run --frozen network-fmri processing advance workflow.toml --stage anatomical
+uv run --frozen network-fmri processing advance workflow.toml --stage anatomical --pilot-subject s03
 uv run --frozen network-fmri processing status workflow.toml
 
 ANAT=$STUDY/derivatives/fMRIPrep-25.2.5+anat+network-v1
 uv run --frozen network-fmri surfaces generate workflow.toml \
   --pilot-subject s03 --anatomical-derivative "$ANAT"
 uv run --frozen network-fmri surfaces validate workflow.toml --pilot-subject s03
-uv run --frozen network-fmri processing advance workflow.toml --stage fmriprep
+uv run --frozen network-fmri processing advance workflow.toml --stage fmriprep --pilot-subject s03
 ```
 
 Repeat `processing status` and `processing advance` until each stage is merged.

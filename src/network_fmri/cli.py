@@ -15,6 +15,7 @@ from network_fmri.qa.freesurfer import (
     generate_surface_review, surface_fingerprints, validate_surface_review,
 )
 from network_fmri.processing import ProcessingManager
+from network_fmri.mriqc import prepare_mriqc_review
 from network_fmri.records import build_index
 from network_fmri.reviews import ReviewMigrator
 from network_fmri.study import StudyManager
@@ -53,8 +54,13 @@ def get_parser() -> argparse.ArgumentParser:
     processing_plan.add_argument("--pilot-subject")
     processing_status = processing_commands.add_parser("status")
     processing_status.add_argument("config", type=Path)
+    processing_status.add_argument("--pilot-subject")
+    processing_review = processing_commands.add_parser("prepare-review")
+    processing_review.add_argument("config", type=Path)
+    processing_review.add_argument("--pilot-subject")
     processing_advance = processing_commands.add_parser("advance")
     processing_advance.add_argument("config", type=Path)
+    processing_advance.add_argument("--pilot-subject")
     processing_advance.add_argument(
         "--stage", required=True, choices=("mriqc", "anatomical", "fmriprep")
     )
@@ -63,12 +69,12 @@ def get_parser() -> argparse.ArgumentParser:
     for name in ("generate", "validate"):
         decision = decision_commands.add_parser(name)
         decision.add_argument("bids_dir", type=Path)
+        decision.add_argument("--approval-dataset", type=Path)
         if name == "generate":
             decision.add_argument("--mriqc-dir", type=Path)
             decision.add_argument("--output", type=Path)
         else:
             decision.add_argument("--manifest", type=Path)
-            decision.add_argument("--approval-dataset", type=Path)
     surfaces = commands.add_parser("surfaces", help="validate reviewed FreeSurfer surfaces")
     surface_commands = surfaces.add_subparsers(dest="surface_command", required=True)
     for name in ("generate", "validate"):
@@ -167,6 +173,10 @@ def main(argv: list[str] | None = None) -> int:
         if parsed.processing_command == "plan":
             for stage in manager.plan():
                 print(f"{stage.stage}\t{stage.state}\t{stage.application}")
+        elif parsed.processing_command == "prepare-review":
+            result = prepare_mriqc_review(config)
+            for key in ("evidence_dir", "source_dataset", "source_commit", "input_commit", "archives", "created"):
+                print(f"{key}\t{getattr(result, key)}")
         elif parsed.processing_command == "status":
             status = manager.status()
             for stage in status.stages:
