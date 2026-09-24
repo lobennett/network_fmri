@@ -107,6 +107,17 @@ class ProcessingManager:
         installed_commit = self._output(("git", "rev-parse", "HEAD"), installed)
         if source_commit == installed_commit:
             return
+        manifest = self.config.study_dir / "code/network_fmri/study.json"
+        if self._output(
+            ("git", "status", "--porcelain", "--", str(manifest)), self.config.study_dir
+        ):
+            raise RuntimeError("study identity manifest is dirty")
+        try:
+            identity = json.loads(manifest.read_text())
+            if not isinstance(identity, dict) or identity.get("raw_commit") != installed_commit:
+                raise ValueError("raw commit does not match installed subdataset")
+        except (OSError, ValueError) as error:
+            raise RuntimeError("study identity does not match installed raw dataset") from error
         self.runner(
             ("datalad", "update", "--how", "merge", "-d", str(installed)),
             cwd=str(self.config.study_dir), check=True,
@@ -114,10 +125,14 @@ class ProcessingManager:
         updated_commit = self._output(("git", "rev-parse", "HEAD"), installed)
         if updated_commit != source_commit:
             raise RuntimeError("wrapper raw subdataset did not reach the canonical raw commit")
+        from network_fmri.milestones import write_json_atomic
+
+        identity["raw_commit"] = source_commit
+        write_json_atomic(manifest, identity)
         self.runner(
             (
                 "datalad", "save", "-d", str(self.config.study_dir), "-m",
-                "Update canonical raw BIDS subdataset", str(installed),
+                "Update canonical raw BIDS subdataset", str(installed), str(manifest),
             ),
             check=True,
         )

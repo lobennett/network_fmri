@@ -1,4 +1,5 @@
 """Contracts for the upstream command interface and study-specific gates."""
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -121,9 +122,14 @@ def test_dirty_raw_blocks_submission(tmp_path, monkeypatch):
     assert not any('iterate' in command for command, _ in base.calls)
 
 
-def test_raw_update_saves_only_raw_subdataset(tmp_path):
+def test_raw_update_saves_only_raw_subdataset_and_current_identity(tmp_path):
     config = configuration(tmp_path)
     installed = config.mechababs.study_dir / 'sourcedata/raw'
+    manifest = config.mechababs.study_dir / 'code/network_fmri/study.json'
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({'raw_commit': 'b' * 40, 'study_id': 'study-id'}))
+    unrelated = config.mechababs.study_dir / 'notes.txt'
+    unrelated.write_text('Uncommitted operator notes')
     commands = []
     installed_reads = 0
 
@@ -140,5 +146,29 @@ def test_raw_update_saves_only_raw_subdataset(tmp_path):
         return SimpleNamespace(stdout=output, returncode=0)
 
     ProcessingManager(config, runner=runner)._sync_raw_subdataset()
-    assert commands[-1][-1] == str(installed)
+    assert commands[-1][-2:] == (str(installed), str(manifest))
     assert commands[-1][:2] == ('datalad', 'save')
+    assert json.loads(manifest.read_text()) == {'raw_commit': 'a' * 40, 'study_id': 'study-id'}
+    assert unrelated.read_text() == 'Uncommitted operator notes'
+    saves = sum(command[:2] == ('datalad', 'save') for command in commands)
+    ProcessingManager(config, runner=runner)._sync_raw_subdataset()
+    assert sum(command[:2] == ('datalad', 'save') for command in commands) == saves
+
+
+def test_raw_update_refuses_dirty_identity_before_updating(tmp_path):
+    config = configuration(tmp_path)
+    installed = config.mechababs.study_dir / 'sourcedata/raw'
+    commands = []
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        output = ''
+        if command[:2] == ('git', 'rev-parse'):
+            output = ('b' if kwargs['cwd'] == str(installed) else 'a') * 40
+        elif command[:2] == ('git', 'status') and '--' in command:
+            output = ' M code/network_fmri/study.json'
+        return SimpleNamespace(stdout=output, returncode=0)
+
+    with pytest.raises(RuntimeError, match='identity manifest is dirty'):
+        ProcessingManager(config, runner=runner)._sync_raw_subdataset()
+    assert not any(command[0] == 'datalad' for command in commands)
