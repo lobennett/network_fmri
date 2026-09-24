@@ -82,7 +82,7 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
             json.dumps(value, sort_keys=True, separators=(",", ":")),
         ))
 
-    _collect_decisions(study / "code/network_fmri/scan_decisions.tsv", study, entities, decisions)
+    _collect_decisions(study / "code/network_fmri/scan_decisions.tsv", study, entities, decisions, findings)
     exclusions = study / "code/network_fmri/analysis_exclusions.tsv"
     if not exclusions.exists():
         exclusions = raw / "code/network_fmri/analysis_exclusions.tsv"
@@ -117,10 +117,16 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
     )
 
 
-def _collect_decisions(path, study, entities, decisions):
+def _collect_decisions(path, study, entities, decisions, findings):
     for row in _tsv(path, "scan decisions", required=("subject", "decision")):
         entity = _row_entity(row)
         entities[entity.key] = entity
+        fields = ("flags", "tr_count", "original_tr_count", "fd_mean", "fd_perc", "fd_thres", "dvars_std",
+                  "observed_echoes", "missing_echoes", "behavioral_status", "event_status",
+                  "approval_required", "approved", "recommendation", "recommendation_rationale")
+        evidence = {key: row[key] for key in fields if row.get(key)}
+        findings.append(Finding(entity.key, "scan-review", "review" if row.get("flags") else "metric",
+                                _relative(path, study), json.dumps(evidence, sort_keys=True)))
         decisions.append(Decision(
             entity.key, "preprocessing", row["decision"], row.get("reviewer") or None,
             row.get("reason_detail") or row.get("reason_code") or None,

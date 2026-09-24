@@ -66,6 +66,8 @@ def fixture_study(tmp_path: Path) -> Path:
 
 def test_collects_durable_evidence_without_data_content(tmp_path):
     records = collect_study(fixture_study(tmp_path), runner=GitRunner())
+    review = next(item for item in records.findings if item.finding_type == "scan-review")
+    assert review.entity_key == next(item.entity_key for item in records.decisions if item.scope == "preprocessing")
 
     assert any(item.stage == "bids-precuration-validated" for item in records.stage_attempts)
     assert any(item.finding_type == "mriqc" and "0.21" in item.evidence_json for item in records.findings)
