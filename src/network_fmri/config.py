@@ -101,6 +101,8 @@ class MechaBABSConfig:
     container_dataset: Path
     mechababs_commit: str
     babs_commit: str
+    mechababs_ref: str
+    babs_ref: str
     cluster_file: Path
     apps: tuple[MechaBABSAppConfig, ...]
 
@@ -288,7 +290,7 @@ def _parse_mechababs(raw: dict[str, Any]) -> MechaBABSConfig:
         raw,
         {
             "study_dir", "campaign_dir", "durable_sibling", "bootstrap_script", "campaign", "raw_slot",
-            "container_dataset", "mechababs_commit", "babs_commit",
+            "container_dataset", "mechababs_commit", "babs_commit", "mechababs_ref", "babs_ref",
             "cluster_file", "apps",
         },
         name,
@@ -315,6 +317,8 @@ def _parse_mechababs(raw: dict[str, Any]) -> MechaBABSConfig:
         container_dataset=_path(raw, "container_dataset", name),
         mechababs_commit=_commit(raw, "mechababs_commit", name),
         babs_commit=_commit(raw, "babs_commit", name),
+        mechababs_ref=_nonempty_string(raw, "mechababs_ref", name),
+        babs_ref=_nonempty_string(raw, "babs_ref", name),
         cluster_file=_project_path(raw, "cluster_file", name),
         apps=apps,
     )

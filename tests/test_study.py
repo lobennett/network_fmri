@@ -8,10 +8,11 @@ from network_fmri.study import StudyManager
 
 
 class Runner:
-    def __init__(self, *, raw_commit="a" * 40, raw_id="raw-dataset-id"):
+    def __init__(self, *, raw_commit="a" * 40, raw_id="raw-dataset-id", pin_mismatch=False):
         self.commands = []
         self.raw_commit = raw_commit
         self.raw_id = raw_id
+        self.pin_mismatch = pin_mismatch
 
     def __call__(self, command, **kwargs):
         command = tuple(str(value) for value in command)
@@ -19,7 +20,14 @@ class Runner:
         if command[:3] == ("git", "status", "--porcelain"):
             return SimpleNamespace(stdout="")
         if command[:3] == ("git", "rev-parse", "HEAD"):
-            return SimpleNamespace(stdout=self.raw_commit + "\n")
+            cwd = str(kwargs.get("cwd", ""))
+            if cwd.endswith("code/mechababs"):
+                value = "f" * 40 if self.pin_mismatch else "d" * 40
+            elif cwd.endswith("code/babs"):
+                value = "e" * 40
+            else:
+                value = self.raw_commit
+            return SimpleNamespace(stdout=value + "\n")
         if command[:4] == ("git", "config", "--get", "datalad.dataset.id"):
             return SimpleNamespace(stdout=self.raw_id + "\n")
         return SimpleNamespace(stdout="")
@@ -39,6 +47,8 @@ def mechababs(tmp_path: Path) -> MechaBABSConfig:
         container_dataset=tmp_path / "containers",
         mechababs_commit="d" * 40,
         babs_commit="e" * 40,
+        mechababs_ref="sherlock-compat",
+        babs_ref="fix/plus-regex-zipname",
         cluster_file=Path("sherlock.yaml"),
         apps=(
             MechaBABSAppConfig("mriqc", Path("MRIQC-24.0.2.yaml")),
@@ -144,3 +154,14 @@ def test_pilot_metadata_contains_only_selected_subject(tmp_path):
     sessions = (result.study_dir / "sourcedata/sourcedata+subjects+sessions.tsv").read_text()
     assert "s01\t" in sessions
     assert "s02\t" not in sessions
+
+
+def test_initialize_rejects_bootstrap_branch_that_does_not_match_commit_pin(tmp_path):
+    config = mechababs(tmp_path)
+    (config.campaign_dir / "code/mechababs").mkdir(parents=True)
+    (config.campaign_dir / "code/babs").mkdir()
+
+    with pytest.raises(RuntimeError, match="bootstrap resolved mechababs"):
+        StudyManager(config, raw_dataset(tmp_path), runner=Runner(pin_mismatch=True)).initialize(
+            subjects=("s01", "s02")
+        )

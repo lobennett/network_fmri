@@ -130,6 +130,8 @@ class StudyManager:
             "subjects": list(subjects),
             "mechababs_commit": self.config.mechababs_commit,
             "babs_commit": self.config.babs_commit,
+            "mechababs_ref": self.config.mechababs_ref,
+            "babs_ref": self.config.babs_ref,
             "cluster_file": self.config.cluster_file.as_posix(),
             "apps": [asdict(app) | {"file": app.file.as_posix()} for app in self.config.apps],
         }
@@ -226,12 +228,23 @@ class StudyManager:
         self._run(
             (
                 "bash", str(self.config.bootstrap_script), str(self.config.campaign_dir),
-                "--mechababs", f"{_MECHABABS_URL}@{self.config.mechababs_commit}",
-                "--babs", f"{_BABS_URL}@{self.config.babs_commit}",
+                "--mechababs", f"{_MECHABABS_URL}@{self.config.mechababs_ref}",
+                "--babs", f"{_BABS_URL}@{self.config.babs_ref}",
                 "--system-site-packages",
             )
         )
         self.config.campaign_dir.mkdir(parents=True, exist_ok=True)
+        for name, expected in (
+            ("mechababs", self.config.mechababs_commit),
+            ("babs", self.config.babs_commit),
+        ):
+            actual = self._output(
+                ("git", "rev-parse", "HEAD"), cwd=self.config.campaign_dir / "code" / name
+            )
+            if actual != expected:
+                raise RuntimeError(
+                    f"bootstrap resolved {name} at {actual}, expected {expected}"
+                )
         executable = self.config.campaign_dir / ".venv" / "bin" / "mechababs"
         self._run(
             (

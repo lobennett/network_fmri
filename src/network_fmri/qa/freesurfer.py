@@ -135,7 +135,7 @@ def verify_freesurfer(
 def generate_surface_review(config: WorkflowConfig) -> StageResult:
     """Create the subject-level checklist that must be reviewed before fMRIPrep."""
 
-    root = config.paths.bids_dir / "code" / "network_fmri"
+    root = surface_review_directory(config)
     root.mkdir(parents=True, exist_ok=True)
     manifest = root / "surface_review.tsv"
     with manifest.open("w", encoding="utf-8", newline="") as stream:
@@ -162,7 +162,7 @@ def generate_surface_review(config: WorkflowConfig) -> StageResult:
 def validate_surface_review(config: WorkflowConfig) -> StageResult:
     """Require an explicit named approval for every expected subject."""
 
-    manifest = config.paths.bids_dir / "code" / "network_fmri" / "surface_review.tsv"
+    manifest = surface_review_directory(config) / "surface_review.tsv"
     metadata = manifest.with_suffix(".meta.json")
     try:
         with manifest.open(encoding="utf-8", newline="") as stream:
@@ -192,6 +192,13 @@ def validate_surface_review(config: WorkflowConfig) -> StageResult:
         {"subjects": len(rows), "manifest_sha256": _sha256(manifest),
          "metadata_sha256": _sha256(metadata)},
     )
+
+
+def surface_review_directory(config: WorkflowConfig) -> Path:
+    """Place cross-derivative review records in the wrapper study when present."""
+
+    root = config.mechababs.study_dir if config.mechababs is not None else config.paths.bids_dir
+    return root / "code" / "network_fmri"
 
 
 def _sha256(path: Path) -> str:

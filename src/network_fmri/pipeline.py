@@ -183,7 +183,7 @@ def require_committed_surface_approval(
     """Require a validated surface checklist and its exact committed receipt."""
 
     from network_fmri.milestones import receipt_path
-    from network_fmri.qa.freesurfer import validate_surface_review
+    from network_fmri.qa.freesurfer import surface_review_directory, validate_surface_review
     from network_fmri.stages import StageError
 
     try:
@@ -193,14 +193,16 @@ def require_committed_surface_approval(
             "FreeSurfer surfaces are not approved; run "
             "'network-fmri surfaces validate <config>' first"
         ) from error
-    bids_dir = config.paths.bids_dir
-    receipt = receipt_path(bids_dir, "surface-review-approved")
-    manifest = bids_dir / "code" / "network_fmri" / "surface_review.tsv"
+    review_dataset = (
+        config.mechababs.study_dir if config.mechababs is not None else config.paths.bids_dir
+    )
+    receipt = receipt_path(review_dataset, "surface-review-approved")
+    manifest = surface_review_directory(config) / "surface_review.tsv"
     metadata = manifest.with_suffix(".meta.json")
     try:
-        value = json.loads(_head_file(bids_dir, receipt, runner).decode("utf-8"))
-        committed_manifest = _head_file(bids_dir, manifest, runner)
-        committed_metadata = _head_file(bids_dir, metadata, runner)
+        value = json.loads(_head_file(review_dataset, receipt, runner).decode("utf-8"))
+        committed_manifest = _head_file(review_dataset, manifest, runner)
+        committed_metadata = _head_file(review_dataset, metadata, runner)
     except (OSError, subprocess.CalledProcessError, UnicodeError, json.JSONDecodeError) as error:
         raise RuntimeError(
             "surface review is approved but its approval milestone is not committed"

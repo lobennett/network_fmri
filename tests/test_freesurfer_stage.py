@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -144,3 +145,14 @@ def test_surface_review_rejects_non_object_metadata(tmp_path):
 
     with pytest.raises(StageError, match="missing or malformed"):
         validate_surface_review(config)
+
+
+def test_surface_review_uses_wrapper_study_when_mechababs_is_configured(tmp_path):
+    from network_fmri.qa.freesurfer import surface_review_directory
+
+    config = SimpleNamespace(
+        mechababs=SimpleNamespace(study_dir=tmp_path / "study"),
+        paths=SimpleNamespace(bids_dir=tmp_path / "raw"),
+    )
+
+    assert surface_review_directory(config) == tmp_path / "study" / "code" / "network_fmri"

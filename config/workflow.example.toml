@@ -52,6 +52,8 @@ raw_slot = "raw"
 container_dataset = "/scratch/users/logben/mechababs-work/repronim-containers-shim"
 mechababs_commit = "841ba3b853932b114342517e68a72fd23e85f135"
 babs_commit = "618dcd744f287e0d241e5a5a2a476606d537c762"
+mechababs_ref = "sherlock-compat"
+babs_ref = "fix/plus-regex-zipname"
 cluster_file = "sherlock.yaml"
 apps = [
   { name = "mriqc", file = "MRIQC-24.0.2.yaml" },
