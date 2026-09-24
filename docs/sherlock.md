@@ -46,7 +46,10 @@ uv run --frozen network-fmri processing status workflow.toml
 
 For a foreground run, use `network-fmri processing run-mriqc workflow.toml
 --pilot-subject s03`. Exit code 2 means the generated review contains an FD-threshold
-mismatch; correct the MRIQC app configuration (`--fd_thres: 0.5`) for the next run.
+mismatch that cannot be recovered from verified MRIQC timeseries. When available,
+matching echo-2 timeseries supply the 0.5 mm percentage after reproducing the
+original metrics; the review metadata records this without altering MRIQC outputs.
+Use `--fd_thres: 0.5` in the MRIQC app configuration for new campaigns.
 This is the framewise cutoff; the mean-FD review threshold remains 0.2 mm.
 The controller never approves scans, retries failed jobs, or starts anatomical work.
 
