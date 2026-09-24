@@ -62,7 +62,7 @@ def collect_study(study: Path, runner=subprocess.run) -> RecordSet:
         artifacts.append(Artifact("bids-validator", _relative(path, study), kind="report"))
 
     for path in sorted((study / "derivatives").glob("**/*.json")):
-        if "mriqc" not in path.as_posix().lower():
+        if "mriqc" not in path.as_posix().lower() or not path.name.startswith("sub-"):
             continue
         value = _json(path, "MRIQC metric")
         entity = entity_from_path(path.relative_to(study))

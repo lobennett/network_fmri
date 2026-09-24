@@ -162,6 +162,36 @@ def test_complete_stage_installs_derivative_in_canonical_study(tmp_path, monkeyp
     )
 
 
+def test_advance_updates_wrapper_raw_pointer_before_anatomical_stage(tmp_path, monkeypatch):
+    config = setup(tmp_path, (("mriqc", "done"), ("", ""), ("", "")))
+    config.paths.bids_dir = tmp_path / "raw-source"
+    config.paths.bids_dir.mkdir()
+    (config.paths.bids_dir / ".git").mkdir()
+
+    class ChangedRawRunner(Runner):
+        updated = False
+
+        def __call__(self, command, **kwargs):
+            if tuple(command[:3]) == ("datalad", "update", "--how"):
+                self.updated = True
+            if tuple(command[:3]) == ("git", "rev-parse", "HEAD"):
+                cwd = Path(kwargs["cwd"])
+                if cwd == config.paths.bids_dir:
+                    return SimpleNamespace(stdout="b" * 40 + "\n", returncode=0)
+                if cwd == config.mechababs.study_dir / "sourcedata/raw":
+                    value = "b" if self.updated else "a"
+                    return SimpleNamespace(stdout=value * 40 + "\n", returncode=0)
+            return super().__call__(command, **kwargs)
+
+    runner = ChangedRawRunner()
+    monkeypatch.setattr("network_fmri.processing.require_stage_gate", lambda *_: None)
+    ProcessingManager(config, runner=runner).advance("anatomical")
+
+    commands = [command for command, _ in runner.commands]
+    assert any(command[:3] == ("datalad", "update", "--how") for command in commands)
+    assert any(command[:2] == ("datalad", "save") for command in commands)
+
+
 @pytest.mark.parametrize("stage", ["mriqc", "anatomical", "fmriprep"])
 def test_advance_checks_the_named_gate(tmp_path, monkeypatch, stage):
     values = {

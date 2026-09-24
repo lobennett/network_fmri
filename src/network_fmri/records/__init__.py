@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections import defaultdict
 from dataclasses import replace
 from pathlib import Path
 
@@ -17,9 +18,10 @@ def build_index(config: WorkflowConfig, output: Path) -> dict[str, object]:
     if config.mechababs is None:
         raise ValueError("workflow configuration is missing [mechababs]")
     records = collect_study(config.mechababs.study_dir)
+    live_attempts = collect_attempts(ProcessingManager(config))
     records = replace(
         records,
-        stage_attempts=records.stage_attempts + collect_attempts(ProcessingManager(config)),
+        stage_attempts=_renumber_attempts(records.stage_attempts + live_attempts),
     )
     database = build_database(output, config.mechababs.study_dir, records)
     tables = ("entities", "stage_attempts", "findings", "decisions", "artifacts")
@@ -30,3 +32,13 @@ def build_index(config: WorkflowConfig, output: Path) -> dict[str, object]:
         "output": str(database), "schema_version": SCHEMA_VERSION,
         "study_commit": records.study_commit, "counts": counts,
     }
+
+
+def _renumber_attempts(attempts):
+    numbers = defaultdict(int)
+    result = []
+    for attempt in attempts:
+        key = (attempt.stage, attempt.scope)
+        numbers[key] += 1
+        result.append(replace(attempt, attempt=numbers[key]))
+    return tuple(result)

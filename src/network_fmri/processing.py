@@ -96,6 +96,7 @@ class ProcessingManager:
         if stage not in names:
             raise ValueError("stage must be one of: " + ", ".join(names))
         self._require_clean_inputs()
+        self._sync_raw_subdataset()
         self._require_pins()
         status = self.status()
         selected = status.stages[names.index(stage)]
@@ -118,6 +119,30 @@ class ProcessingManager:
             check=True,
         )
         return AdvanceResult(stage, True, selected.state)
+
+    def _sync_raw_subdataset(self) -> None:
+        """Advance the wrapper's raw subdataset to the canonical raw commit."""
+
+        source = self.workflow.paths.bids_dir
+        installed = self.config.study_dir / "sourcedata" / self.config.raw_slot
+        source_commit = self._output(("git", "rev-parse", "HEAD"), source)
+        installed_commit = self._output(("git", "rev-parse", "HEAD"), installed)
+        if source_commit == installed_commit:
+            return
+        self.runner(
+            ("datalad", "update", "--how", "merge", "-d", str(installed)),
+            cwd=str(self.config.study_dir), check=True,
+        )
+        updated_commit = self._output(("git", "rev-parse", "HEAD"), installed)
+        if updated_commit != source_commit:
+            raise RuntimeError("wrapper raw subdataset did not reach the canonical raw commit")
+        self.runner(
+            (
+                "datalad", "save", "-d", str(self.config.study_dir), "-m",
+                "Update canonical raw BIDS subdataset",
+            ),
+            check=True,
+        )
 
     def _install_derivative(self, stage: ProcessingStage) -> None:
         """Register one merged BABS result in the canonical wrapper study."""
