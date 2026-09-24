@@ -26,4 +26,6 @@ stage, inspect and approve surfaces, and advance full fMRIPrep. Do not start the
 sample until this pilot passes.
 
 See [Sherlock operations](docs/sherlock.md) for the command sequence and
-[MechaBABS design](docs/mechababs.md) for ownership and review gates.
+[MechaBABS design](docs/mechababs.md) for ownership and review gates. The
+[dashboard records](docs/dashboard-records.md) reference describes the disposable
+SQLite index used by the future dashboard.
