@@ -28,6 +28,10 @@ apptainer exec --cleanenv \
 The following derivative paths assume campaign `network-v1`; use the label in
 `workflow.toml`.
 
+MRIQC 24.0.2 has a [known version-string bug](https://github.com/nipreps/mriqc/issues/1354):
+it reports `24.1.0.dev0+gd5b13cb5.d20240826`. Preserve that reported version and
+record the image checksum and build source when verifying the container.
+
 Create the study and its embedded campaign, then advance MRIQC. One
 `advance` call performs one reconciler transition, so inspect status and repeat it
 until MRIQC is complete.
