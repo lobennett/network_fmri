@@ -145,3 +145,18 @@ def test_babs_raw_input_sidecars_are_not_mriqc_metrics(tmp_path):
           json.dumps({"fd_mean": 99.0}))
     records = collect_study(study, runner=GitRunner())
     assert len([row for row in records.findings if row.finding_type == "mriqc"]) == 1
+
+
+def test_flywheel_selection_keeps_current_inventory_distinct_from_conversion(tmp_path):
+    study = fixture_study(tmp_path)
+    write(study/'code/network_fw2bids/selection/sub-s01.json', json.dumps({
+        'schema_version':1,'subject':'s01','snapshot_kind':'current_inventory','captured_at':'2026-09-24T00:00:00Z',
+        'project':'russpold/r01network','acquisitions':[
+            {'session':'ses-01','acquisition_id':'rejected','label':'T1w_qa-reject','decision':'skipped','reason':'qa-reject','bids_prefix':None},
+            {'session':'ses-01','acquisition_id':'included','label':'task-rest_bold','decision':'selected','reason':'mapped_to_bids','bids_prefix':'sub-s01/ses-01/func/sub-s01_ses-01_task-rest_run-1_bold'}]}))
+    records=collect_study(study, runner=GitRunner())
+    findings=[f for f in records.findings if f.finding_type=='flywheel-acquisition']
+    assert len(findings)==2
+    assert {json.loads(f.evidence_json)['decision'] for f in findings}=={'skipped','selected'}
+    assert all(json.loads(f.evidence_json)['snapshot_kind']=='current_inventory' for f in findings)
+    assert not any(a.stage=='conversion' for a in records.stage_attempts)

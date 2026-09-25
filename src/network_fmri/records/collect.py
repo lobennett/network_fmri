@@ -45,6 +45,7 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
         Artifact("study", ".", kind="dataset", commit=study_commit),
         Artifact("raw", f"sourcedata/{raw_slot}", kind=f"dataset:{raw_id}", commit=raw_commit),
     ]
+    _collect_flywheel(study, raw, entities, findings, artifacts)
 
     for path in sorted(
         path for root in (raw, study)
@@ -115,6 +116,30 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
         tuple(attempts), tuple(findings), tuple(decisions), tuple(artifacts),
         collect_receipts(study) + collect_native_lineage(raw, raw_id),
     )
+
+
+def _collect_flywheel(study, raw, entities, findings, artifacts):
+    receipts = {}
+    for root in (raw, study):
+        for path in sorted(root.glob("code/network_fw2bids/selection/*.json")):
+            value = _json(path, "Flywheel inventory")
+            receipts[_required(value, "subject", path)] = (path, value)
+    # A receipt captured during conversion takes precedence over a later audit.
+    for path in sorted(raw.glob("code/network_fw2bids/conversion/*.json")):
+        value = _json(path, "conversion receipt").get("selection")
+        if value is not None:
+            receipts[_required(value, "subject", path)] = (path, value)
+    for subject, (path, value) in receipts.items():
+        if value.get("schema_version") != 1 or value.get("snapshot_kind") not in {"current_inventory", "conversion_selection"}:
+            raise CollectionError(f"unsupported Flywheel inventory: {path}")
+        context = {key: value.get(key) for key in ("snapshot_kind", "captured_at", "project", "project_id")}
+        for index, row in enumerate(value.get("acquisitions", [])):
+            entity = Entity("flywheel", subject=subject, session=str(row.get("session", "")).removeprefix("ses-"),
+                            acquisition=row.get("acquisition_id") or f"acquisition-{index}", suffix="dicom")
+            entities[entity.key] = entity
+            findings.append(Finding(entity.key, "flywheel-acquisition", "information", _relative(path, study),
+                                    json.dumps({**row, **context}, sort_keys=True)))
+        artifacts.append(Artifact("flywheel-selection", _relative(path, study), kind="receipt"))
 
 
 def _collect_decisions(path, study, entities, decisions, findings):
