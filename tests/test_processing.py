@@ -31,15 +31,16 @@ def table(rows, columns):
 
 
 class Runner:
-    def __init__(self, states=('not started', 'waiting on MRIQC-24.0.2', 'waiting on fMRIPrep-25.2.5+anat')):
+    def __init__(self, states=('not started', 'waiting on MRIQC-24.0.2', 'waiting on fMRIPrep-25.2.5+anat'), apps=SHORTS):
         self.calls = []
         self.states = states
+        self.apps = apps
 
     def __call__(self, command, **kwargs):
         self.calls.append((command, kwargs))
         if command[1] == 'status' and command[0] != 'git':
             stdout = table([dict(source_dataset='sourcedata/raw', app=app, state=state, jobs='')
-                            for app, state in zip(SHORTS, self.states)],
+                            for app, state in zip(self.apps, self.states)],
                            ('source_dataset', 'app', 'state', 'jobs'))
         elif command[1] == 'jobs':
             stdout = table([dict(source_dataset='sourcedata/raw', app=SHORTS[0], sub_id='sub-s01',
@@ -78,6 +79,54 @@ def test_only_requested_app_advances_after_gate(tmp_path, monkeypatch, stage, in
 def test_predecessor_blocks_advancement(tmp_path):
     with pytest.raises(RuntimeError, match='mriqc must be complete'):
         ProcessingManager(configuration(tmp_path), runner=Runner()).advance('anatomical')
+
+
+def standalone_config(tmp_path):
+    from dataclasses import replace
+    config = configuration(tmp_path)
+    config.subjects = ('s03',)
+    apps = list(config.mechababs.apps)
+    apps[1] = MechaBABSAppConfig('anatomical', Path('FreeSurfer-8.2.0.yaml'))
+    config.mechababs = replace(config.mechababs, apps=tuple(apps))
+    return config
+
+
+def test_standalone_freesurfer_advances_while_mriqc_is_active(tmp_path, monkeypatch):
+    config = standalone_config(tmp_path)
+    runner = Runner(('active', 'not started', 'not started'),
+                    apps=tuple(app.file.stem for app in config.mechababs.apps))
+    monkeypatch.setattr('network_fmri.processing.require_stage_gate', lambda *a: None)
+    manager = ProcessingManager(config, runner=runner)
+    assert [s.state for s in manager.plan()] == ['active', 'ready', 'blocked']
+    assert manager.advance('anatomical').advanced
+    with pytest.raises(RuntimeError, match='mriqc must be complete'):
+        manager.advance('fmriprep')
+
+
+def test_standalone_gate_requires_validated_unambiguous_anatomy(tmp_path, monkeypatch):
+    from network_fmri.processing import require_stage_gate
+    config = standalone_config(tmp_path)
+    checked = []
+    monkeypatch.setattr('network_fmri.processing._require_committed_milestone',
+                        lambda root, name, runner: checked.append(name))
+    monkeypatch.setattr('network_fmri.pipeline.require_committed_approval',
+                        lambda *a: pytest.fail('MRIQC approval must not gate standalone anatomy'))
+    with pytest.raises(ValueError, match='expected one T1w'):
+        require_stage_gate(config, 'anatomical')
+    t1 = config.paths.bids_dir / 'sub-s03/ses-01/anat/sub-s03_ses-01_T1w.nii.gz'
+    t1.parent.mkdir(parents=True)
+    t1.write_bytes(b'defaced anatomy')
+    require_stage_gate(config, 'anatomical')
+    assert checked == ['bids-precuration-validated'] * 2
+
+
+def test_fmriprep_still_requires_scan_approval(tmp_path, monkeypatch):
+    from network_fmri.processing import require_stage_gate
+    def unapproved(*a):
+        raise RuntimeError('scan approval missing')
+    monkeypatch.setattr('network_fmri.pipeline.require_committed_approval', unapproved)
+    with pytest.raises(RuntimeError, match='scan approval missing'):
+        require_stage_gate(standalone_config(tmp_path), 'fmriprep')
 
 
 def test_failure_blocks_advancement(tmp_path):
@@ -182,6 +231,8 @@ def test_fmriprep_rejects_approval_for_another_surface_derivative(tmp_path, monk
         MechaBABSAppConfig('anatomical', Path('FreeSurfer-8.2.0.yaml')),
     ))
     monkeypatch.setattr('network_fmri.pipeline.require_committed_surface_approval', lambda *a: None)
+    monkeypatch.setattr('network_fmri.pipeline.require_committed_approval', lambda *a: None)
+    monkeypatch.setattr('network_fmri.processing._require_committed_milestone', lambda *a: None)
     monkeypatch.setattr('network_fmri.surface_evidence.prepare_surface_evidence',
                         lambda *a, **k: tmp_path / 'new-surfaces')
     metadata = config.mechababs.study_dir / 'code/network_fmri/surface_review.meta.json'

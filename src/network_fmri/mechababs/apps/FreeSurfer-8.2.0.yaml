@@ -1,5 +1,4 @@
 mechababs:
-  depends_on: MRIQC-24.0.2
   selection:
     require_datatypes: [anat]
     require_positive: [t1w_num]
@@ -27,7 +26,7 @@ cluster_resources:
   customized_text: |
     #SBATCH --partition=russpold,normal
     #SBATCH --cpus-per-task=4
-    #SBATCH --mem=48G
+    #SBATCH --mem=96G
     #SBATCH --nodes=1
     #SBATCH --ntasks=1
 

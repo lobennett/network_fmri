@@ -16,6 +16,9 @@ class Manager:
         self.advanced.append(stage)
         self.states[stage] = "complete"
 
+    def dependencies(self, stage):
+        return ("mriqc", "anatomical") if stage == "fmriprep" else ()
+
 
 @pytest.fixture
 def config(tmp_path, monkeypatch):
@@ -64,3 +67,23 @@ def test_controller_refreshes_records_after_review_preparation(config):
     run_processing(config, manager=manager, prepare_review=prepare,
                    observe=lambda: events.append("refresh"))
     assert events == ["refresh", "review", "refresh"]
+
+
+def test_independent_anatomy_finishes_while_scan_review_is_pending(config):
+    from network_fmri.handoff import run_processing
+    manager = Manager({"mriqc": "complete", "anatomical": "ready", "fmriprep": "blocked"})
+    def review(stage):
+        return {"state": "awaiting-scan-review" if stage == "mriqc" else "awaiting-surface-review"}
+    result = run_processing(config, manager=manager, prepare_review=review, sleep=lambda _: None)
+    assert manager.advanced == ["anatomical"]
+    assert result["state"] == "awaiting-reviews"
+    assert len(result["reviews"]) == 2
+
+
+def test_both_independent_jobs_advance_before_poll_sleep(config):
+    from network_fmri.handoff import run_processing
+    manager = Manager({"mriqc": "ready", "anatomical": "ready", "fmriprep": "blocked"})
+    def sleep(_):
+        assert manager.advanced == ["mriqc", "anatomical"]
+    run_processing(config, manager=manager,
+        prepare_review=lambda stage: {"state": "awaiting-review", "stage": stage}, sleep=sleep)

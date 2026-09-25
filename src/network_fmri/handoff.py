@@ -32,27 +32,37 @@ def run_processing(config, *, interval=300, manager=None, prepare_review=None,
         manager = manager or ProcessingManager(config)
         prepare_review = prepare_review or (lambda stage: _prepare_boundary(config, stage))
         observe = observe or (lambda: _refresh_records(config, manager))
-        reviewed = set()
+        reviewed, pauses = set(), {}
         while True:
             observe()
             stages = manager.plan()
+            advanced = False
             for stage in stages:
                 print(f"{stage.stage}: {stage.state}", flush=True)
                 if stage.state == "complete":
-                    if stage.stage not in reviewed:
+                    if stage.stage not in reviewed and stage.stage not in pauses:
                         pause = prepare_review(stage.stage)
                         observe()
                         if pause is not None:
-                            return pause
-                        reviewed.add(stage.stage)
+                            pauses[stage.stage] = pause
+                        else:
+                            reviewed.add(stage.stage)
+                    continue
+                if stage.state == "blocked" or any(name in pauses for name in manager.dependencies(stage.stage)):
                     continue
                 if stage.state not in {"ready", "active"}:
                     raise RuntimeError(f"{stage.stage} is {stage.state}; intervention required")
                 manager.advance(stage.stage)
+                advanced = True
+            if advanced:
                 sleep(interval)
-                break
-            else:
+                continue
+            if pauses:
+                return next(iter(pauses.values())) if len(pauses) == 1 else {
+                    "state": "awaiting-reviews", "reviews": list(pauses.values())}
+            if all(stage.state == "complete" for stage in stages):
                 return {"state": "awaiting-output-review"}
+            raise RuntimeError("processing is blocked; intervention required")
 
 
 def _refresh_records(config, manager):

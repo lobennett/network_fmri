@@ -52,8 +52,7 @@ def prepare_surface_evidence(config, *, runner=subprocess.run) -> Path:
     if _gitlink(study, "HEAD", stage.project, runner=runner) != commit:
         raise StageError("FreeSurfer derivative is not registered at its merged commit")
     raw_commit = _gitlink(source, commit, "sourcedata/raw", runner=runner)
-    if raw_commit != _git(config.paths.bids_dir, "rev-parse", "HEAD", runner=runner):
-        raise StageError("FreeSurfer input differs from current curated BIDS")
+    raw_changed = raw_commit != _git(config.paths.bids_dir, "rev-parse", "HEAD", runner=runner)
     from network_fmri.surface_corrections import correction_state
     correction = correction_state(config, runner=runner)
     if correction and correction["phase"] == "ready":
@@ -84,6 +83,8 @@ def prepare_surface_evidence(config, *, runner=subprocess.run) -> Path:
             with zipfile.ZipFile(path) as archive:
                 name = f'FreeSurfer-8.2.0/code/sub-{subject}_reconstruction.json'
                 if name not in archive.namelist():
+                    if raw_changed:
+                        raise StageError("FreeSurfer input differs from current curated BIDS without an anatomical checksum receipt")
                     continue  # Old archives remain inspectable, without inferred image lineage.
                 if archive.namelist().count(name) != 1:
                     raise StageError('ambiguous reconstruction receipt')

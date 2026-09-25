@@ -61,7 +61,6 @@ class ProcessingManager:
         if set(by_app) != {app.file.stem for app in config.apps}:
             raise RuntimeError("campaign does not contain the configured source and apps")
         stages = []
-        predecessors_complete = True
         for app in config.apps:
             row = by_app[app.file.stem]
             state = row["state"]
@@ -72,14 +71,22 @@ class ProcessingManager:
             elif state == "FAILED":
                 state = "intervention-required"
             elif state == "not started":
-                state = "ready" if predecessors_complete else "blocked"
+                predecessors = [s for s in stages if s.stage in self.dependencies(app.name)]
+                state = "ready" if all(s.state == "complete" for s in predecessors) else "blocked"
             elif state.startswith("waiting"):
                 state = "blocked"
             source_suffix = "" if config.raw_slot in {"raw", "rawbids"} else f"+{config.raw_slot}"
             project = f"derivatives/{app.file.stem}{source_suffix}+{config.campaign}"
             stages.append(ProcessingStage(app.name, app.file.stem, state, project))
-            predecessors_complete = predecessors_complete and state == "complete"
         return tuple(stages)
+
+    def dependencies(self, stage):
+        if stage == "mriqc" or (stage == "anatomical" and any(
+            app.name == "anatomical" and app.file.stem == "FreeSurfer-8.2.0"
+            for app in self.config.apps
+        )):
+            return ()
+        return ("mriqc",) if stage == "anatomical" else ("mriqc", "anatomical")
 
     def status(self) -> ProcessingStatus:
         from network_fmri.surface_corrections import correction_state, campaign_config
@@ -103,7 +110,7 @@ class ProcessingManager:
             raise ValueError("stage must be one of: " + ", ".join(names))
         stages = self.plan()
         selected = stages[names.index(stage)]
-        for predecessor in stages[:names.index(stage)]:
+        for predecessor in (s for s in stages if s.stage in self.dependencies(stage)):
             if predecessor.state != "complete":
                 raise RuntimeError(f"{predecessor.stage} must be complete before {stage}")
         if selected.state == "complete":
@@ -176,6 +183,13 @@ def require_stage_gate(config: WorkflowConfig, stage: str, runner=subprocess.run
     from network_fmri import pipeline
 
     if stage == "anatomical":
+        if any(app.name == "anatomical" and app.file.stem == "FreeSurfer-8.2.0"
+               for app in config.mechababs.apps):
+            from network_fmri.freesurfer_app import select_anatomy
+            _require_committed_milestone(config.paths.bids_dir, "bids-precuration-validated", runner)
+            for subject in config.subjects:
+                select_anatomy(config.paths.bids_dir, subject)
+            return
         pipeline.require_committed_approval(config, runner)
         _require_committed_milestone(config.paths.bids_dir, "bids-curated-validated", runner)
         return
@@ -184,6 +198,8 @@ def require_stage_gate(config: WorkflowConfig, stage: str, runner=subprocess.run
         state = correction_state(config, runner=runner)
         if state and state["phase"] != "ready":
             raise RuntimeError("surface correction is pending; old approval cannot launch fMRIPrep")
+        pipeline.require_committed_approval(config, runner)
+        _require_committed_milestone(config.paths.bids_dir, "bids-curated-validated", runner)
         pipeline.require_committed_surface_approval(config, runner)
         if any(app.name == "anatomical" and app.file.stem == "FreeSurfer-8.2.0"
                for app in config.mechababs.apps):

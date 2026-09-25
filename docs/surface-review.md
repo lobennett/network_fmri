@@ -5,6 +5,11 @@ Freeview for the actual surfaces. FSQC summaries can help locate problems but do
 not replace visual review. This is our study procedure, not a claimed reproduction
 of Kalanit's lab protocol.
 
+Reconstruction can run alongside MRIQC using the selected anatomy. Functional
+curation can change later; anatomical checksums must still match before surface
+reuse. A changed T1w or T2w requires a new reconstruction and review.
+The Slurm app requests 96 GB for the [FreeSurfer 8 memory footprint](https://surfer.nmr.mgh.harvard.edu/fswiki/rel7downloads/rel8notes).
+
 ## Inspect
 
 Work from the extracted, versioned FreeSurfer `subjects/sub-ID` directory.

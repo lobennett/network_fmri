@@ -82,6 +82,6 @@ def test_all_apps_use_study_layout_and_isolated_container_runtime():
 def test_standalone_freesurfer_config():
     config = load(APPS / "FreeSurfer-8.2.0.yaml")
     assert config["mechababs"]["container"]["name"] == "bids-freesurfer"
-    assert config["mechababs"]["depends_on"] == "MRIQC-24.0.2"
+    assert "depends_on" not in config["mechababs"]
     assert "--anat-only" not in config["bids_app_args"]
     assert config["zip_foldernames"] == {"FreeSurfer-8.2.0": "8-2-0"}

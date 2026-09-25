@@ -32,26 +32,26 @@ MRIQC 24.0.2 has a [known version-string bug](https://github.com/nipreps/mriqc/i
 it reports `24.1.0.dev0+gd5b13cb5.d20240826`. Preserve that reported version and
 record the image checksum and build source when verifying the container.
 
-Create the study and submit the MRIQC controller from the pinned checkout. It polls
-MechaBABS every five minutes, merges completed jobs, extracts evidence, generates
-scan decisions, and exits at review. Restart it after a controller timeout or
+Create the study and submit the processing controller from the pinned checkout. It
+runs MRIQC and standalone FreeSurfer independently, merges outputs, and prepares
+both reviews. It finishes other running work before pausing for approval. Restart it after a controller timeout or
 interruption. Only one controller can operate on the study at a time.
 
 ```bash
 uv run --frozen network-fmri study init workflow.toml --pilot-subject s03
 uv run --frozen network-fmri processing plan workflow.toml --pilot-subject s03
-sbatch scripts/run_mriqc.sh workflow.toml --pilot-subject s03
+sbatch scripts/run_processing.sh workflow.toml --pilot-subject s03
 uv run --frozen network-fmri processing status workflow.toml
 ```
 
-For a foreground run, use `network-fmri processing run-mriqc workflow.toml
+For MRIQC alone, use `network-fmri processing run-mriqc workflow.toml
 --pilot-subject s03`. Exit code 2 means the generated review contains an FD-threshold
 mismatch that cannot be recovered from verified MRIQC timeseries. When available,
 matching echo-2 timeseries supply the 0.5 mm percentage after reproducing the
 original metrics; the review metadata records this without altering MRIQC outputs.
 Use `--fd_thres: 0.5` in the MRIQC app configuration for new campaigns.
 This is the framewise cutoff; the mean-FD review threshold remains 0.2 mm.
-The controller never approves scans, retries failed jobs, or starts anatomical work.
+Neither controller approves scans or surfaces, or retries failed jobs.
 
 The following individual commands remain available for diagnosis. MechaBABS merges
 MRIQC archives into the study. `prepare-review` extracts reports
@@ -87,7 +87,8 @@ existing surface checklist.
 Follow the [surface review procedure](surface-review.md) for ITK-SNAP ribbon
 inspection, Freeview surface checks, and correction handling.
 
-Advance anatomical preprocessing until complete. Generate the surface checklist
+Anatomical reconstruction can start before MRIQC review when the input selection
+is unambiguous. Generate the surface checklist
 from its derivative, inspect every subject, set `approved=yes` with reviewer and
 timestamp, and seal it before full fMRIPrep.
 

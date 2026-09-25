@@ -52,14 +52,15 @@ network-fmri processing status workflow.toml
 
 `advance` checks the selected stage's committed evidence, synchronizes the raw
 subdataset, and calls `mechababs iterate --app APP --batch 1`. Repeat after checking
-status. Anatomical processing requires scan approval and curated-BIDS validation;
-full fMRIPrep requires surface approval. App `depends_on` settings also enforce
-upstream ordering. The full app consumes the anatomical derivative to reuse surfaces.
+status. Standalone FreeSurfer can run alongside MRIQC on validated BIDS with one
+T1w and at most one T2w per subject. Full fMRIPrep requires scan approval, curated
+BIDS, and surface approval. App `depends_on` settings enforce surface availability.
+The full app consumes the FreeSurfer derivative to reuse surfaces.
 Use `processing advance` to preserve these human gates; calling upstream `iterate`
 directly does not enforce them.
 
 Derivatives use upstream names, for example
-`derivatives/fMRIPrep-25.2.5+anat+network-v1`. MechaBABS installs and merges them in
+`derivatives/FreeSurfer-8.2.0+network-v1`. MechaBABS installs and merges them in
 the study; `network_fmri` does not copy them elsewhere. Failed jobs require review.
 See [Sherlock operations](sherlock.md) for the pilot and approval commands.
 
