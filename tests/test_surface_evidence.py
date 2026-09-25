@@ -95,3 +95,44 @@ def test_evidence_preserves_commits_and_requires_identical_anatomy(tmp_path, mon
         save(raw)
     with pytest.raises(StageError, match="curated BIDS"):
         surface_evidence.prepare_surface_evidence(config, runner=runner)
+
+
+def symlink(stream, name, target):
+    import stat
+    info = zipfile.ZipInfo(name)
+    info.create_system = 3
+    info.external_attr = (stat.S_IFLNK | 0o777) << 16
+    stream.writestr(info, target)
+
+
+def test_extracts_internal_freesurfer_links_as_verified_regular_files(tmp_path):
+    from network_fmri.surface_evidence import extract_subject_archive
+    from network_fmri.surface_inventory import reconstruction_inventory
+    source = tmp_path / 'surfaces.zip'
+    prefix = 'FreeSurfer-8.2.0/subjects/sub-s03/'
+    with zipfile.ZipFile(source, 'w') as stream:
+        for relative in REQUIRED_OUTPUTS:
+            if relative != 'surf/lh.pial':
+                stream.writestr(prefix + relative, 'surface')
+        stream.writestr(prefix + 'surf/lh.pial.T2', 'T2 pial surface')
+        symlink(stream, prefix + 'surf/lh.pial', 'lh.pial.T2')
+        symlink(stream, prefix + 'mri/pial-copy', '../surf/lh.pial')
+        symlink(stream, 'FreeSurfer-8.2.0/subjects/fsaverage', '/container/subjects/fsaverage')
+    result = extract_subject_archive(source, 's03', tmp_path / 'out')
+    root = tmp_path / 'out/sub-s03'
+    assert (root / 'surf/lh.pial').read_text() == 'T2 pial surface'
+    assert not (root / 'surf/lh.pial').is_symlink()
+    assert result['surf/lh.pial'] == result['surf/lh.pial.T2'] == result['mri/pial-copy']
+    assert reconstruction_inventory(root, 's03') == result
+
+
+@pytest.mark.parametrize('target', ['/etc/passwd', '../../../outside', 'missing', '.', 'link', 'bad\\path'])
+def test_rejects_invalid_surface_links_before_writing(tmp_path, target):
+    from network_fmri.surface_evidence import extract_subject_archive
+    source = tmp_path / 'surfaces.zip'
+    archive(source)
+    with zipfile.ZipFile(source, 'a') as stream:
+        symlink(stream, 'FreeSurfer-8.2.0/subjects/sub-s03/surf/link', target)
+    with pytest.raises(StageError):
+        extract_subject_archive(source, 's03', tmp_path / 'out')
+    assert not (tmp_path / 'out').exists()

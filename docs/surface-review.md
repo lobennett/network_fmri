@@ -17,6 +17,10 @@ The review gate requires `norm.mgz`, `ribbon.mgz`, both white/pial surfaces,
 `brain.mgz`, `aseg.stats`, and the reconstruction completion marker. Presence alone
 does not establish quality; approval remains manual.
 
+Extraction resolves subject-local FreeSurfer file links into checksum-verified
+regular files. The original ZIP stays unchanged; the container's `fsaverage` link
+is not part of the subject's review copy.
+
 | File | Purpose |
 | --- | --- |
 | `mri/norm.mgz` | Normalized T1 background in the reconstruction's own grid |

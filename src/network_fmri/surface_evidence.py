@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import shutil
 import subprocess
 import tempfile
@@ -12,7 +12,7 @@ from network_fmri.mriqc import _git, _gitlink, _require_dataset, _sha256
 from network_fmri.processing import ProcessingManager
 from network_fmri.qa.freesurfer import REQUIRED_OUTPUTS
 from network_fmri.stages import StageError
-from network_fmri.surface_inventory import reconstruction_inventory
+from network_fmri.surface_inventory import reconstruction_inventory, subject_archive_files
 
 RECEIPT = "code/network_fmri/surface-evidence.json"
 
@@ -25,11 +25,7 @@ def extract_subject_archive(source: Path, subject: str, destination: Path) -> di
     if root.exists() or root.is_symlink():
         raise StageError("surface extraction destination already exists")
     with zipfile.ZipFile(source) as archive:
-        for info in archive.infolist():
-            parts = PurePosixPath(info.filename).parts
-            if f"sub-{subject}" not in parts or info.is_dir():
-                continue
-            relative = Path(*parts[parts.index(f"sub-{subject}") + 1:])
+        for relative, info in subject_archive_files(archive, subject).items():
             target = root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             with archive.open(info) as src, target.open("xb") as dst:
