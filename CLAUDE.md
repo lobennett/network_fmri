@@ -13,8 +13,8 @@ and [CONTRIBUTING.md](CONTRIBUTING.md) for development.
 - Keep DICOMs and undefaced anatomy in `$SLURM_TMPDIR` only.
 - Let serial stages run explicit `datalad save` milestones. Array workers never save the
   shared raw dataset. MechaBABS/BABS retain their native `datalad run` provenance.
-- Require committed scan approval before anatomical processing and committed surface
-  approval before full fMRIPrep.
+- Standalone FreeSurfer can run alongside MRIQC on unambiguous selected anatomy.
+  Require committed scan and surface approval before full fMRIPrep.
 - On Sherlock, use `uv sync --frozen` and `uv run --frozen pytest`; verify pinned sibling
   revisions.
 - Before editing, inspect the checkout, branch, worktree, and imported package path.
