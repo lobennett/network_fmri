@@ -1,36 +1,16 @@
 Bootstrap: docker
-From: ubuntu:24.04
+From: freesurfer/freesurfer@sha256:5648104ca75a24f6ee5a8786146f99b405c2bda1da12bff723a15056da8ddf6b
 
-# Build from the repository root. The required SHA-256 build argument binds the
-# downloaded installer; register and pin the resulting SIF checksum separately.
-%arguments
-    FS_DEB_SHA256=
-
+# Official FreeSurfer 8.2.0 image, including upstream updates. Build from the
+# repository root; the license is mounted at runtime, never copied into the image.
 %files
     src/network_fmri/freesurfer_app.py /opt/network-freesurfer.py
-
-%post
-    set -eu
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update
-    apt-get install -y --no-install-recommends ca-certificates curl python3
-    test -n '{{ FS_DEB_SHA256 }}'
-    curl -fL --retry 3 -o /tmp/freesurfer.deb https://surfer.nmr.mgh.harvard.edu/pub/dist/freesurfer/8.2.0/freesurfer_ubuntu24-8.2.0_amd64.deb
-    printf '%s  /tmp/freesurfer.deb\n' '{{ FS_DEB_SHA256 }}' | sha256sum -c -
-    apt-get install -y /tmp/freesurfer.deb
-    rm /tmp/freesurfer.deb
-    test -f /usr/local/freesurfer/8.2.0/SetUpFreeSurfer.sh
-    apt-get clean
-
-%environment
-    export FREESURFER_HOME=/usr/local/freesurfer/8.2.0
-    export FSLOUTPUTTYPE=NIFTI_GZ
 
 %runscript
     #!/bin/bash
     source "$FREESURFER_HOME/SetUpFreeSurfer.sh"
-    exec /usr/bin/python3 /opt/network-freesurfer.py "$@"
+    exec "$FREESURFER_HOME/python/bin/python3" /opt/network-freesurfer.py "$@"
 
 %test
-    test -f /usr/local/freesurfer/8.2.0/build-stamp.txt
-    grep -F '8.2.0' /usr/local/freesurfer/8.2.0/build-stamp.txt
+    grep -F '8.2.0' "$FREESURFER_HOME/build-stamp.txt"
+    "$FREESURFER_HOME/python/bin/python3" /opt/network-freesurfer.py --help

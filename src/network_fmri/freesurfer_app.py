@@ -47,8 +47,12 @@ def recon_command(t1: Path, t2: Path | None, subject: str,
 
 
 def _sha256(path: Path) -> str:
+    # FreeSurfer's official 8.2 image bundles Python 3.8.
+    digest = hashlib.sha256()
     with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def run_subject(bids: Path, output: Path, subject: str, *, threads: int = 4,
@@ -172,10 +176,10 @@ def main(argv=None) -> int:
     build = (Path(os.environ["FREESURFER_HOME"]) / "build-stamp.txt").read_text().strip()
     for subject in args.participant_label:
         if args.corrections_dir:
-            run_correction(args.bids_dir, args.output_dir, subject.removeprefix("sub-"),
+            run_correction(args.bids_dir, args.output_dir, subject[4:] if subject.startswith("sub-") else subject,
                            corrections=args.corrections_dir, threads=args.nprocs, build=build)
         else:
-            run_subject(args.bids_dir, args.output_dir, subject.removeprefix("sub-"),
+            run_subject(args.bids_dir, args.output_dir, subject[4:] if subject.startswith("sub-") else subject,
                         threads=args.nprocs, build=build)
     return 0
 
