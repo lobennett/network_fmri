@@ -95,7 +95,7 @@ timestamp, and seal it before full fMRIPrep.
 uv run --frozen network-fmri processing advance workflow.toml --stage anatomical --pilot-subject s03
 uv run --frozen network-fmri processing status workflow.toml
 
-ANAT=$STUDY/derivatives/fMRIPrep-25.2.5+anat+network-v1
+ANAT=$STUDY/derivatives/FreeSurfer-8.2.0+network-v1+review
 uv run --frozen network-fmri surfaces generate workflow.toml \
   --pilot-subject s03 --anatomical-derivative "$ANAT"
 uv run --frozen network-fmri surfaces validate workflow.toml --pilot-subject s03

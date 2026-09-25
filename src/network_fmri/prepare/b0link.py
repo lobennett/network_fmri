@@ -59,7 +59,7 @@ def link_tree(bids_dir: Path) -> dict[str, int]:
             raise ValueError(f"{session}: {len(fieldmaps)} field maps, expected exactly one")
         if not fieldmaps:
             if bolds:
-                summary["no_fmap"] += 1
+                raise ValueError(f'{session}: missing fieldmap; import the CNI reconstruction before proceeding')
             continue
         if not bolds:
             summary["orphan_fmap"] += 1

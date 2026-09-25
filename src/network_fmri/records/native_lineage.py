@@ -45,6 +45,15 @@ def collect_native_lineage(raw: Path, dataset_id: str) -> tuple[dict, ...]:
         if value.get("schema_version") != 1:
             raise ValueError("unsupported conversion provenance schema")
         for archive in value["archives"]:
+            if archive.get('method') == 'cni-spiral-import':
+                sources = [file_record('flywheel', {'path': 'reconstructed/' + row['file_id'] + '/' + row['name'],
+                            'sha256': row['sha256']}, availability='remote',
+                            source_ids={'acquisition_id': archive['acquisition_id'], 'file_id': row['file_id']})
+                           for row in archive['sources']]
+                outputs = [file_record(dataset_id, row) for row in archive['outputs']]
+                results.append(transformation('conversion', 'sub-' + value['subject'], sources, outputs,
+                                              software=archive['software'], parameters={'pfile': archive['pfile']}))
+                continue
             source = file_record("flywheel", {"path": "archives/" + archive["archive_sha256"] + ".zip",
                 "sha256": archive["archive_sha256"]}, availability="remote",
                 source_ids={k: archive.get(k) for k in ("acquisition_id", "file_id")})
@@ -67,4 +76,21 @@ def collect_native_lineage(raw: Path, dataset_id: str) -> tuple[dict, ...]:
                   for row in [value["Behavior"], *value["BOLDInputs"], *value["TimingSidecars"]]]
         output = file_record(dataset_id, value["Events"])
         results.append(transformation("events", value["Events"]["path"], inputs, [output]))
+    return tuple(results)
+
+
+def collect_surface_lineage(root: Path, dataset_id: str, raw_id: str) -> tuple[dict, ...]:
+    """Link extracted surfaces only when the adapter recorded exact anatomical inputs."""
+    path = root / 'code/network_fmri/surface-evidence.json'
+    if not path.is_file():
+        return ()
+    value = json.loads(path.read_text())
+    results = []
+    for subject, reconstruction in value.get('reconstructions', {}).items():
+        inputs = [file_record(raw_id, row) for row in reconstruction['inputs']]
+        outputs = [file_record(dataset_id, {'path': f'subjects/sub-{subject}/{relative}', 'sha256': digest})
+                   for relative, digest in value['inventories'][subject].items()]
+        results.append(transformation('freesurfer', 'sub-' + subject, inputs, outputs,
+                                      software={'FreeSurfer': reconstruction['build']},
+                                      parameters={'input_datalad_commit': value.get('input_datalad_commit')}))
     return tuple(results)

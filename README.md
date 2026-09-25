@@ -30,4 +30,6 @@ sample until this pilot passes.
 See [Sherlock operations](docs/sherlock.md) for the command sequence and
 [MechaBABS design](docs/mechababs.md) for ownership and review gates. The
 [dashboard records](docs/dashboard-records.md) reference describes the disposable
-SQLite index used by the future dashboard.
+SQLite index used by the dashboard. Fieldmaps import CNI spiral-recon outputs from Flywheel;
+a BOLD session without its fieldmap blocks preparation. Surface previews retain
+the exact anatomical input hashes recorded by the standalone FreeSurfer adapter.

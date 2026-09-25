@@ -15,6 +15,7 @@ from network_fmri.records.mechababs import collect_attempts
 from network_fmri.records.inventory import inventory_dataset, study_datasets
 from network_fmri.records.models import Artifact
 from network_fmri.records.history import read_history
+from network_fmri.records.native_lineage import collect_surface_lineage
 
 
 def build_index(config: WorkflowConfig, output: Path) -> dict[str, object]:
@@ -25,9 +26,13 @@ def build_index(config: WorkflowConfig, output: Path) -> dict[str, object]:
     )
     datasets = list(study_datasets(config.mechababs.study_dir))
     inventories = tuple(inventory_dataset(root, identity) for identity, root in datasets)
+    raw_id = next(identity for identity, root in datasets
+                  if root == config.mechababs.study_dir / 'sourcedata' / config.mechababs.raw_slot)
+    surface_lineage = tuple(receipt for identity, root in datasets
+                            for receipt in collect_surface_lineage(root, identity, raw_id))
     locations = tuple(Artifact("dataset", root.relative_to(config.mechababs.study_dir).as_posix(),
                                kind="dataset:" + identity) for identity, root in datasets)
-    records = replace(records, lineage=records.lineage + inventories, artifacts=records.artifacts + locations)
+    records = replace(records, lineage=records.lineage + inventories + surface_lineage, artifacts=records.artifacts + locations)
     live_attempts = collect_attempts(ProcessingManager(config))
     history, history_lineage = read_history(config.mechababs.study_dir)
     # Live status supersedes the last observation of the same scheduler job.

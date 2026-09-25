@@ -46,6 +46,10 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
         Artifact("raw", f"sourcedata/{raw_slot}", kind=f"dataset:{raw_id}", commit=raw_commit),
     ]
     _collect_flywheel(study, raw, entities, findings, artifacts)
+    for path in sorted(raw.glob('sub-*/ses-*/fmap/*.nii*')):
+        if path.name.endswith(('.nii', '.nii.gz')):
+            entity = entity_from_path(path.relative_to(raw))
+            entities[entity.key] = entity
 
     for path in sorted(
         path for root in (raw, study)

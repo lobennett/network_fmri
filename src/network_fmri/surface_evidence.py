@@ -79,6 +79,26 @@ def prepare_surface_evidence(config, *, runner=subprocess.run) -> Path:
                    "input_datalad_commit": raw_commit,
                    "archives": [{"path": path.name, "sha256": _sha256(path)} for _, path in archives],
                    "inventories": inventories}
+        reconstructions = {}
+        for subject, path in archives:
+            with zipfile.ZipFile(path) as archive:
+                name = f'FreeSurfer-8.2.0/code/sub-{subject}_reconstruction.json'
+                if name not in archive.namelist():
+                    continue  # Old archives remain inspectable, without inferred image lineage.
+                if archive.namelist().count(name) != 1:
+                    raise StageError('ambiguous reconstruction receipt')
+                value = json.loads(archive.read(name))
+                if value.get('status') != 'success' or value.get('subject') != f'sub-{subject}':
+                    raise StageError('unsuccessful reconstruction receipt')
+                from network_fmri.freesurfer_app import select_anatomy
+                anatomy = select_anatomy(config.paths.bids_dir, subject)
+                inputs = [{'path': p.relative_to(config.paths.bids_dir).as_posix(), 'sha256': _sha256(p)}
+                          for p in anatomy if p is not None]
+                if value.get('inputs') != inputs:
+                    raise StageError('reconstruction anatomy differs from curated BIDS')
+                reconstructions[subject] = {'inputs': inputs, 'build': value['build']}
+        if reconstructions:
+            receipt['reconstructions'] = reconstructions
         if destination.exists() or destination.is_symlink():
             _require_dataset(destination, runner=runner)
             review_commit = _git(destination, "rev-parse", "HEAD", runner=runner)

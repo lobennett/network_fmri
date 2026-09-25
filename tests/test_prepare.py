@@ -214,3 +214,16 @@ def test_b0_link_rejects_missing_or_empty_bids_input(tmp_path):
     (tmp_path / "dataset_description.json").write_text(json.dumps({"Name": "test"}))
     with pytest.raises(StageError, match="no subject sessions"):
         b0link.link_b0(tmp_path)
+
+
+def test_b0_link_missing_fieldmap_blocks_without_changing_any_sidecars(tmp_path):
+    fmap, bold = _session(tmp_path)
+    for image in (fmap, bold):
+        _write(image.with_name(image.name.replace('.nii.gz', '.json')), {})
+    other = tmp_path / 'sub-s01/ses-02/func/sub-s01_ses-02_task-rest_bold.nii.gz'
+    other.parent.mkdir(parents=True)
+    other.touch()
+    _write(other.with_name(other.name.replace('.nii.gz', '.json')), {})
+    with pytest.raises(StageError, match='missing fieldmap'):
+        b0link.link_b0(tmp_path)
+    assert read(fmap.with_name(fmap.name.replace('.nii.gz', '.json'))) == {}

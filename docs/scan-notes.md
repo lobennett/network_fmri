@@ -12,7 +12,7 @@ MRIQC evidence and requires explicit approval in `scan_decisions.tsv` before cur
 | MRIQC motion evidence | echo-2; mean FD ≥0.2 mm for rest; task: mean FD ≥0.2 mm or ≥20% frames at FD ≥0.5 mm |
 | Anatomy | more than one T1w or T2w, or no T2w, requires review and an MRIQC recommendation |
 | Echoes | a missing echo-1, echo-2, or echo-3 requires review |
-| FreeSurfer | anatomical fMRIPrep runs `recon-all`; every subject's white and pial surfaces require explicit approval before full fMRIPrep |
+| FreeSurfer | standalone FreeSurfer 8.2.0 runs `recon-all`; every subject's white and pial surfaces require explicit approval before full fMRIPrep |
 | fMRIPrep | one subject across sessions, `--dummy-scans 0`, `--no-submm-recon` |
 | Output spaces | `MNI152NLin2009cAsym:res-2 T1w fsnative fsaverage6`, with 91k CIFTI |
 
