@@ -122,3 +122,12 @@ Before starting 46 subjects, require:
 Use `squeue --me`, `sacct`, `network-fmri processing status`, and the paths printed
 by MechaBABS to investigate jobs. The Oak sibling is the durable copy; scratch is the
 working copy.
+
+If an Oak clone reports SQLite I/O errors, place its disposable annex database
+cache on scratch ([git-annex guidance](https://git-annex.branchable.com/git-annex/)):
+
+```bash
+git -C /path/to/oak/clone config annex.dbdir /scratch/users/$USER/git-annex-db
+```
+
+This local setting leaves file contents and Git history on Oak.
