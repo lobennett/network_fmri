@@ -24,6 +24,9 @@ The controller saves observed scheduler transitions under
 `code/network_fmri/processing-history/` using DataLad. Rebuilding SQLite preserves
 this history. Transitions before observation began remain unknown.
 
+Flywheel audits use the newest capture time across the raw and study datasets.
+Selections recorded during conversion take precedence over later inventory audits.
+
 Current file lineage covers conversion, defacing, trimming, and events when their
 producer receipts exist. Trimming stores before/after image hashes in the sidecar's
 `NetworkFMRITrim` object as part of the existing recoverable file publication.

@@ -6,6 +6,7 @@ import csv
 import json
 import subprocess
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 
 from network_fmri.records.entities import entity_from_path
@@ -134,10 +135,20 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
 
 def _collect_flywheel(study, raw, entities, findings, artifacts):
     receipts = {}
+    captured = {}
     for root in (raw, study):
         for path in sorted(root.glob("code/network_fw2bids/selection/*.json")):
             value = _json(path, "Flywheel inventory")
-            receipts[_required(value, "subject", path)] = (path, value)
+            subject = _required(value, "subject", path)
+            try:
+                timestamp = datetime.fromisoformat(_required(value, "captured_at", path))
+                if timestamp.utcoffset() is None:
+                    raise ValueError("timezone is missing")
+            except (TypeError, ValueError) as error:
+                raise CollectionError(f"invalid Flywheel capture time: {path}") from error
+            if subject not in captured or timestamp > captured[subject]:
+                receipts[subject] = (path, value)
+                captured[subject] = timestamp
     # A receipt captured during conversion takes precedence over a later audit.
     for path in sorted(raw.glob("code/network_fw2bids/conversion/*.json")):
         value = _json(path, "conversion receipt").get("selection")

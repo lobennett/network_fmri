@@ -173,3 +173,23 @@ def test_flywheel_selection_keeps_current_inventory_distinct_from_conversion(tmp
     assert {json.loads(f.evidence_json)['decision'] for f in findings}=={'skipped','selected'}
     assert all(json.loads(f.evidence_json)['snapshot_kind']=='current_inventory' for f in findings)
     assert not any(a.stage=='conversion' for a in records.stage_attempts)
+
+
+@pytest.mark.parametrize('newest_root', ['sourcedata/raw', '.'])
+def test_flywheel_inventory_uses_capture_time_not_directory_order(tmp_path, newest_root):
+    study = fixture_study(tmp_path)
+    for directory in ('sourcedata/raw', '.'):
+        newest = directory == newest_root
+        write(study / directory / 'code/network_fw2bids/selection/sub-s01.json', json.dumps({
+            'schema_version': 1, 'subject': 's01', 'snapshot_kind': 'current_inventory',
+            # The later capture has an earlier wall-clock time in another timezone.
+            'captured_at': '2026-09-24T22:00:00-07:00' if newest else '2026-09-25T00:00:00Z',
+            'acquisitions': [{'session': 'ses-01', 'acquisition_id': 'fmap',
+                              'decision': 'selected' if newest else 'skipped',
+                              'reason': 'cni_spiral_reconstruction' if newest else 'no_dicom'}],
+        }))
+    records = collect_study(study, runner=GitRunner())
+    findings = [f for f in records.findings if f.finding_type == 'flywheel-acquisition']
+    assert len(findings) == 1
+    assert json.loads(findings[0].evidence_json)['decision'] == 'selected'
+    assert findings[0].evidence_path == (Path(newest_root) / 'code/network_fw2bids/selection/sub-s01.json').as_posix()
