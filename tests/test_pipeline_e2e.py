@@ -252,7 +252,8 @@ class FakeApplications:
         root = self.bids_dir / "derivatives" / "freesurfer" / subject
         for relative in (
             "surf/lh.white", "surf/rh.white", "surf/lh.pial", "surf/rh.pial",
-            "stats/aseg.stats", "mri/brain.mgz", "scripts/recon-all.done",
+            "stats/aseg.stats", "mri/brain.mgz", "mri/norm.mgz", "mri/ribbon.mgz",
+            "scripts/recon-all.done",
         ):
             path = root / relative
             path.parent.mkdir(parents=True, exist_ok=True)

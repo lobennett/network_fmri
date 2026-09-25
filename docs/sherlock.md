@@ -84,6 +84,9 @@ keys and evidence match exactly; otherwise it writes a mismatch report and leave
 the new review unsealed. `reviews migrate-surfaces` applies the same rule to an
 existing surface checklist.
 
+Follow the [surface review procedure](surface-review.md) for ITK-SNAP ribbon
+inspection, Freeview surface checks, and correction handling.
+
 Advance anatomical preprocessing until complete. Generate the surface checklist
 from its derivative, inspect every subject, set `approved=yes` with reviewer and
 timestamp, and seal it before full fMRIPrep.

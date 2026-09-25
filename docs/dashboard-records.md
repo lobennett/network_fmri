@@ -37,4 +37,5 @@ GitHub and public hosting.
 
 Still pending: full provenance for fieldmap edits, global-signal reports,
 participant ingestion, and archived derivative members; real-study acceptance on
-Sherlock. Surface review criteria remain deferred until the lab supplies its protocol.
+Sherlock. Use the [surface review procedure](surface-review.md) for ribbon inspection,
+surface checks, and correction provenance before approving fMRIPrep.

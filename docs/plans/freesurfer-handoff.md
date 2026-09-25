@@ -20,7 +20,7 @@ Companion: [provenance and dashboard](provenance-dashboard.md).
 - FreeSurfer 8.2.0; fMRIPrep 25.2.5; container checksum and build recorded.
 - Fresh reconstruction; preserve FreeSurfer 7 evidence as superseded.
 - License: `/home/users/logben/license.txt`; never commit its contents.
-- Surface-review criteria remain deferred until Seda's guidance.
+- Surface review follows [the study procedure](../surface-review.md): ITK-SNAP ribbon inspection and Freeview mesh checks.
 - Anatomical images must already be defaced before durable publication.
 - No upstream fork, replacement scheduler, automatic approval, or automatic retry.
 

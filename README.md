@@ -7,7 +7,7 @@ MechaBABS/BABS.
 ```text
 Flywheel -> defaced BIDS -> behavior/events -> validation
          -> MRIQC -> scan review -> curation
-         -> anatomical fMRIPrep/FreeSurfer -> surface review -> full fMRIPrep
+         -> FreeSurfer 8.2.0 -> surface review -> full fMRIPrep
 ```
 
 Copy [workflow.example.toml](config/workflow.example.toml), replace its placeholder
@@ -24,7 +24,7 @@ The controller submits, monitors, merges, extracts MRIQC evidence, and generates
 decisions, then stops for review. Restart the same command after interruptions;
 existing decisions are preserved. Failed jobs or changed evidence require intervention.
 After approving scan decisions, curate the raw data and advance the anatomical
-stage, inspect and approve surfaces, and advance full fMRIPrep. Do not start the full
+stage, follow the [surface review procedure](docs/surface-review.md), and advance full fMRIPrep. Do not start the full
 sample until this pilot passes.
 
 See [Sherlock operations](docs/sherlock.md) for the command sequence and

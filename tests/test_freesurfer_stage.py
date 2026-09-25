@@ -155,3 +155,25 @@ def test_legacy_approved_review_can_be_validated_for_migration(tmp_path):
     result = validate_surface_review(config, manifest, allow_legacy=True)
 
     assert result.name == "surface-review-approved"
+
+
+@pytest.mark.parametrize("missing", ["mri/norm.mgz", "mri/ribbon.mgz"])
+@pytest.mark.parametrize("packed", [False, True])
+def test_surface_review_requires_aligned_t1_and_ribbon(tmp_path, missing, packed):
+    config = configuration(tmp_path, ("s1",))
+    root = tmp_path / "anatomical"
+    root.mkdir()
+    files = set(REQUIRED_OUTPUTS) | {"mri/norm.mgz", "mri/ribbon.mgz"}
+    files.remove(missing)
+    if packed:
+        with zipfile.ZipFile(root / "sub-s1_anat.zip", "w") as archive:
+            for relative in files:
+                archive.writestr(f"freesurfer/sub-s1/{relative}", "result")
+    else:
+        for relative in files:
+            path = root / "sub-s1" / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("result")
+    assert surface_fingerprints(config, root) == {}
+    result = generate_surface_review(config, root)
+    assert result.outputs[0].read_text().splitlines()[1].split("\t")[2] == "missing"

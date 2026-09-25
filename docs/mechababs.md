@@ -6,12 +6,13 @@ Slurm submission through BABS, result merging, and compute provenance.
 
 ```text
 Raw BIDS validation → MRIQC → scan approval → curation + validation
-                   → anatomical fMRIPrep/FreeSurfer → surface approval
+                   → FreeSurfer 8.2.0 → surface approval
                    → full fMRIPrep
 ```
 
 High motion and analysis exclusions do not automatically exclude a scan from
-preprocessing. Scan and surface approvals remain separate, committed review gates.
+preprocessing. Scan and [surface approvals](surface-review.md) remain separate,
+committed review gates.
 
 ## Layout
 

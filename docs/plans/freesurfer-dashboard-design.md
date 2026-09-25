@@ -50,8 +50,8 @@ Final output review is a separate state from successful job completion.
 - Keep FreeSurfer reconstruction and fMRIPrep's bundled FreeSurfer utilities
   separately identified in provenance. Reuse compatibility requires a pilot.
 
-Surface-review criteria and FSQC/Freeview procedures remain deferred until Seda's
-guidance. This change supplies the evidence and approval gate only.
+Surface review follows the [current procedure](../surface-review.md): ITK-SNAP
+ribbon inspection, Freeview surface checks, and explicit approval after corrections.
 
 ## File provenance contract
 
@@ -124,7 +124,7 @@ Before expanding beyond sub-s03, demonstrate:
 
 Implementation should land in two parts: standalone FreeSurfer and its handoff
 first, then provenance integration and the separate dashboard. The dashboard can
-display pending stages while reconstruction runs; surface criteria still wait.
+display pending stages while reconstruction runs; approval remains manual.
 
 ## References
 

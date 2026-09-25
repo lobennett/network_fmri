@@ -21,7 +21,8 @@ LEGACY_REVIEW_COLUMNS = tuple(
 )
 REQUIRED_OUTPUTS = (
     "surf/lh.white", "surf/rh.white", "surf/lh.pial", "surf/rh.pial",
-    "stats/aseg.stats", "mri/brain.mgz", "scripts/recon-all.done",
+    "stats/aseg.stats", "mri/brain.mgz", "mri/norm.mgz", "mri/ribbon.mgz",
+    "scripts/recon-all.done",
 )
 
 
