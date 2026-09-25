@@ -118,7 +118,9 @@ def _prepare_boundary(config, stage):
         except RuntimeError as error:
             return {"state": "awaiting-surface-review", "manifest": str(manifest), "reason": str(error)}
     elif stage == "fmriprep":
-        return {"state": "awaiting-output-review"}
+        from network_fmri.registration_qc import prepare_registration_qc
+        output = prepare_registration_qc(config)
+        return {"state": "awaiting-output-review", "registration_qc": str(output)}
     else:
         raise ValueError(f"unknown review boundary: {stage}")
     return None

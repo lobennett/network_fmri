@@ -10,6 +10,7 @@ dependencies = [
     # provisions git-annex; pip cannot ship the binary
     "datalad-installer>=1.1",
     "global-signal-plots[plot]",
+    "fmriprepviz",
     "network-fw2bids",
     "nibabel>=5.3",
     "pyyaml>=6",
@@ -33,6 +34,11 @@ testpaths = ["tests"]
 # headers we do not have. matplotlib pulls it in for the PDF traces.
 constraint-dependencies = [
     "pillow<12",
+    # Registration rendering needs wheels compatible with Sherlock's glibc 2.17.
+    "nilearn==0.12.1",
+    "scipy==1.15.3",
+    "scikit-learn==1.6.1",
+    "pandas==2.2.3",
 ]
 # Only ever runs on Sherlock; without this uv solves splits we cannot hit.
 environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
@@ -42,6 +48,7 @@ override-dependencies = [
 ]
 
 [tool.uv.sources]
+fmriprepviz = { git = "https://github.com/poldrack/fmriprepviz.git", rev = "d684fcba661c382d0d6c4cc0906bc36fbaab38dd" }
 global_signal_plots = { git = "https://github.com/lobennett/global_signal_plots.git", rev = "ee5ad00ad2f51586d0379d2fe5a6a5fa3e2e60d7" }
 network_fw2bids = { git = "https://github.com/lobennett/network_fw2bids.git", rev = "1e86429cfe2f52a45978a4efdace3a407d59b75b" }
 network_events = { git = "https://github.com/lobennett/network_events.git", rev = "9e6690d62fc6dbd7bdbde6a4b800dac18cb29fb4" }

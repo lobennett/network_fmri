@@ -7,7 +7,7 @@ MechaBABS/BABS.
 ```text
 Flywheel -> defaced BIDS -> behavior/events -> validation
   |-> MRIQC -> scan review -> curation ---------|
-  |-> FreeSurfer 8.2.0 -> surface review -------|-> fMRIPrep
+  |-> FreeSurfer 8.2.0 -> surface review -------|-> fMRIPrep -> fmriprepviz
 ```
 
 Copy [workflow.example.toml](config/workflow.example.toml), replace its placeholder
@@ -25,6 +25,11 @@ prepares both reviews. FreeSurfer requires an unambiguous anatomical selection;
 fMRIPrep requires approved scans and [surfaces](docs/surface-review.md). Restart the
 controller after approval or interruption. Failed jobs or changed anatomy require
 intervention. Do not start the full sample until the pilot passes.
+
+After fMRIPrep merges, the controller runs pinned fmriprepviz 0.1.0 on each
+subject's T1w-space BOLD references and approved FreeSurfer ribbon. It saves a
+registration GIF, interactive HTML viewer, logs and provenance in a DataLad
+derivative, then pauses for final output review.
 
 See [Sherlock operations](docs/sherlock.md) for the command sequence and
 [MechaBABS design](docs/mechababs.md) for ownership and review gates. The

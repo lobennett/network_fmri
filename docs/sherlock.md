@@ -56,6 +56,14 @@ Use `--fd_thres: 0.5` in the MRIQC app configuration for new campaigns.
 This is the framewise cutoff; the mean-FD review threshold remains 0.2 mm.
 Neither controller approves scans or surfaces, or retries failed jobs.
 
+After full fMRIPrep merges, `processing run` executes fmriprepviz on the controller's
+Slurm allocation. It extracts only T1w BOLD references, checks that the approved
+ribbon comes from the reconstruction used by fMRIPrep, and saves GIF/HTML viewers
+under `derivatives/fmriprepviz-0.1.0-25.2.5+full+<campaign>/`. Each viewer uses seven
+cuts per orientation and two frames per second. A restart verifies existing output
+checksums and skips rendering; it does not rerun fMRIPrep. The final state is
+`awaiting-output-review`. Run `uv sync --frozen` before restarting an older controller.
+
 The following individual commands remain available for diagnosis. MechaBABS merges
 MRIQC archives into the study. `prepare-review` extracts reports
 and metrics into a separate DataLad derivative and records their source commits.

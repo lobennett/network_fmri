@@ -89,6 +89,11 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
         ))
 
     _collect_decisions(study / "code/network_fmri/scan_decisions.tsv", study, entities, decisions, findings)
+    for path in sorted(study.glob('derivatives/fmriprepviz-*/code/network_fmri/registration-qc.json')):
+        value = _json(path, 'registration QC receipt')
+        for subject in value['inputs']['subjects']:
+            attempts.append(StageAttempt('fmriprepviz', f"sub-{subject['subject']}", 1, value['status']))
+        artifacts.append(Artifact('fmriprepviz', _relative(path, study), kind='receipt'))
     exclusions = study / "code/network_fmri/analysis_exclusions.tsv"
     if not exclusions.exists():
         exclusions = raw / "code/network_fmri/analysis_exclusions.tsv"
