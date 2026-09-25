@@ -16,9 +16,11 @@ import logging
 import multiprocessing
 import os
 import shutil
+from importlib.metadata import version
 from pathlib import Path
 
 from network_fmri.models import StageResult
+from network_fmri import __version__
 from network_fmri.prepare.sidecar import path_for, read
 from network_fmri.stages import StageError
 
@@ -64,6 +66,7 @@ def trim_one(nifti_path: Path) -> str:
             "input_sha256": _sha256(nifti_path),
             "output_sha256": _sha256(paths.temporary_nifti),
             "input_volumes": n_vols, "output_volumes": n_vols - N_DUMMY,
+            "software": {"network_fmri": __version__, "nibabel": version("nibabel")},
         }
         paths.temporary_sidecar.write_text(
             json.dumps(updated_sidecar, indent=2) + "\n", encoding="utf-8"

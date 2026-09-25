@@ -39,6 +39,7 @@ def collect_native_lineage(raw: Path, dataset_id: str) -> tuple[dict, ...]:
         before = file_record(dataset_id, {"path": relative, "sha256": value["input_sha256"]})
         after = file_record(dataset_id, {"path": relative, "sha256": value["output_sha256"]})
         results.append(transformation("trim_dummy", relative, [before], [after],
+                                      software=value.get("software"),
                                       parameters={"discarded_volumes": value["discarded_volumes"]}))
     for path in sorted(raw.glob("code/network_fw2bids/conversion/*.json")):
         value = json.loads(path.read_text())
@@ -52,14 +53,15 @@ def collect_native_lineage(raw: Path, dataset_id: str) -> tuple[dict, ...]:
                            for row in archive['sources']]
                 outputs = [file_record(dataset_id, row) for row in archive['outputs']]
                 results.append(transformation('conversion', 'sub-' + value['subject'], sources, outputs,
-                                              software=archive['software'], parameters={'pfile': archive['pfile']}))
+                                              software={**value.get('software', {}), **archive['software']},
+                                              parameters={'pfile': archive['pfile']}))
                 continue
             source = file_record("flywheel", {"path": "archives/" + archive["archive_sha256"] + ".zip",
                 "sha256": archive["archive_sha256"]}, availability="remote",
                 source_ids={k: archive.get(k) for k in ("acquisition_id", "file_id")})
             outputs = [file_record(dataset_id, row) for row in archive["outputs"]]
             results.append(transformation("conversion", "sub-" + value["subject"], [source], outputs,
-                                          software={"dcm2niix": archive.get("dcm2niix_version")}))
+                                          software={**value.get('software', {}), "dcm2niix": archive.get("dcm2niix_version")}))
     for path in sorted(raw.glob("code/network_fw2bids/defacing/*.json")):
         value = json.loads(path.read_text())
         for row in value.get("images", []):
@@ -75,7 +77,8 @@ def collect_native_lineage(raw: Path, dataset_id: str) -> tuple[dict, ...]:
         inputs = [file_record("external-behavior" if row.get("external") else dataset_id, row)
                   for row in [value["Behavior"], *value["BOLDInputs"], *value["TimingSidecars"]]]
         output = file_record(dataset_id, value["Events"])
-        results.append(transformation("events", value["Events"]["path"], inputs, [output]))
+        results.append(transformation("events", value["Events"]["path"], inputs, [output],
+                                      software=value.get("Software")))
     return tuple(results)
 
 

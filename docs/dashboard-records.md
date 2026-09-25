@@ -32,6 +32,9 @@ producer receipts exist. Trimming stores before/after image hashes in the sideca
 `NetworkFMRITrim` object as part of the existing recoverable file publication.
 Unavailable annex objects remain identifiable without downloading them. Historical
 files without receipts have unrecorded ancestry; filename similarity creates no link.
+Missing images retain SHA256 or MD5 identities from their annex keys so the dashboard
+can verify downloads. New conversion, trimming, and event receipts record software
+versions; older receipts are not assigned today's versions retroactively.
 
 The separate `network_dashboard` project serves this index locally. It keeps
 analysis exclusions independent of preprocessing and surface approval, and shows
@@ -42,3 +45,7 @@ Still pending: full provenance for fieldmap edits, global-signal reports,
 participant ingestion, and archived derivative members; real-study acceptance on
 Sherlock. Use the [surface review procedure](surface-review.md) for ribbon inspection,
 surface checks, and correction provenance before approving fMRIPrep.
+
+Later: add task-level event timelines and design-matrix views tied to the exact
+events file, model specification, and analysis exclusions. Reconstruction and
+preprocessing review take priority.

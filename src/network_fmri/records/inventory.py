@@ -10,6 +10,7 @@ import subprocess
 from network_fmri.records.lineage import artifact_id
 
 _ANNEX = re.compile(r"^SHA256E?-s\d+--([a-f0-9]{64})(?:\.|$)")
+_ANNEX_MD5 = re.compile(r"^MD5E?-s\d+--([a-f0-9]{32})(?:\.|$)")
 _EXCLUDED = {".git", ".datalad", ".babs", ".mechababs", "containers"}
 
 
@@ -43,6 +44,8 @@ def inventory_dataset(root: Path, identity: str) -> dict:
             elif path.is_file():
                 with path.open("rb") as stream:
                     content = "sha256:" + hashlib.file_digest(stream, "sha256").hexdigest()
+            elif match := _ANNEX_MD5.match(key):
+                content = "md5:" + match.group(1)
             else:
                 content = "gitblob:" + actual
             observation = commit if actual == blob else None
