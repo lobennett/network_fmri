@@ -16,6 +16,7 @@ bids_app_args:
   -w: "$BABS_TMPDIR"
   --n_cpus: "4"
   --mem_gb: "16"
+  --fd_thres: "0.5"
   -vv: ""
   --no-sub: ""
 

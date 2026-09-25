@@ -36,6 +36,7 @@ def test_mriqc_config_pins_version_image_and_resources():
     assert config["zip_foldernames"] == {"MRIQC-24.0.2": "24-0-2"}
     assert config["bids_app_args"]["--n_cpus"] == "4"
     assert config["bids_app_args"]["--mem_gb"] == "16"
+    assert config["bids_app_args"]["--fd_thres"] == "0.5"
 
 
 def test_anatomical_config_produces_reusable_freesurfer_output():
