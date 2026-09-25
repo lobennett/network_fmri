@@ -32,8 +32,18 @@ def test_history_records_transitions_for_same_job(tmp_path):
         record_status(config, status, runner=lambda *args, **kwargs: None)
     attempts, lineage = read_history(tmp_path)
     assert len(attempts) == 1
+    assert attempts[0].stage == "freesurfer"
     assert attempts[0].state == "completed"
+    assert lineage["attempts"][0]["application"] == "FreeSurfer-8.2.0"
     assert [o["state"] for o in lineage["attempts"][0]["observations"]] == ["pending", "running", "completed"]
+
+    # Older history used the generic pipeline stage even for standalone FS8.
+    path = tmp_path / "code/network_fmri/processing-history/pilot.json"
+    saved = json.loads(path.read_text())
+    for item in saved["attempts"].values():
+        item["latest"]["stage"] = "anatomical"
+    path.write_text(json.dumps(saved))
+    assert read_history(tmp_path)[0][0].stage == "freesurfer"
 
 
 def test_correction_campaign_preserves_original_completed_attempt(tmp_path):

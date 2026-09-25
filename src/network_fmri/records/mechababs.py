@@ -8,6 +8,13 @@ from network_fmri.processing import ProcessingManager
 from network_fmri.records.models import StageAttempt
 
 
+def stage_name(stage):
+    """Distinguish standalone FreeSurfer from the earlier fMRIPrep anatomy app."""
+    if stage.stage == "anatomical" and stage.application.startswith("FreeSurfer-8."):
+        return "freesurfer"
+    return stage.stage
+
+
 def collect_attempts(manager: ProcessingManager) -> tuple[StageAttempt, ...]:
     status = manager.status()
     stage_by_application = {stage.application: stage for stage in status.stages}
@@ -17,7 +24,7 @@ def collect_attempts(manager: ProcessingManager) -> tuple[StageAttempt, ...]:
     for job in status.jobs:
         application = job.get("app", "")
         stage = stage_by_application.get(application)
-        name = stage.stage if stage else application
+        name = stage_name(stage) if stage else application
         scope = _scope(job)
         key = (name, scope)
         numbers[key] += 1
@@ -32,7 +39,7 @@ def collect_attempts(manager: ProcessingManager) -> tuple[StageAttempt, ...]:
         ))
     for stage in status.stages:
         if stage.application not in applications_with_jobs:
-            attempts.append(StageAttempt(stage.stage, "dataset", 1, stage.state))
+            attempts.append(StageAttempt(stage_name(stage), "dataset", 1, stage.state))
     return tuple(attempts)
 
 

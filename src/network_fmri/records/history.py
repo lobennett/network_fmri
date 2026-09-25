@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 from types import SimpleNamespace
 
-from network_fmri.records.mechababs import collect_attempts
+from network_fmri.records.mechababs import collect_attempts, stage_name
 from network_fmri.records.models import StageAttempt
 
 
@@ -18,8 +18,8 @@ def record_status(config, status, *, runner=subprocess.run):
     if path.is_symlink():
         raise RuntimeError("processing history must not be a symlink")
     value = _read(path) if path.exists() else {"schema_version": 1, "attempts": {}}
-    applications = {stage.stage: stage.application for stage in status.stages}
-    projects = {stage.stage: stage.project for stage in status.stages}
+    applications = {stage_name(stage): stage.application for stage in status.stages}
+    projects = {stage_name(stage): stage.project for stage in status.stages}
     changed = False
     for attempt in collect_attempts(SimpleNamespace(status=lambda: status)):
         application = applications.get(attempt.stage, attempt.stage)
@@ -34,6 +34,7 @@ def record_status(config, status, *, runner=subprocess.run):
             continue
         item = previous or {"id": key, "stage": attempt.stage, "scope": attempt.scope,
             "campaign": campaign, "application": application, "observations": []}
+        item["stage"] = attempt.stage
         item["latest"] = payload
         item["status"] = attempt.state
         item["observations"].append({**payload, "observed_at": datetime.now(timezone.utc).isoformat()})
@@ -62,7 +63,10 @@ def read_history(study: Path):
     attempts, evidence = [], []
     for path in sorted((study / "code/network_fmri/processing-history").glob("*.json")):
         for item in _read(path)["attempts"].values():
-            attempts.append(StageAttempt(attempt=1, **item["latest"]))
+            name = stage_name(SimpleNamespace(stage=item["latest"]["stage"],
+                                              application=item.get("application", "")))
+            item["stage"] = name
+            attempts.append(StageAttempt(attempt=1, **(item["latest"] | {"stage": name})))
             evidence.append(item)
     attempts.sort(key=lambda row: (row.stage, row.scope, row.job_id or ""))
     evidence.sort(key=lambda row: (row["stage"], row["scope"], row["latest"].get("job_id") or ""))

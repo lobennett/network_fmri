@@ -47,3 +47,10 @@ def test_records_cells_without_jobs_including_intervention_state():
     assert [(item.stage, item.state) for item in attempts] == [
         ("mriqc", "planned"), ("anatomical", "intervention-required"),
     ]
+
+
+def test_standalone_freesurfer_is_not_labeled_as_legacy_anatomy():
+    manager = Manager(ProcessingStatus((
+        ProcessingStage("anatomical", "FreeSurfer-8.2.0", "blocked"),
+    ), ()))
+    assert collect_attempts(manager)[0].stage == "freesurfer"
