@@ -14,7 +14,7 @@ from network_fmri.records.collect import RecordSet
 SCHEMA_VERSION = 2
 
 
-def build_database(output: Path, study: Path, records: RecordSet) -> Path:
+def build_database(output: Path, study: Path, records: RecordSet, *, context=None) -> Path:
     output = Path(output).resolve()
     study = Path(study).resolve()
     if output == study or output.is_relative_to(study):
@@ -30,6 +30,7 @@ def build_database(output: Path, study: Path, records: RecordSet) -> Path:
             db.execute("PRAGMA foreign_keys = ON")
             db.executescript(Path(__file__).with_name("schema.sql").read_text())
             _insert(db, records)
+            db.executemany('INSERT INTO metadata VALUES (?, ?)', sorted((context or {}).items()))
             if db.execute("PRAGMA foreign_key_check").fetchall():
                 raise RuntimeError("dashboard index has invalid foreign keys")
             if db.execute("PRAGMA integrity_check").fetchone() != ("ok",):

@@ -89,10 +89,25 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
         ))
 
     _collect_decisions(study / "code/network_fmri/scan_decisions.tsv", study, entities, decisions, findings)
+    for path in sorted(study.glob('derivatives/fMRIPrep-*+review/code/network_fmri/fmriprep-evidence.json')):
+        value = _json(path, 'fMRIPrep output checks')
+        for result in value['subjects']:
+            entity = Entity('fmriprep', subject=result['subject'])
+            entities[entity.key] = entity
+            findings.append(Finding(entity.key, 'fmriprep-output-check',
+                'error' if result['issues'] else 'information', _relative(path, study),
+                json.dumps({'issues': result['issues'], 'runs': result['runs'],
+                            'source_commit': value.get('inputs', {}).get('source_commit')}, sort_keys=True)))
+        artifacts.append(Artifact('fmriprep-evidence', _relative(path, study), kind='receipt'))
     for path in sorted(study.glob('derivatives/fmriprepviz-*/code/network_fmri/registration-qc.json')):
         value = _json(path, 'registration QC receipt')
         for subject in value['inputs']['subjects']:
             attempts.append(StageAttempt('fmriprepviz', f"sub-{subject['subject']}", 1, value['status']))
+            entity = Entity('fmriprep', subject=subject['subject'])
+            entities[entity.key] = entity
+            findings.append(Finding(entity.key, 'registration-output', 'information', _relative(path, study),
+                json.dumps({'source_commit': value['inputs']['source_commit'],
+                            'source_project': value['inputs']['source_project']}, sort_keys=True)))
         artifacts.append(Artifact('fmriprepviz', _relative(path, study), kind='receipt'))
     exclusions = study / "code/network_fmri/analysis_exclusions.tsv"
     if not exclusions.exists():

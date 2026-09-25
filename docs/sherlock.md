@@ -64,6 +64,14 @@ cuts per orientation and two frames per second. A restart verifies existing outp
 checksums and skips rendering; it does not rerun fMRIPrep. The final state is
 `awaiting-output-review`. Run `uv sync --frozen` before restarting an older controller.
 
+First, it extracts HTML reports, figures and confounds to the fMRIPrep `+review`
+derivative. `code/network_fmri/fmriprep-evidence.json` records per-run output
+lengths/TRs, missing outputs and archive/input commits. It reads image headers,
+not voxel arrays, and obtains missing raw annex content when needed. Exit code 2
+and `output-checks-failed` mean these checks failed; reports remain available and
+registration rendering waits. A restart verifies existing evidence without rerunning
+fMRIPrep. These checks do not validate a first-level design or approve final outputs.
+
 The following individual commands remain available for diagnosis. MechaBABS merges
 MRIQC archives into the study. `prepare-review` extracts reports
 and metrics into a separate DataLad derivative and records their source commits.

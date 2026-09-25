@@ -193,3 +193,14 @@ def test_flywheel_inventory_uses_capture_time_not_directory_order(tmp_path, newe
     assert len(findings) == 1
     assert json.loads(findings[0].evidence_json)['decision'] == 'selected'
     assert findings[0].evidence_path == (Path(newest_root) / 'code/network_fw2bids/selection/sub-s01.json').as_posix()
+
+
+def test_fmriprep_output_mismatches_remain_subject_findings(tmp_path):
+    study=fixture_study(tmp_path)
+    path=study/'derivatives/fMRIPrep-25.2.5+full+pilot+review/code/network_fmri/fmriprep-evidence.json'
+    write(path,json.dumps({'subjects':[{'subject':'s01','issues':['confound rows mismatch'],'runs':[{'run':'rest','outputs':[]}]}]}))
+    records=collect_study(study,runner=GitRunner())
+    finding=next(f for f in records.findings if f.finding_type=='fmriprep-output-check')
+    assert finding.severity=='error'
+    assert 's01' in finding.entity_key
+    assert json.loads(finding.evidence_json)['issues']==['confound rows mismatch']

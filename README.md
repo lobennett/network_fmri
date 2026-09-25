@@ -31,6 +31,10 @@ subject's T1w-space BOLD references and approved FreeSurfer ribbon. It saves a
 registration GIF, interactive HTML viewer, logs and provenance in a DataLad
 derivative, then pauses for final output review.
 
+Before rendering, it extracts the fMRIPrep reports and checks BOLD/CIFTI lengths,
+confound rows and TRs against the trimmed inputs. Mismatches stop the handoff;
+passing checks do not replace visual review.
+
 See [Sherlock operations](docs/sherlock.md) for the command sequence and
 [MechaBABS design](docs/mechababs.md) for ownership and review gates. The
 [dashboard records](docs/dashboard-records.md) reference describes the disposable

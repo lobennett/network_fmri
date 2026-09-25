@@ -20,6 +20,10 @@ its timestamp. The dashboard marks snapshots older than 15 minutes as stale.
 | Artifact versions | Dataset ID, relative path, and content hash |
 | Lineage | Recorded input/output links and processing details |
 
+The index stores current campaign paths, commits, and job attempts separately from
+history. The completion checklist binds fMRIPrep reports and length/TR checks to
+that campaign; an older successful job cannot satisfy a new run.
+
 The controller saves observed scheduler transitions under
 `code/network_fmri/processing-history/` using DataLad. Rebuilding SQLite preserves
 this history. Transitions before observation began remain unknown.

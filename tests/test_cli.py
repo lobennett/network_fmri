@@ -317,3 +317,13 @@ def test_generate_decisions_accepts_explicit_approval_dataset(tmp_path):
     parsed = cli.get_parser().parse_args(['decisions', 'generate', str(tmp_path / 'raw'),
                                     '--approval-dataset', str(tmp_path / 'study')])
     assert parsed.approval_dataset == tmp_path / 'study'
+
+
+@pytest.mark.parametrize('state,code',[('awaiting-output-review',0),('output-checks-failed',2)])
+def test_processing_output_failures_have_nonzero_exit(monkeypatch,capsys,state,code):
+    from network_fmri import handoff
+    monkeypatch.setattr(cli.WorkflowConfig,'load',lambda path:object())
+    monkeypatch.setattr(cli,'ProcessingManager',lambda value:None)
+    monkeypatch.setattr(handoff,'run_processing',lambda *a,**k:{'state':state})
+    assert cli.main(['processing','run','workflow.toml'])==code
+    assert state in capsys.readouterr().out

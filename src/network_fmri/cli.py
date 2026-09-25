@@ -198,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
 
             result = run_processing(config, interval=parsed.poll_seconds)
             print(json.dumps(result, sort_keys=True))
-            return 0
+            return 2 if result['state'] == 'output-checks-failed' else 0
         elif parsed.processing_command == "prepare-review":
             result = prepare_mriqc_review(config)
             for key in ("evidence_dir", "source_dataset", "source_commit", "input_commit", "archives", "created"):

@@ -119,14 +119,24 @@ def test_cannot_run_before_fmriprep_merge(project):
     assert not runner.calls
 
 
-def test_final_boundary_generates_registration_viewer_before_review():
-    # Use the real boundary dispatcher; only replace the expensive renderer.
-    from network_fmri import handoff, registration_qc
+@pytest.mark.parametrize('status,want', [('success','awaiting-output-review'),('issues','output-checks-failed')])
+def test_final_boundary_extracts_and_checks_before_manual_review(tmp_path, status, want):
+    from network_fmri import handoff, registration_qc, fmriprep_evidence
     from unittest.mock import patch
-    with patch.object(registration_qc, 'prepare_registration_qc', return_value=Path('/study/derivatives/qc')) as render:
-        result = handoff._prepare_boundary(SimpleNamespace(mechababs=SimpleNamespace(study_dir=Path('/study'))), 'fmriprep')
-    render.assert_called_once()
-    assert result == {'state': 'awaiting-output-review', 'registration_qc': '/study/derivatives/qc'}
+    evidence=tmp_path/'reports'
+    receipt=evidence/fmriprep_evidence.RECEIPT
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text(json.dumps({'status':status}))
+    with patch.object(registration_qc, 'prepare_registration_qc', return_value=Path('/study/derivatives/qc')) as render, \
+         patch.object(fmriprep_evidence, 'prepare_fmriprep_review', return_value=evidence):
+        result=handoff._prepare_boundary(SimpleNamespace(mechababs=SimpleNamespace(study_dir=Path('/study'))), 'fmriprep')
+    assert result['state']==want
+    assert result['fmriprep_evidence']==str(evidence)
+    if status == 'success':
+        assert result['registration_qc']=='/study/derivatives/qc'
+    else:
+        render.assert_not_called()
+        assert 'registration_qc' not in result
 
 
 def test_render_failure_does_not_publish_success(project):

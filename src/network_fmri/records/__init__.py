@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import sqlite3
+import json
+import subprocess
+from types import SimpleNamespace
 from collections import defaultdict
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from network_fmri.config import WorkflowConfig
 from network_fmri.processing import ProcessingManager
 from network_fmri.records.collect import collect_study
 from network_fmri.records.database import SCHEMA_VERSION, build_database
-from network_fmri.records.mechababs import collect_attempts
+from network_fmri.records.mechababs import collect_attempts, stage_name
 from network_fmri.records.inventory import inventory_dataset, study_datasets
 from network_fmri.records.models import Artifact
 from network_fmri.records.history import read_history
@@ -33,7 +36,13 @@ def build_index(config: WorkflowConfig, output: Path) -> dict[str, object]:
     locations = tuple(Artifact("dataset", root.relative_to(config.mechababs.study_dir).as_posix(),
                                kind="dataset:" + identity) for identity, root in datasets)
     records = replace(records, lineage=records.lineage + inventories + surface_lineage, artifacts=records.artifacts + locations)
-    live_attempts = collect_attempts(ProcessingManager(config))
+    current = ProcessingManager(config).status()
+    live_attempts = collect_attempts(SimpleNamespace(status=lambda: current))
+    active_projects = {}
+    for stage in current.stages:
+        root = config.mechababs.study_dir / stage.project
+        commit = subprocess.check_output(('git', 'rev-parse', 'HEAD'), cwd=root, text=True).strip() if (root / '.git').exists() else None
+        active_projects[stage_name(stage)] = {'path': stage.project, 'commit': commit}
     history, history_lineage = read_history(config.mechababs.study_dir)
     # Live status supersedes the last observation of the same scheduler job.
     current_keys = {(row.stage, row.scope, row.job_id) for row in live_attempts}
@@ -43,7 +52,9 @@ def build_index(config: WorkflowConfig, output: Path) -> dict[str, object]:
         stage_attempts=_renumber_attempts(records.stage_attempts + history + live_attempts),
         lineage=records.lineage + (history_lineage,),
     )
-    database = build_database(output, config.mechababs.study_dir, records)
+    database = build_database(output, config.mechababs.study_dir, records,
+                              context={'active_projects': json.dumps(active_projects, sort_keys=True),
+                                       'active_attempts': json.dumps([asdict(row) for row in live_attempts], sort_keys=True)})
     tables = ("entities", "stage_attempts", "findings", "decisions", "artifacts", "artifact_versions", "lineage_links")
     with sqlite3.connect(database) as connection:
         counts = {table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
