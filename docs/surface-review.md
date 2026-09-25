@@ -91,9 +91,45 @@ invalidate it. fMRIPrep must receive that approved reconstruction with
 Use notes such as `ITK-SNAP ribbon: pass; Freeview white/pial: pass; edits: none`,
 or reference the correction record and repeat inspection when edits were made.
 
-The existing controller extracts evidence and enforces approval. Manual-correction
-job submission and re-import are not automated yet; a subject needing edits stays
-blocked until its corrected campaign result is registered and reviewed.
+## Submit corrections
+
+The FreeSurfer image must include the current `freesurfer_app.py` adapter
+(`--corrections-dir` in its help). Rebuild/register the image from
+`containers/freesurfer-8.2.0.def` when upgrading an older adapter; retain the same
+FreeSurfer installer checksum. The worker checks the original build and T1/T2 hashes.
+
+On Sherlock, stop the processing controller, save review notes, and create an edit
+copy outside the study. This immediately blocks fMRIPrep, including any old approval:
+
+```bash
+network-fmri surfaces checkout workflow.toml --pilot-subject s03 \
+  --subject s03 --kind wm --reviewer LB --reason "Describe the observed defect" \
+  --output /path/to/surface-edits
+```
+
+Edit `sub-s03/mri/wm.mgz` in that copy. Use `--kind pial` for
+`brain.finalsurfs.manedit.mgz`, or `wm-pial` for both. Keep the image grid unchanged.
+If editing on another computer, return the edited inputs to this work directory.
+
+```bash
+network-fmri surfaces submit-corrections workflow.toml --pilot-subject s03
+network-fmri processing run workflow.toml --pilot-subject s03
+```
+
+Submission seals the inputs in DataLad and creates an upstream campaign named
+`<campaign>-editN`, using the committed parent settings. The controller submits,
+monitors, merges, and extracts its outputs, then archives the previous review and
+stops for fresh approval. Subjects without edits are copied without rerunning
+`recon-all`. fMRIPrep consumes this campaign's approved surfaces.
+
+Omit `--pilot-subject` for the full sample. Multiple subjects may follow `--subject`
+when they need the same correction type. No mesh, ribbon, or unrelated file edits
+are accepted. Broader reconstruction problems still require a diagnosed restart.
+Cancel an unsubmitted round with `surfaces cancel-corrections`; its work copy is
+preserved. Retry interrupted initialization with the same `submit-corrections`
+command: it verifies the sealed inputs/configs and asks upstream to restore its
+environment. It never falls back to old approval. A correction round cannot start
+after fMRIPrep has been initialized.
 
 References: [FreeSurfer 8.2 recon-all](https://github.com/freesurfer/freesurfer/blob/v8.2.0/scripts/recon-all),
 [FreeSurfer editing guide](https://surfer.nmr.mgh.harvard.edu/fswiki/FreeviewGuide/FreeviewWorkingWithData/FreeviewEditingaRecon),

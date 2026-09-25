@@ -89,6 +89,16 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
         exclusions = raw / "code/network_fmri/analysis_exclusions.tsv"
     _collect_exclusions(exclusions, study, entities, decisions)
     _collect_surfaces(study / "code/network_fmri/surface_review.tsv", study, entities, decisions)
+    correction = study / "code/network_fmri/surface-correction.json"
+    if correction.exists():
+        value = _json(correction, "surface correction")
+        evidence = {key: value.get(key) for key in ("phase", "campaign", "revision", "kind", "reason", "reviewer")}
+        for subject in value.get("edited_subjects", []):
+            entity = Entity("anatomical", subject=subject, suffix="surface")
+            entities[entity.key] = entity
+            findings.append(Finding(entity.key, "surface-correction", "information",
+                                    _relative(correction, study), json.dumps(evidence, sort_keys=True)))
+        artifacts.append(Artifact("anatomical", _relative(correction, study), kind="receipt"))
 
     for path in sorted(raw.glob("**/*_desc-truncation.json")):
         value = _json(path, "behavior truncation")

@@ -34,3 +34,14 @@ def test_history_records_transitions_for_same_job(tmp_path):
     assert len(attempts) == 1
     assert attempts[0].state == "completed"
     assert [o["state"] for o in lineage["attempts"][0]["observations"]] == ["pending", "running", "completed"]
+
+
+def test_correction_campaign_preserves_original_completed_attempt(tmp_path):
+    from network_fmri.records.history import record_status, read_history
+    config = SimpleNamespace(mechababs=SimpleNamespace(study_dir=tmp_path, campaign="pilot"))
+    for campaign in ("pilot", "pilot-edit1"):
+        stage = ProcessingStage("anatomical", "FreeSurfer-8.2.0", "complete",
+                                f"derivatives/FreeSurfer-8.2.0+{campaign}")
+        record_status(config, ProcessingStatus((stage,), ()), runner=lambda *a, **k: None)
+    _, lineage = read_history(tmp_path)
+    assert {item["campaign"] for item in lineage["attempts"]} == {"pilot", "pilot-edit1"}

@@ -75,7 +75,6 @@ def _prepare_boundary(config, stage):
     from network_fmri.curation import apply_curation
     from network_fmri.milestones import receipt_path
     from network_fmri.processing import _require_committed_milestone
-    from network_fmri.qa.freesurfer import generate_surface_review
     from network_fmri.surface_evidence import prepare_surface_evidence
 
     study = config.mechababs.study_dir
@@ -95,10 +94,14 @@ def _prepare_boundary(config, stage):
         result = apply_curation(config.paths.bids_dir, manifest, config.validator.image)
         save_stage_result(config.paths.bids_dir, result, config=config)
     elif stage == "anatomical":
+        from network_fmri.surface_corrections import correction_state, refresh_surface_review
+        state = correction_state(config)
+        if state and state["phase"] != "ready":
+            return {"state": "awaiting-surface-correction", "workspace": state["workspace"]}
         evidence = prepare_surface_evidence(config)
         manifest = study / "code/network_fmri/surface_review.tsv"
-        if not manifest.exists():
-            result = generate_surface_review(config, evidence)
+        result = refresh_surface_review(config, evidence, state)
+        if result is not None:
             save_stage_result(study, result, config=config)
         try:
             pipeline.require_committed_surface_approval(config)

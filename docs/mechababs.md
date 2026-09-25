@@ -13,6 +13,8 @@ Raw BIDS validation → MRIQC → scan approval → curation + validation
 High motion and analysis exclusions do not automatically exclude a scan from
 preprocessing. Scan and [surface approvals](surface-review.md) remain separate,
 committed review gates.
+When surfaces need edits, the [correction workflow](surface-review.md#submit-corrections)
+creates a separate upstream campaign and requires fresh approval before fMRIPrep.
 
 ## Layout
 

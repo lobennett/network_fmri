@@ -54,6 +54,11 @@ def prepare_surface_evidence(config, *, runner=subprocess.run) -> Path:
     raw_commit = _gitlink(source, commit, "sourcedata/raw", runner=runner)
     if raw_commit != _git(config.paths.bids_dir, "rev-parse", "HEAD", runner=runner):
         raise StageError("FreeSurfer input differs from current curated BIDS")
+    from network_fmri.surface_corrections import correction_state
+    correction = correction_state(config, runner=runner)
+    if correction and correction["phase"] == "ready":
+        if _gitlink(source, commit, "sourcedata/FreeSurferEdits", runner=runner) != correction["input_commit"]:
+            raise StageError("corrected reconstruction does not use the sealed edit inputs")
     tracked = _git(source, "ls-tree", "-r", "--name-only", commit, runner=runner).splitlines()
     archives = []
     for subject in config.subjects:

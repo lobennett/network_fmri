@@ -12,6 +12,7 @@ dependencies = [
     "global-signal-plots[plot]",
     "network-fw2bids",
     "nibabel>=5.3",
+    "pyyaml>=6",
     # Owns the behavioural half: events.tsv and truncation QC.
     "network-events",
     # Owns scan-decision evidence and approval validation.
@@ -22,7 +23,7 @@ dependencies = [
 network-fmri = "network_fmri.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "pyyaml>=6"]
+dev = ["pytest>=8"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -44,14 +44,25 @@ class ProcessingManager:
         self.campaign = Campaign(self.config, runner=runner)
 
     def plan(self) -> tuple[ProcessingStage, ...]:
-        rows = read_table(self.campaign.run("status").stdout)
-        source = f"sourcedata/{self.config.raw_slot}"
+        from network_fmri.surface_corrections import correction_state, campaign_config
+        state = correction_state(self.workflow, runner=self.runner)
+        if state and state["phase"] == "initializing":
+            raise RuntimeError("correction campaign initialization needs recovery")
+        original = self._plan(self.config)
+        selected = campaign_config(self.workflow, state) if state else self.config
+        if selected.campaign == self.config.campaign:
+            return original
+        return tuple(s for s in original if s.stage == "mriqc") + self._plan(selected)
+
+    def _plan(self, config) -> tuple[ProcessingStage, ...]:
+        rows = read_table(Campaign(config, runner=self.runner).run("status").stdout)
+        source = f"sourcedata/{config.raw_slot}"
         by_app = {row["app"]: row for row in rows if row["source_dataset"] == source}
-        if set(by_app) != {app.file.stem for app in self.config.apps}:
+        if set(by_app) != {app.file.stem for app in config.apps}:
             raise RuntimeError("campaign does not contain the configured source and apps")
         stages = []
         predecessors_complete = True
-        for app in self.config.apps:
+        for app in config.apps:
             row = by_app[app.file.stem]
             state = row["state"]
             if row.get("jobs") == "babs status unavailable":
@@ -64,16 +75,25 @@ class ProcessingManager:
                 state = "ready" if predecessors_complete else "blocked"
             elif state.startswith("waiting"):
                 state = "blocked"
-            source_suffix = "" if self.config.raw_slot in {"raw", "rawbids"} else f"+{self.config.raw_slot}"
-            project = f"derivatives/{app.file.stem}{source_suffix}+{self.config.campaign}"
+            source_suffix = "" if config.raw_slot in {"raw", "rawbids"} else f"+{config.raw_slot}"
+            project = f"derivatives/{app.file.stem}{source_suffix}+{config.campaign}"
             stages.append(ProcessingStage(app.name, app.file.stem, state, project))
             predecessors_complete = predecessors_complete and state == "complete"
         return tuple(stages)
 
     def status(self) -> ProcessingStatus:
+        from network_fmri.surface_corrections import correction_state, campaign_config
         stages = self.plan()
-        output = self.campaign.run("jobs").stdout
-        jobs = read_table(output) if output.strip() else ()
+        state = correction_state(self.workflow, runner=self.runner)
+        selected = campaign_config(self.workflow, state) if state else self.config
+        configs = [self.config] if selected.campaign == self.config.campaign else [self.config, selected]
+        jobs = []
+        for config in configs:
+            output = Campaign(config, runner=self.runner).run("jobs").stdout
+            for job in read_table(output) if output.strip() else ():
+                if len(configs) > 1 and config == self.config and job["app"] != self.config.apps[0].file.stem:
+                    continue
+                jobs.append(job)
         source = f"sourcedata/{self.config.raw_slot}"
         return ProcessingStatus(stages, tuple(job for job in jobs if job["source_dataset"] == source))
 
@@ -92,7 +112,10 @@ class ProcessingManager:
             raise RuntimeError(f"{stage} is {selected.state} and cannot advance")
         require_stage_gate(self.workflow, stage, self.runner)
         self._sync_raw_subdataset()
-        self.campaign.run("iterate", "--app", selected.application, "--batch", "1")
+        from network_fmri.surface_corrections import correction_state, campaign_config
+        state = correction_state(self.workflow, runner=self.runner)
+        config = campaign_config(self.workflow, state) if state and stage != "mriqc" else self.config
+        Campaign(config, runner=self.runner).run("iterate", "--app", selected.application, "--batch", "1")
         return AdvanceResult(stage, True, selected.state)
 
     def _sync_raw_subdataset(self) -> None:
@@ -157,6 +180,10 @@ def require_stage_gate(config: WorkflowConfig, stage: str, runner=subprocess.run
         _require_committed_milestone(config.paths.bids_dir, "bids-curated-validated", runner)
         return
     if stage == "fmriprep":
+        from network_fmri.surface_corrections import correction_state
+        state = correction_state(config, runner=runner)
+        if state and state["phase"] != "ready":
+            raise RuntimeError("surface correction is pending; old approval cannot launch fMRIPrep")
         pipeline.require_committed_surface_approval(config, runner)
         if any(app.name == "anatomical" and app.file.stem == "FreeSurfer-8.2.0"
                for app in config.mechababs.apps):

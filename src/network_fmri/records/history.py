@@ -19,10 +19,13 @@ def record_status(config, status, *, runner=subprocess.run):
         raise RuntimeError("processing history must not be a symlink")
     value = _read(path) if path.exists() else {"schema_version": 1, "attempts": {}}
     applications = {stage.stage: stage.application for stage in status.stages}
+    projects = {stage.stage: stage.project for stage in status.stages}
     changed = False
     for attempt in collect_attempts(SimpleNamespace(status=lambda: status)):
         application = applications.get(attempt.stage, attempt.stage)
-        key = hashlib.sha256(json.dumps([config.mechababs.campaign, application,
+        project = projects.get(attempt.stage, "")
+        campaign = project.rsplit("+", 1)[-1] if project else config.mechababs.campaign
+        key = hashlib.sha256(json.dumps([campaign, application,
             attempt.scope, attempt.job_id], separators=(",", ":")).encode()).hexdigest()
         payload = asdict(attempt)
         payload.pop("attempt")
@@ -30,7 +33,7 @@ def record_status(config, status, *, runner=subprocess.run):
         if previous and previous["latest"] == payload:
             continue
         item = previous or {"id": key, "stage": attempt.stage, "scope": attempt.scope,
-            "campaign": config.mechababs.campaign, "application": application, "observations": []}
+            "campaign": campaign, "application": application, "observations": []}
         item["latest"] = payload
         item["status"] = attempt.state
         item["observations"].append({**payload, "observed_at": datetime.now(timezone.utc).isoformat()})

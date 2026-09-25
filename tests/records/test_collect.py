@@ -93,6 +93,19 @@ def test_collects_durable_evidence_without_data_content(tmp_path):
     assert all("nonmonotonic onsets" not in repr(item) for item in records.artifacts)
 
 
+def test_surface_corrections_record_reason_without_exporting_workspace(tmp_path):
+    study = fixture_study(tmp_path)
+    write(study / "code/network_fmri/surface-correction.json", json.dumps({
+        "phase": "editing", "campaign": "pilot-edit1", "edited_subjects": ["s01"],
+        "kind": "wm", "reason": "White matter hole", "reviewer": "LB",
+        "workspace": "/private/workspace", "revision": 1,
+    }))
+    records = collect_study(study, runner=GitRunner())
+    finding = next(f for f in records.findings if f.finding_type == "surface-correction")
+    assert json.loads(finding.evidence_json)["reason"] == "White matter hole"
+    assert "private/workspace" not in repr(records)
+
+
 def test_malformed_source_names_the_source_and_stops(tmp_path):
     study = fixture_study(tmp_path)
     bad = study / "code/network_fmri/scan_decisions.tsv"

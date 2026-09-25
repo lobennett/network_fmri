@@ -85,12 +85,18 @@ def get_parser() -> argparse.ArgumentParser:
             decision.add_argument("--manifest", type=Path)
     surfaces = commands.add_parser("surfaces", help="validate reviewed FreeSurfer surfaces")
     surface_commands = surfaces.add_subparsers(dest="surface_command", required=True)
-    for name in ("generate", "validate"):
+    for name in ("generate", "validate", "checkout", "submit-corrections", "cancel-corrections"):
         surface = surface_commands.add_parser(name)
         surface.add_argument("config", type=Path)
         surface.add_argument("--pilot-subject")
         if name == "generate":
             surface.add_argument("--anatomical-derivative", required=True, type=Path)
+        elif name == "checkout":
+            surface.add_argument("--output", required=True, type=Path)
+            surface.add_argument("--subject", required=True, nargs="+")
+            surface.add_argument("--kind", choices=("wm", "pial", "wm-pial"), required=True)
+            surface.add_argument("--reviewer", required=True)
+            surface.add_argument("--reason", required=True)
     curate = commands.add_parser("curate", help="apply approved drop decisions")
     curate.add_argument("bids_dir", type=Path)
     curate.add_argument("--manifest", type=Path)
@@ -226,6 +232,17 @@ def main(argv: list[str] | None = None) -> int:
         config = WorkflowConfig.load(parsed.config)
         if parsed.pilot_subject:
             config = pipeline.pilot_config(config, parsed.pilot_subject)
+        if parsed.surface_command in {"checkout", "submit-corrections", "cancel-corrections"}:
+            from network_fmri.surface_corrections import checkout_corrections, submit_corrections, cancel_corrections
+            if parsed.surface_command == "checkout":
+                result = checkout_corrections(config, parsed.output, parsed.subject, parsed.kind,
+                                              parsed.reviewer, parsed.reason)
+            elif parsed.surface_command == "cancel-corrections":
+                result = cancel_corrections(config)
+            else:
+                result = submit_corrections(config)
+            print(json.dumps(result, default=str, indent=2))
+            return 0
         result = (
             generate_surface_review(config, parsed.anatomical_derivative)
             if parsed.surface_command == "generate"
