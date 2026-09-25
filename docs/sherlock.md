@@ -37,6 +37,9 @@ runs MRIQC and standalone FreeSurfer independently, merges outputs, and prepares
 both reviews. It finishes other running work before pausing for approval. Restart it after a controller timeout or
 interruption. Only one controller can operate on the study at a time.
 
+The FreeSurfer profile binds job-specific temporary storage to both `/tmp` and
+`/scratch`; FreeSurfer 8.2's `mri_vsinus_seg` writes to `/scratch` directly.
+
 ```bash
 uv run --frozen network-fmri study init workflow.toml --pilot-subject s03
 uv run --frozen network-fmri processing plan workflow.toml --pilot-subject s03

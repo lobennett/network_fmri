@@ -19,6 +19,8 @@ singularity_args:
   - --containall
   - --pwd "${PWD}"
   - -B $JOB_TMP:/tmp
+  # FreeSurfer 8.2's mri_vsinus_seg creates temporary files here.
+  - -B $JOB_TMP:/scratch
 
 cluster_resources:
   interpreting_shell: "/bin/bash"
