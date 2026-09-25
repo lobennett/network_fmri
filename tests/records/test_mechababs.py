@@ -29,8 +29,8 @@ def test_collects_reported_jobs_and_scope():
     attempts = collect_attempts(manager)
 
     assert manager.calls == 1
-    assert [item.attempt for item in attempts] == [1, 2]
-    assert [item.state for item in attempts] == ["failed", "completed"]
+    assert [item.attempt for item in attempts] == [1, 2, 1]
+    assert [item.state for item in attempts] == ["failed", "completed", "complete"]
     assert attempts[0].log_path == "logs/10.log"
     assert attempts[0].scope == "sub-s01/ses-01"
     assert attempts[1].output_commit is None
@@ -54,3 +54,11 @@ def test_standalone_freesurfer_is_not_labeled_as_legacy_anatomy():
         ProcessingStage("anatomical", "FreeSurfer-8.2.0", "blocked"),
     ), ()))
     assert collect_attempts(manager)[0].stage == "freesurfer"
+
+
+def test_merged_cell_updates_dataset_status_when_finished_jobs_have_blank_state():
+    stage = ProcessingStage('anatomical', 'FreeSurfer-8.2.0', 'complete')
+    manager = Manager(ProcessingStatus((stage,), ({'app': stage.application, 'sub_id': 's03',
+        'job_id': '42_1', 'state': '', 'failed': 'false'},)))
+    attempts = collect_attempts(manager)
+    assert [(row.scope, row.state) for row in attempts] == [('sub-s03', 'complete'), ('dataset', 'complete')]

@@ -20,7 +20,6 @@ def collect_attempts(manager: ProcessingManager) -> tuple[StageAttempt, ...]:
     stage_by_application = {stage.application: stage for stage in status.stages}
     attempts: list[StageAttempt] = []
     numbers: dict[tuple[str, str], int] = defaultdict(int)
-    applications_with_jobs: set[str] = set()
     for job in status.jobs:
         application = job.get("app", "")
         stage = stage_by_application.get(application)
@@ -28,18 +27,19 @@ def collect_attempts(manager: ProcessingManager) -> tuple[StageAttempt, ...]:
         scope = _scope(job)
         key = (name, scope)
         numbers[key] += 1
-        applications_with_jobs.add(application)
+        # BABS clears scheduler state after completion; a merged cell confirms
+        # that its current jobs produced results.
+        state = job.get("state") or ("complete" if stage and stage.state == "complete" else "unknown")
         attempts.append(StageAttempt(
             stage=name,
             scope=scope,
             attempt=numbers[key],
-            state="failed" if job.get("failed") == "true" else (job.get("state") or "unknown").lower(),
+            state="failed" if job.get("failed") == "true" else state.lower(),
             log_path=job.get("logs") or None,
             job_id=job.get("job_id") or None,
         ))
     for stage in status.stages:
-        if stage.application not in applications_with_jobs:
-            attempts.append(StageAttempt(stage_name(stage), "dataset", 1, stage.state))
+        attempts.append(StageAttempt(stage_name(stage), "dataset", 1, stage.state))
     return tuple(attempts)
 
 

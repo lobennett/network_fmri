@@ -16,10 +16,10 @@ def test_history_preserves_failed_job_after_retry_and_avoids_duplicate_saves(tmp
     record_status(config, first, runner=runner)
     record_status(config, second, runner=runner)
     attempts, lineage = read_history(tmp_path)
-    assert [(row.job_id, row.state) for row in attempts] == [("10", "failed"), ("11", "running")]
+    assert [(row.job_id, row.state) for row in attempts] == [(None, "active"), ("10", "failed"), ("11", "running")]
     assert len(saves) == 3  # unchanged save is a DataLad no-op, and retries interrupted saves
     assert all(command[:2] == ("datalad", "save") for command in saves)
-    assert len(lineage["attempts"]) == 2
+    assert len(lineage["attempts"]) == 3
     assert lineage["attempts"][0]["observations"][0]["observed_at"]
 
 
@@ -31,7 +31,9 @@ def test_history_records_transitions_for_same_job(tmp_path):
         status = ProcessingStatus((stage,), ({"app": stage.application, "sub_id": "s03", "job_id": "10", "state": state},))
         record_status(config, status, runner=lambda *args, **kwargs: None)
     attempts, lineage = read_history(tmp_path)
-    assert len(attempts) == 1
+    assert len(attempts) == 2
+    attempts = [row for row in attempts if row.job_id]
+    lineage["attempts"] = [row for row in lineage["attempts"] if row["latest"]["job_id"]]
     assert attempts[0].stage == "freesurfer"
     assert attempts[0].state == "completed"
     assert lineage["attempts"][0]["application"] == "FreeSurfer-8.2.0"
