@@ -71,6 +71,9 @@ not voxel arrays, and obtains missing raw annex content when needed. Exit code 2
 and `output-checks-failed` mean these checks failed; reports remain available and
 registration rendering waits. A restart verifies existing evidence without rerunning
 fMRIPrep. These checks do not validate a first-level design or approve final outputs.
+Both legacy subject reports and fMRIPrep's separate anatomical/session reports are
+supported. Restarting upgrades older report receipts in DataLad history; it does
+not rerun preprocessing.
 
 The following individual commands remain available for diagnosis. MechaBABS merges
 MRIQC archives into the study. `prepare-review` extracts reports

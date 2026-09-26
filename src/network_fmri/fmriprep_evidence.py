@@ -7,6 +7,7 @@ import gzip
 import io
 import json
 import math
+import os
 from pathlib import Path
 import re
 import shutil
@@ -23,6 +24,24 @@ from network_fmri.records.native_lineage import file_record, transformation
 from network_fmri.registration_qc import _registered
 
 RECEIPT = "code/network_fmri/fmriprep-evidence.json"
+REPORT_SCHEMA_VERSION = 2
+
+
+def _is_report(path, subject):
+    return len(path.parts) == 1 and re.fullmatch(
+        rf"sub-{re.escape(subject)}(?:_anat|(?:_ses-[A-Za-z0-9]+)?_func)?\.html", path.name
+    ) is not None
+
+
+def _missing_reports(reports, subject, expected):
+    """Accept a legacy subject report or the complete anatomical/session set."""
+    if f"sub-{subject}.html" in reports:
+        return []
+    required = {f"sub-{subject}_anat.html"}
+    for key in expected:
+        session = re.search(r"(?:^|_)(ses-[A-Za-z0-9]+)(?:_|$)", key)
+        required.add(f"sub-{subject}" + (f"_{session[1]}" if session else "") + "_func.html")
+    return [f"sub-{subject}: missing fMRIPrep HTML report {name}" for name in sorted(required - reports)]
 
 
 def run_key(path):
@@ -123,13 +142,13 @@ def inspect_archive(path, subject, expected, target, *, require_cifti=True):
             roots.add(parts[0])
         if len(roots) != 1:
             raise ValueError("expected a single fMRIPrep archive root")
-        report = False
+        reports = set()
         for member in members:
             if member.is_dir():
                 continue
             relative = Path(*member.filename.split("/")[1:])
-            if relative == Path(f"sub-{subject}.html"):
-                report = True
+            if _is_report(relative, subject):
+                reports.add(relative.name)
             is_bold = relative.name.endswith("_desc-preproc_bold.nii.gz")
             is_cifti = relative.name.endswith(".dtseries.nii")
             is_confounds = relative.name.endswith("_desc-confounds_timeseries.tsv")
@@ -160,7 +179,7 @@ def inspect_archive(path, subject, expected, target, *, require_cifti=True):
                         }
                     )
             # Never materialize full images or unrelated files in the review derivative.
-            if relative == Path(f"sub-{subject}.html") or (
+            if _is_report(relative, subject) or (
                 relative.parts
                 and relative.parts[0] == f"sub-{subject}"
                 and (
@@ -185,8 +204,7 @@ def inspect_archive(path, subject, expected, target, *, require_cifti=True):
                 evidence.append(
                     {"path": relative.as_posix(), "sha256": _sha256(output)}
                 )
-        if not report:
-            issues.append(f"sub-{subject}: missing fMRIPrep HTML report")
+        issues.extend(_missing_reports(reports, subject, expected))
     for key, row in runs.items():
         expected = row["expected"]
         if len(row["confounds"]) != 1 or row["confound_rows"] != expected["volumes"]:
@@ -265,8 +283,9 @@ def prepare_fmriprep_review(config, *, runner=subprocess.run):
         "schema_version": 1,
     }
     destination = source.with_name(source.name + "+review")
-    if destination.exists() or destination.is_symlink():
-        _registered(destination, study, runner)
+    upgrading = destination.exists() or destination.is_symlink()
+    if upgrading:
+        identity, previous_commit = _registered(destination, study, runner)
         receipt = json.loads((destination / RECEIPT).read_text())
         if receipt["inputs"] != inputs:
             raise RuntimeError(
@@ -275,22 +294,20 @@ def prepare_fmriprep_review(config, *, runner=subprocess.run):
         for row in receipt["evidence"]:
             if _sha256(destination / row["path"]) != row["sha256"]:
                 raise RuntimeError("fMRIPrep review evidence changed")
-        return destination
+        version = receipt.get('report_schema_version', 1)
+        if version == REPORT_SCHEMA_VERSION:
+            return destination
+        if version != 1:
+            raise RuntimeError('unsupported fMRIPrep report schema version')
     with tempfile.TemporaryDirectory(
         prefix=".fmriprep-review-", dir=source.parent
     ) as temp:
         staging = Path(temp) / "output"
         staging.mkdir()
-        runner(("datalad", "create", "--force", str(staging)), check=True)
-        identity = _git(
-            staging,
-            "config",
-            "--file",
-            ".datalad/config",
-            "--get",
-            "datalad.dataset.id",
-            runner=runner,
-        )
+        if not upgrading:
+            runner(("datalad", "create", "--force", str(staging)), check=True)
+            identity = _git(staging, 'config', '--file', '.datalad/config',
+                            '--get', 'datalad.dataset.id', runner=runner)
         subjects = []
         evidence = []
         for item in archives:
@@ -323,6 +340,7 @@ def prepare_fmriprep_review(config, *, runner=subprocess.run):
                 {"path": path.relative_to(staging).as_posix(), "sha256": _sha256(path)}
             )
         receipt = {
+            "report_schema_version": REPORT_SCHEMA_VERSION,
             "inputs": inputs,
             "subjects": subjects,
             "evidence": evidence,
@@ -344,6 +362,19 @@ def prepare_fmriprep_review(config, *, runner=subprocess.run):
             or _git(raw, "rev-parse", "HEAD", runner=runner) != raw_commit
         ):
             raise RuntimeError("fMRIPrep review inputs changed during extraction")
+        if upgrading:
+            if _registered(destination, study, runner)[1] != previous_commit:
+                raise RuntimeError('fMRIPrep review changed during report upgrade')
+            # Keep the dataset identity and Git history. Replace changed files
+            # atomically rather than writing through read-only annex symlinks.
+            for path in staging.rglob('*'):
+                if path.is_file():
+                    target = destination / path.relative_to(staging)
+                    if target.is_file() and _sha256(target) == _sha256(path):
+                        continue
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    os.replace(path, target)
+            staging = destination
         runner(
             (
                 "datalad",
@@ -355,7 +386,8 @@ def prepare_fmriprep_review(config, *, runner=subprocess.run):
             ),
             check=True,
         )
-        staging.rename(destination)
+        if not upgrading:
+            staging.rename(destination)
     runner(
         (
             "datalad",

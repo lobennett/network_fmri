@@ -17,7 +17,7 @@ def bold(volumes):
     return gzip.compress(image.to_bytes())
 
 
-def archive(path, count=5, confounds=5, unsafe=False):
+def archive(path, count=5, confounds=5, unsafe=False, reports=None):
     prefix = "fMRIPrep/sub-s03/ses-01/func/sub-s03_ses-01_task-rest_run-1"
     with zipfile.ZipFile(path, "w") as z:
         z.writestr(prefix + "_space-T1w_desc-preproc_bold.nii.gz", bold(count))
@@ -25,9 +25,8 @@ def archive(path, count=5, confounds=5, unsafe=False):
             prefix + "_desc-confounds_timeseries.tsv",
             "framewise_displacement\n" + "0\n" * confounds,
         )
-        z.writestr(
-            "fMRIPrep/sub-s03.html", '<html><img src="sub-s03/figures/plot.svg"></html>'
-        )
+        for report in reports if reports is not None else ['sub-s03.html']:
+            z.writestr('fMRIPrep/' + report, '<html><img src="sub-s03/figures/plot.svg"></html>')
         z.writestr("fMRIPrep/sub-s03/figures/plot.svg", "<svg/>")
         if unsafe:
             z.writestr("fMRIPrep/../escape.html", "bad")
@@ -48,6 +47,33 @@ def test_checks_lengths_and_extracts_reports_without_copying_bold(tmp_path):
     assert (tmp_path / "review/sub-s03.html").exists()
     assert (tmp_path / "review/sub-s03/figures/plot.svg").exists()
     assert not list((tmp_path / "review").rglob("*.nii.gz"))
+
+
+def test_split_reports_cover_anatomy_and_each_functional_session(tmp_path):
+    from network_fmri.fmriprep_evidence import inspect_archive
+
+    source = tmp_path / 'output.zip'
+    reports = ['sub-s03_anat.html', 'sub-s03_ses-01_func.html', 'sub-s03_ses-13_func.html']
+    archive(source, reports=reports)
+    expected = {'sub-s03_ses-01_task-rest_run-1': {'volumes': 5, 'tr': 1.49}}
+    target = tmp_path / 'review'
+    result = inspect_archive(source, 's03', expected, target, require_cifti=False)
+    assert result['issues'] == []
+    assert all((target / report).is_file() for report in reports)
+
+
+@pytest.mark.parametrize('reports,missing', [
+    (['sub-s03_anat.html'], 'sub-s03_ses-01_func.html'),
+    (['sub-s03_ses-01_func.html'], 'sub-s03_anat.html'),
+])
+def test_partial_split_reports_still_block_review(tmp_path, reports, missing):
+    from network_fmri.fmriprep_evidence import inspect_archive
+
+    source = tmp_path / 'output.zip'
+    archive(source, reports=reports)
+    expected = {'sub-s03_ses-01_task-rest_run-1': {'volumes': 5, 'tr': 1.49}}
+    result = inspect_archive(source, 's03', expected, tmp_path / 'review', require_cifti=False)
+    assert any(missing in issue for issue in result['issues'])
 
 
 def test_mismatches_and_missing_runs_are_explicit(tmp_path):
@@ -106,7 +132,8 @@ def test_cifti_axis_length_and_tr_are_checked(tmp_path):
     assert {f["kind"] for f in result["runs"][0]["outputs"]} == {"BOLD", "CIFTI"}
 
 
-def test_restart_preserves_reports_and_rejects_tampering(tmp_path, monkeypatch):
+@pytest.mark.parametrize('upgrade_split_reports', [False, True])
+def test_restart_preserves_reports_and_rejects_tampering(tmp_path, monkeypatch, upgrade_split_reports):
     from types import SimpleNamespace
     from tests.test_mriqc_evidence import Commands, git, init, save, register_source
     from network_fmri import fmriprep_evidence as evidence
@@ -133,7 +160,8 @@ def test_restart_preserves_reports_and_rejects_tampering(tmp_path, monkeypatch):
         str(raw),
         "sourcedata/raw",
     )
-    archive(source / "sub-s03_output.zip")
+    reports = ['sub-s03_anat.html', 'sub-s03_ses-01_func.html'] if upgrade_split_reports else ['sub-s03.html']
+    archive(source / "sub-s03_output.zip", reports=reports)
     save(source)
     save(study)
     config = SimpleNamespace(
@@ -150,12 +178,30 @@ def test_restart_preserves_reports_and_rejects_tampering(tmp_path, monkeypatch):
     )
     runner = Commands()
     output = evidence.prepare_fmriprep_review(config, runner=runner)
-    report = output / "sub-s03.html"
+    report = output / reports[0]
     original = report.read_bytes()
     receipt = json.loads((output / evidence.RECEIPT).read_text())
     assert receipt["status"] == "issues"  # Missing CIFTI must not be marked complete.
+    if upgrade_split_reports:
+        receipt.pop('report_schema_version', None)
+        receipt['evidence'] = [r for r in receipt['evidence'] if r['path'] not in reports]
+        receipt['subjects'][0]['evidence'] = [r for r in receipt['subjects'][0]['evidence'] if r['path'] not in reports]
+        receipt['subjects'][0]['issues'].append('sub-s03: missing fMRIPrep HTML report')
+        for name in reports:
+            (output / name).unlink()
+        (output / evidence.RECEIPT).write_text(json.dumps(receipt))
+        save(output)
+        save(study)
+        previous = git(output, 'rev-parse', 'HEAD')
     assert evidence.prepare_fmriprep_review(config, runner=runner) == output
     assert report.read_bytes() == original
+    if upgrade_split_reports:
+        updated = json.loads((output / evidence.RECEIPT).read_text())
+        assert updated['report_schema_version'] == 2
+        assert updated['status'] == 'issues'  # The real CIFTI issue survives migration.
+        assert not any('HTML report' in issue for issue in updated['subjects'][0]['issues'])
+        assert git(output, 'rev-parse', 'HEAD') != previous
+        assert git(study, 'rev-parse', 'HEAD:' + output.relative_to(study).as_posix()) == git(output, 'rev-parse', 'HEAD')
     report.write_text("modified")
     with pytest.raises(RuntimeError):
         evidence.prepare_fmriprep_review(config, runner=runner)
