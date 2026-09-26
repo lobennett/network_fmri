@@ -25,6 +25,10 @@ def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="network-fmri")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("pipeline", help="plan, submit, or inspect the fixed workflow")
+    publish = commands.add_parser("publish", help="publish committed study data to Oak")
+    publish.add_argument("config", type=Path)
+    publish.add_argument("--index", type=Path)
+    publish.add_argument("--group")
     records = commands.add_parser("records", help="build the disposable dashboard index")
     record_commands = records.add_subparsers(dest="records_command", required=True)
     records_build = record_commands.add_parser("build")
@@ -125,6 +129,12 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(
             build_index(WorkflowConfig.load(parsed.config), parsed.output), sort_keys=True
         ))
+        return 0
+    if parsed.command == "publish":
+        from network_fmri.publication import publish_study
+        from network_fmri.provenance import activate_git_annex
+        activate_git_annex()
+        print(json.dumps(publish_study(WorkflowConfig.load(parsed.config), index=parsed.index, group=parsed.group), sort_keys=True))
         return 0
     if parsed.command == "reviews":
         config = WorkflowConfig.load(parsed.config)

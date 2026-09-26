@@ -156,3 +156,26 @@ git -C /path/to/oak/clone config annex.dbdir /scratch/users/$USER/git-annex-db
 ```
 
 This local setting leaves file contents and Git history on Oak.
+
+## Full sample and Oak
+
+Use a separate `network-v1` configuration for the 46-subject run; retain the
+approved pilot as a reference. Submit raw preparation, then start the processing
+controller with an `afterok` dependency on `bids-precuration-validated`.
+
+At each review boundary, run this on a compute node:
+
+```bash
+network-fmri publish workflow.toml --group oak_russpold --index /oak/stanford/groups/russpold/data/network_grant/network-dashboard-v1/records.sqlite
+```
+
+Publication copies committed raw and derivative datasets, retains their DataLad
+identities, and refuses dirty or divergent destinations. Scratch remains the
+working copy. Manual scan, surface, and final approvals are still required.
+
+`scripts/run_study.sh workflow.toml [dashboard-index]` initializes the study,
+advances processing to manual review, and publishes before and after processing.
+Submit it with `--dependency=afterok:<final-raw-job>`. Restart after committing
+review decisions. On Sherlock, set `UV_PROJECT_ENVIRONMENT` to an absolute path
+under `$GROUP_HOME` for campaign initialization; the upstream `.venv` entry point
+links there. Collaborators receive read access to the Oak copy.

@@ -180,3 +180,20 @@ def test_reads_real_datalad_identity_from_tracked_config(tmp_path):
     (raw / ".datalad/config").write_text('[datalad "dataset"]\n id = real-dataset-id\n')
     manager = StudyManager(mechababs(tmp_path), raw, tmp_path / "license.txt")
     assert manager._output(("git", "config", "--file", ".datalad/config", "--get", "datalad.dataset.id"), cwd=raw) == "real-dataset-id"
+
+
+def test_external_environment_keeps_upstream_entry_point(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from network_fmri.study import StudyManager
+    study=tmp_path/'study'; campaign=study/'campaign';campaign.mkdir(parents=True)
+    environment=tmp_path/'group-env';(environment/'bin').mkdir(parents=True)
+    (environment/'bin'/'python').touch()
+    monkeypatch.setenv('UV_PROJECT_ENVIRONMENT',str(environment))
+    config=SimpleNamespace(study_dir=study,campaign_dir=campaign)
+    def runner(command, **kwargs):
+        return SimpleNamespace(stdout='.git/info/exclude')
+    manager=StudyManager(config,tmp_path/'raw',tmp_path/'license',runner=runner)
+    manager._link_external_environment()
+    manager._link_external_environment()
+    assert (campaign/'.venv').resolve()==environment
+    assert (study/'.git/info/exclude').read_text().splitlines().count('/campaign/.venv')==1

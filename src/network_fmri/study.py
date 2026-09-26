@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -278,9 +279,35 @@ class StudyManager:
                 "--mechababs", f"{_MECHABABS_URL}@{self.config.mechababs_commit}",
                 "--babs", f"{_BABS_URL}@{self.config.babs_commit}",
             ), cwd=self.config.study_dir)
+        self._link_external_environment()
         Campaign(self.config, runner=self.runner).run(
             "add-dataset", "--sourcedata", f"sourcedata/{self.config.raw_slot}"
         )
+
+    def _link_external_environment(self) -> None:
+        """Keep upstream's .venv entry point when uv installs in group storage."""
+        environment = os.environ.get("UV_PROJECT_ENVIRONMENT")
+        if not environment:
+            return
+        if not Path(environment).is_absolute():
+            raise ValueError("UV_PROJECT_ENVIRONMENT must be an absolute path")
+        target = Path(environment).resolve()
+        if not (target / "bin" / "python").exists():
+            raise RuntimeError(f"campaign environment was not created: {target}")
+        link = self.config.campaign_dir / ".venv"
+        if link.exists() or link.is_symlink():
+            if link.resolve() != target:
+                raise RuntimeError("campaign environment differs from UV_PROJECT_ENVIRONMENT")
+        else:
+            link.symlink_to(target, target_is_directory=True)
+        exclude = Path(self._output(("git", "rev-parse", "--git-path", "info/exclude"), cwd=self.config.study_dir))
+        if not exclude.is_absolute():
+            exclude = self.config.study_dir / exclude
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        pattern = f"/{link.relative_to(self.config.study_dir).as_posix()}"
+        existing = exclude.read_text() if exclude.exists() else ""
+        if pattern not in existing.splitlines():
+            exclude.write_text(existing + "\n" + pattern + "\n")
 
     def _rendered_configs(self) -> list[tuple[str, Path, str]]:
         source_root = Path(__file__).with_name("mechababs")
