@@ -87,3 +87,20 @@ def test_both_independent_jobs_advance_before_poll_sleep(config):
         assert manager.advanced == ["mriqc", "anatomical"]
     run_processing(config, manager=manager,
         prepare_review=lambda stage: {"state": "awaiting-review", "stage": stage}, sleep=sleep)
+
+
+@pytest.mark.parametrize('decision,state', [('approved','complete'), ('needs-correction','output-correction-required'), (None,'awaiting-output-review')])
+def test_final_boundary_respects_recorded_subject_review(config, monkeypatch, decision, state):
+    import json
+    from network_fmri import handoff, fmriprep_evidence, registration_qc, output_review
+    config.subjects = ('s03',)
+    receipt = config.mechababs.study_dir / fmriprep_evidence.RECEIPT
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text(json.dumps({'status':'success'}))
+    registration = config.mechababs.study_dir / registration_qc.RECEIPT
+    registration.parent.mkdir(parents=True, exist_ok=True)
+    registration.write_text(json.dumps({'inputs':{'source_project':'derivatives/fMRIPrep-current'}}))
+    monkeypatch.setattr(fmriprep_evidence,'prepare_fmriprep_review',lambda c: config.mechababs.study_dir)
+    monkeypatch.setattr(registration_qc,'prepare_registration_qc',lambda c: config.mechababs.study_dir)
+    monkeypatch.setattr(output_review,'read_review',lambda *a, **kw: {'decision':decision} if decision else None)
+    assert handoff._prepare_boundary(config,'fmriprep')['state'] == state

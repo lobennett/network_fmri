@@ -109,6 +109,19 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
                 json.dumps({'source_commit': value['inputs']['source_commit'],
                             'source_project': value['inputs']['source_project']}, sort_keys=True)))
         artifacts.append(Artifact('fmriprepviz', _relative(path, study), kind='receipt'))
+    from network_fmri.output_review import read_review
+    for path in sorted(study.glob('code/network_fmri/output_review/sub-*.json')):
+        subject = path.stem.removeprefix('sub-')
+        value = read_review(study, subject, runner=runner)
+        if value is None:
+            continue
+        entity = Entity('fmriprep', subject=subject)
+        entities[entity.key] = entity
+        decisions.append(Decision(entity.key, 'output', value['decision'], value['reviewer'],
+                                  value['notes'], value['reviewed_at']))
+        findings.append(Finding(entity.key, 'final-output-review', 'information', _relative(path, study),
+                                json.dumps(value, sort_keys=True)))
+        artifacts.append(Artifact('output-review', _relative(path, study), entity.key, 'receipt'))
     exclusions = study / "code/network_fmri/analysis_exclusions.tsv"
     if not exclusions.exists():
         exclusions = raw / "code/network_fmri/analysis_exclusions.tsv"

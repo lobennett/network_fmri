@@ -125,7 +125,13 @@ def _prepare_boundary(config, stage):
         if receipt['status'] != 'success':
             return {"state": "output-checks-failed", "fmriprep_evidence": str(evidence)}
         output = prepare_registration_qc(config)
-        return {"state": "awaiting-output-review",
+        from network_fmri.output_review import read_review
+        source = json.loads((output / 'code/network_fmri/registration-qc.json').read_text())['inputs']['source_project']
+        reviews = [read_review(study, subject, source_project=source) for subject in config.subjects]
+        if all(r and r['decision'] == 'approved' for r in reviews):
+            return {"state": "complete", "approved_subjects": list(config.subjects)}
+        return {"state": "output-correction-required" if any(
+                    r and r['decision'] == 'needs-correction' for r in reviews) else "awaiting-output-review",
                 "registration_qc": str(output), "fmriprep_evidence": str(evidence)}
     else:
         raise ValueError(f"unknown review boundary: {stage}")

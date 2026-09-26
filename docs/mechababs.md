@@ -64,6 +64,20 @@ Derivatives use upstream names, for example
 the study; `network_fmri` does not copy them elsewhere. Failed jobs require review.
 See [Sherlock operations](sherlock.md) for the pilot and approval commands.
 
+## Final output review
+
+After inspecting fMRIPrep reports and fmriprepviz registration, record each subject's decision:
+
+```bash
+network-fmri processing review-output workflow.toml --subject s03 --decision approved --reviewer LB
+# If correction is needed, use --decision needs-correction --notes "Describe the issue"
+```
+
+This saves `code/network_fmri/output_review/sub-s03.json` in DataLad, tied to the
+exact output commits. Changed outputs require a new review. Approval completes
+preprocessing; existing analysis exclusions still apply. Refresh the dashboard
+index after recording decisions.
+
 ## Dashboard records
 
 `network-fmri records build workflow.toml --output /local/path/records.sqlite`

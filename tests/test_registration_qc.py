@@ -144,13 +144,17 @@ def test_final_boundary_extracts_and_checks_before_manual_review(tmp_path, statu
     receipt=evidence/fmriprep_evidence.RECEIPT
     receipt.parent.mkdir(parents=True)
     receipt.write_text(json.dumps({'status':status}))
-    with patch.object(registration_qc, 'prepare_registration_qc', return_value=Path('/study/derivatives/qc')) as render, \
+    output=tmp_path/'registration'
+    viz_receipt=output/registration_qc.RECEIPT
+    viz_receipt.parent.mkdir(parents=True)
+    viz_receipt.write_text(json.dumps({'inputs':{'source_project':'derivatives/fMRIPrep-current'}}))
+    with patch.object(registration_qc, 'prepare_registration_qc', return_value=output) as render, \
          patch.object(fmriprep_evidence, 'prepare_fmriprep_review', return_value=evidence):
-        result=handoff._prepare_boundary(SimpleNamespace(mechababs=SimpleNamespace(study_dir=Path('/study'))), 'fmriprep')
+        result=handoff._prepare_boundary(SimpleNamespace(subjects=('s03',), mechababs=SimpleNamespace(study_dir=tmp_path)), 'fmriprep')
     assert result['state']==want
     assert result['fmriprep_evidence']==str(evidence)
     if status == 'success':
-        assert result['registration_qc']=='/study/derivatives/qc'
+        assert result['registration_qc']==str(output)
     else:
         render.assert_not_called()
         assert 'registration_qc' not in result

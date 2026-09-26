@@ -63,6 +63,13 @@ def get_parser() -> argparse.ArgumentParser:
     processing_status = processing_commands.add_parser("status")
     processing_status.add_argument("config", type=Path)
     processing_status.add_argument("--pilot-subject")
+    output_review = processing_commands.add_parser("review-output", help="record final output approval or correction request")
+    output_review.add_argument("config", type=Path)
+    output_review.add_argument("--pilot-subject")
+    output_review.add_argument("--subject", required=True)
+    output_review.add_argument("--decision", required=True, choices=("approved", "needs-correction"))
+    output_review.add_argument("--reviewer", required=True)
+    output_review.add_argument("--notes", default="")
     processing_review = processing_commands.add_parser("prepare-review")
     processing_review.add_argument("config", type=Path)
     processing_review.add_argument("--pilot-subject")
@@ -199,6 +206,9 @@ def main(argv: list[str] | None = None) -> int:
             result = run_processing(config, interval=parsed.poll_seconds)
             print(json.dumps(result, sort_keys=True))
             return 2 if result['state'] == 'output-checks-failed' else 0
+        elif parsed.processing_command == "review-output":
+            from network_fmri.output_review import record_review
+            print(record_review(config, parsed.subject, parsed.decision, parsed.reviewer, parsed.notes))
         elif parsed.processing_command == "prepare-review":
             result = prepare_mriqc_review(config)
             for key in ("evidence_dir", "source_dataset", "source_commit", "input_commit", "archives", "created"):
