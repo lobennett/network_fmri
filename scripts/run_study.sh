@@ -3,7 +3,7 @@
 #SBATCH --partition=russpold,normal
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
-#SBATCH --time=7-00:00:00
+#SBATCH --time=2-00:00:00
 #SBATCH --propagate=NONE
 
 # Submit after the final raw-preparation job. Restart after each manual review.
