@@ -62,6 +62,26 @@ def _registered(root, study, runner):
     return identity, commit
 
 
+def _reconstruction_proof(source, commit, study, receipt, runner):
+    """BABS may add a merge commit without changing any reconstruction files."""
+    used = _gitlink(source, commit, 'sourcedata/FreeSurfer-8.2.0', runner=runner)
+    root = study / receipt['source_project']
+    if not root.resolve().is_relative_to(study):
+        raise RuntimeError('reconstruction source leaves the study')
+    identity, reviewed = _registered(root, study, runner)
+    if identity != receipt['source_dataset_id'] or reviewed != receipt['source_dataset_commit']:
+        raise RuntimeError('reviewed reconstruction identity or commit changed')
+    try:
+        used_tree = _git(root, 'rev-parse', '--verify', used + '^{tree}', runner=runner)
+        reviewed_tree = _git(root, 'rev-parse', '--verify', reviewed + '^{tree}', runner=runner)
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError('cannot verify the reconstruction used by fMRIPrep') from error
+    if used_tree != reviewed_tree:
+        raise RuntimeError('reviewed ribbon does not match the reconstruction used by fMRIPrep')
+    return {'dataset_id': identity, 'fmriprep_input_commit': used,
+            'reviewed_commit': reviewed, 'tree': used_tree}
+
+
 def prepare_registration_qc(config, *, runner=subprocess.run) -> Path:
     """Generate one movie/viewer per subject and save a separate DataLad derivative."""
     stage = next(s for s in ProcessingManager(config, runner=runner).plan() if s.stage == 'fmriprep')
@@ -76,8 +96,7 @@ def prepare_registration_qc(config, *, runner=subprocess.run) -> Path:
     surface_root = subjects_dir.parent
     surface_id, surface_commit = _registered(surface_root, study, runner)
     surface_receipt = json.loads((surface_root / 'code/network_fmri/surface-evidence.json').read_text())
-    if _gitlink(source, commit, 'sourcedata/FreeSurfer-8.2.0', runner=runner) != surface_receipt['source_dataset_commit']:
-        raise RuntimeError('reviewed ribbon does not match the reconstruction used by fMRIPrep')
+    reconstruction = _reconstruction_proof(source, commit, study, surface_receipt, runner)
     tracked = _git(source, 'ls-tree', '-r', '--name-only', commit, runner=runner).splitlines()
     subjects = []
     for subject in config.subjects:
@@ -131,7 +150,7 @@ def prepare_registration_qc(config, *, runner=subprocess.run) -> Path:
                 provenance = transformation('fmriprepviz', f'sub-{subject}',
                     [file_record(source_id, row['archive']), file_record(surface_id, row['ribbon'])],
                     [file_record(identity, item, availability='available') for item in products],
-                    software=SOFTWARE, parameters={'boldrefs': refs, **inputs['parameters']})
+                    software=SOFTWARE, parameters={'boldrefs': refs, 'reconstruction': reconstruction, **inputs['parameters']})
                 lineage = staging / f'code/network_fmri/lineage/sub-{subject}_registration.json'
                 lineage.parent.mkdir(parents=True, exist_ok=True)
                 lineage.write_text(_json(provenance))
@@ -143,7 +162,7 @@ def prepare_registration_qc(config, *, runner=subprocess.run) -> Path:
                 'CodeURL': f'https://github.com/poldrack/fmriprepviz/tree/{REVISION}'}]}))
         evidence.append({'path': description.name, 'sha256': _sha256(description)})
         (staging / RECEIPT).write_text(_json({'schema_version': 1, 'stage': 'fmriprepviz',
-            'status': 'success', 'inputs': inputs, 'outputs': evidence}))
+            'status': 'success', 'inputs': inputs, 'reconstruction': reconstruction, 'outputs': evidence}))
         if (_registered(source, study, runner)[1] != commit
                 or _registered(surface_root, study, runner)[1] != surface_commit
                 or any(_sha256(source / r['archive']['path']) != r['archive']['sha256']

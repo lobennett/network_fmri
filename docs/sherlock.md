@@ -63,6 +63,9 @@ under `derivatives/fmriprepviz-0.1.0-25.2.5+full+<campaign>/`. Each viewer uses 
 cuts per orientation and two frames per second. A restart verifies existing output
 checksums and skips rendering; it does not rerun fMRIPrep. The final state is
 `awaiting-output-review`. Run `uv sync --frozen` before restarting an older controller.
+Worker and merge commits may differ only when their complete Git trees match in
+the reviewed FreeSurfer dataset. The visualization receipt records both commits
+and the shared tree; changed reconstructions remain blocked.
 
 First, it extracts HTML reports, figures and confounds to the fMRIPrep `+review`
 derivative. `code/network_fmri/fmriprep-evidence.json` records per-run output

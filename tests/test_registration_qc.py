@@ -53,13 +53,15 @@ def project(tmp_path, monkeypatch):
     init(study, 'study')
     init(source, 'fmri')
     init(surface, 'fs')
-    reconstruction = tmp_path / 'reconstruction'
+    reconstruction = study / 'derivatives/FreeSurfer-8.2.0+pilot'
     init(reconstruction, 'reconstruction')
+    (reconstruction / 'sub-s03_FreeSurfer.zip').write_bytes(b'approved reconstruction')
     reconstruction_commit = save(reconstruction)
     git(source, '-c', 'protocol.file.allow=always', 'clone', '-q', str(reconstruction), 'sourcedata/FreeSurfer-8.2.0')
     surface_receipt = surface / 'code/network_fmri/surface-evidence.json'
     surface_receipt.parent.mkdir(parents=True)
-    surface_receipt.write_text(json.dumps({'source_dataset_commit': reconstruction_commit}))
+    surface_receipt.write_text(json.dumps({'source_dataset_commit': reconstruction_commit,
+        'source_dataset_id': 'reconstruction', 'source_project': reconstruction.relative_to(study).as_posix()}))
     ribbon = surface / 'subjects/sub-s03/mri/ribbon.mgz'
     ribbon.parent.mkdir(parents=True)
     ribbon.write_bytes(b'approved ribbon')
@@ -119,6 +121,21 @@ def test_cannot_run_before_fmriprep_merge(project):
     assert not runner.calls
 
 
+def test_restart_accepts_verified_legacy_registration_receipt(project):
+    from network_fmri.registration_qc import prepare_registration_qc, RECEIPT
+    config, stage, runner = project
+    target = prepare_registration_qc(config, runner=runner)
+    path = target / RECEIPT
+    receipt = json.loads(path.read_text())
+    receipt['inputs'].pop('reconstruction', None)
+    receipt.pop('reconstruction', None)
+    path.write_text(json.dumps(receipt))
+    save(target)
+    register_source(config, target)
+    assert prepare_registration_qc(config, runner=runner) == target
+    assert len([c for c in runner.calls if c[0] == 'fmriprepviz']) == 1
+
+
 @pytest.mark.parametrize('status,want', [('success','awaiting-output-review'),('issues','output-checks-failed')])
 def test_final_boundary_extracts_and_checks_before_manual_review(tmp_path, status, want):
     from network_fmri import handoff, registration_qc, fmriprep_evidence
@@ -162,3 +179,36 @@ def test_rejects_surfaces_other_than_those_used_by_fmriprep(project):
     register_source(config, source)
     with pytest.raises(RuntimeError, match='reconstruction used by fMRIPrep'):
         prepare_registration_qc(config, runner=runner)
+
+
+@pytest.mark.parametrize('changed', [False, True])
+def test_merged_surface_commit_requires_identical_tracked_content(project, changed):
+    from network_fmri.registration_qc import prepare_registration_qc, RECEIPT
+    config, stage, runner = project
+    study = config.mechababs.study_dir
+    reconstruction = study / 'derivatives/FreeSurfer-8.2.0+pilot'
+    surface = study / 'derivatives/FreeSurfer-8.2.0+pilot+review'
+    used = git(reconstruction, 'rev-parse', 'HEAD')
+    if changed:
+        (reconstruction / 'sub-s03_FreeSurfer.zip').write_bytes(b'different reconstruction')
+        save(reconstruction)
+    else:
+        git(reconstruction, 'commit', '--allow-empty', '-qm', 'Record BABS merge')
+    reviewed = git(reconstruction, 'rev-parse', 'HEAD')
+    path = surface / 'code/network_fmri/surface-evidence.json'
+    receipt = json.loads(path.read_text())
+    receipt['source_dataset_commit'] = reviewed
+    path.write_text(json.dumps(receipt))
+    save(surface)
+    save(study)
+    if changed:
+        with pytest.raises(RuntimeError, match='reconstruction used by fMRIPrep'):
+            prepare_registration_qc(config, runner=runner)
+        assert not list((study / 'derivatives').glob('fmriprepviz-*'))
+    else:
+        target = prepare_registration_qc(config, runner=runner)
+        proof = json.loads((target / RECEIPT).read_text())['reconstruction']
+        assert proof['fmriprep_input_commit'] == used
+        assert proof['reviewed_commit'] == reviewed
+        assert proof['tree'] == git(reconstruction, 'rev-parse', used + '^{tree}')
+        assert prepare_registration_qc(config, runner=runner) == target
