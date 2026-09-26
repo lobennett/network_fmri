@@ -7,6 +7,12 @@ from network_fmri.config import MechaBABSAppConfig, MechaBABSConfig
 from network_fmri.study import StudyManager
 
 
+@pytest.fixture(autouse=True)
+def isolate_campaign_environment(monkeypatch):
+    # Mock campaign creation must not use the CI runner's own uv environment.
+    monkeypatch.delenv("UV_PROJECT_ENVIRONMENT", raising=False)
+
+
 class Runner:
     def __init__(self, *, raw_commit="a" * 40, raw_id="raw-dataset-id"):
         self.commands = []
