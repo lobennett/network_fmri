@@ -1,6 +1,8 @@
 """Human final review bound to committed fMRIPrep and registration evidence."""
 from datetime import datetime, timezone
+import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -18,9 +20,19 @@ def review_path(study, subject):
 def _committed_json(root, path, runner):
     relative = path.relative_to(root).as_posix()
     committed = _git(root, 'show', f'HEAD:{relative}', runner=runner)
-    if committed.strip() != path.read_text().strip():
+    content = path.read_bytes()
+    if path.is_symlink():
+        if os.readlink(path) != committed:
+            raise RuntimeError(f'review evidence has uncommitted changes: {relative}')
+        key = Path(committed).name
+        match = re.fullmatch(r'(MD5|SHA256)E?-s([0-9]+)--([a-f0-9]+)(?:\..*)?', key)
+        if (match is None or len(content) != int(match[2])
+                or hashlib.new(match[1].lower(), content).hexdigest() != match[3]):
+            raise RuntimeError(f'review evidence annex checksum differs: {relative}')
+    elif committed != content.decode().strip():
         raise RuntimeError(f'review evidence has uncommitted changes: {relative}')
-    return json.loads(committed)
+    return json.loads(content)
+
 
 
 def current_evidence(study, source_project, subject, *, runner=subprocess.run):
@@ -74,6 +86,7 @@ def record_review(config, subject, decision, reviewer, notes='', *, runner=subpr
         raise RuntimeError('cannot approve failed output checks: ' + '; '.join(issues))
     path = review_path(study, subject)
     prior = path.read_bytes() if path.exists() else None
+    prior_link = os.readlink(path) if path.is_symlink() else None
     write_json_atomic(path, {'schema_version': 1, 'subject': subject, 'decision': decision,
                             'reviewer': reviewer.strip(), 'reviewed_at': datetime.now(timezone.utc).isoformat(),
                             'notes': notes.strip(), 'inputs': inputs})
@@ -83,6 +96,9 @@ def record_review(config, subject, decision, reviewer, notes='', *, runner=subpr
     except Exception:
         if prior is None:
             path.unlink(missing_ok=True)
+        elif prior_link is not None:
+            path.unlink(missing_ok=True)
+            path.symlink_to(prior_link)
         else:
             path.write_bytes(prior)
         raise

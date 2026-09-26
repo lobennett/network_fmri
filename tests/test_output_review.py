@@ -108,3 +108,27 @@ def test_malformed_committed_review_is_not_approval(tmp_path, monkeypatch, value
     path.write_text(json.dumps(value))
     monkeypatch.setattr(review,'_committed_json',lambda *a, **kw:value)
     assert review.read_review(tmp_path,'s03') is None
+
+
+def test_committed_annex_receipt_verifies_content_not_only_the_pointer(tmp_path):
+    import hashlib
+    import subprocess
+    from network_fmri.output_review import _committed_json
+    def git(*args):
+        return subprocess.check_output(['git','-C',str(tmp_path),*args],text=True)
+    git('init','-q')
+    git('config','user.email','test@example.org')
+    git('config','user.name','Test')
+    payload = b'{"status": "success"}\n'
+    key = f'MD5E-s{len(payload)}--{hashlib.md5(payload).hexdigest()}.json'
+    target = tmp_path / '.git/annex/objects' / key / key
+    target.parent.mkdir(parents=True)
+    target.write_bytes(payload)
+    path = tmp_path / 'receipt.json'
+    path.symlink_to(target.relative_to(tmp_path))
+    git('add','receipt.json')
+    git('commit','-qm','annex receipt')
+    assert _committed_json(tmp_path,path,subprocess.run)['status'] == 'success'
+    target.write_bytes(b'{"status": "changed"}\n')
+    with pytest.raises(RuntimeError,match='checksum'):
+        _committed_json(tmp_path,path,subprocess.run)
