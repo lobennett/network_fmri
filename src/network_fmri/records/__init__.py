@@ -53,7 +53,8 @@ def build_index(config: WorkflowConfig, output: Path) -> dict[str, object]:
         lineage=records.lineage + (history_lineage,),
     )
     database = build_database(output, config.mechababs.study_dir, records,
-                              context={'active_projects': json.dumps(active_projects, sort_keys=True),
+                              context={'expected_subjects': json.dumps(list(config.subjects)),
+                                       'active_projects': json.dumps(active_projects, sort_keys=True),
                                        'active_attempts': json.dumps([asdict(row) for row in live_attempts], sort_keys=True)})
     tables = ("entities", "stage_attempts", "findings", "decisions", "artifacts", "artifact_versions", "lineage_links")
     with sqlite3.connect(database) as connection:
