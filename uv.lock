@@ -535,7 +535,7 @@ wheels = [
 [[package]]
 name = "network-events"
 version = "0.2.0"
-source = { git = "https://github.com/lobennett/network_events.git?rev=9e6690d62fc6dbd7bdbde6a4b800dac18cb29fb4#9e6690d62fc6dbd7bdbde6a4b800dac18cb29fb4" }
+source = { git = "https://github.com/lobennett/network_events.git?rev=4d60c998459a2f621c33c23fc4212f2cd6d68a9b#4d60c998459a2f621c33c23fc4212f2cd6d68a9b" }
 dependencies = [
     { name = "nibabel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -569,7 +569,7 @@ requires-dist = [
     { name = "datalad-installer", specifier = ">=1.1" },
     { name = "fmriprepviz", git = "https://github.com/poldrack/fmriprepviz.git?rev=d684fcba661c382d0d6c4cc0906bc36fbaab38dd" },
     { name = "global-signal-plots", extras = ["plot"], git = "https://github.com/lobennett/global_signal_plots.git?rev=ee5ad00ad2f51586d0379d2fe5a6a5fa3e2e60d7" },
-    { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=9e6690d62fc6dbd7bdbde6a4b800dac18cb29fb4" },
+    { name = "network-events", git = "https://github.com/lobennett/network_events.git?rev=4d60c998459a2f621c33c23fc4212f2cd6d68a9b" },
     { name = "network-fw2bids", git = "https://github.com/lobennett/network_fw2bids.git?rev=1e86429cfe2f52a45978a4efdace3a407d59b75b" },
     { name = "network-qa", git = "https://github.com/lobennett/network_qa.git?rev=ccafd79f634661c8986daa2d53f1f101582d4124" },
     { name = "nibabel", specifier = ">=5.3" },
