@@ -39,7 +39,7 @@ def _require_b0_input(bids_dir: Path) -> None:
         raise ValueError(f"BIDS directory has no BOLD scans for B0 linkage: {bids_dir}")
 
 
-def link_tree(bids_dir: Path) -> dict[str, int]:
+def link_tree(bids_dir: Path) -> dict[str, object]:
     """Stamp B0 metadata after validating every affected sidecar.
 
     The complete update is planned before any file changes.  If a later atomic
@@ -47,7 +47,8 @@ def link_tree(bids_dir: Path) -> dict[str, int]:
     successful invocation therefore has no changes to make.
     """
     plans: dict[Path, dict[str, object]] = {}
-    summary = {"sessions": 0, "bold": 0, "fmap": 0, "no_fmap": 0, "orphan_fmap": 0}
+    summary: dict[str, object] = {"sessions": 0, "bold": 0, "fmap": 0,
+                                  "no_fmap": 0, "missing_sessions": [], "orphan_fmap": 0}
 
     for session in sorted(bids_dir.glob("sub-*/ses-*")):
         if not session.is_dir():
@@ -59,7 +60,8 @@ def link_tree(bids_dir: Path) -> dict[str, int]:
             raise ValueError(f"{session}: {len(fieldmaps)} field maps, expected exactly one")
         if not fieldmaps:
             if bolds:
-                raise ValueError(f'{session}: missing fieldmap; import the CNI reconstruction before proceeding')
+                summary["no_fmap"] += 1
+                summary["missing_sessions"].append(session.relative_to(bids_dir).as_posix())
             continue
         if not bolds:
             summary["orphan_fmap"] += 1

@@ -216,7 +216,7 @@ def test_b0_link_rejects_missing_or_empty_bids_input(tmp_path):
         b0link.link_b0(tmp_path)
 
 
-def test_b0_link_missing_fieldmap_blocks_without_changing_any_sidecars(tmp_path):
+def test_b0_link_records_missing_fieldmap_without_inventing_a_link(tmp_path):
     fmap, bold = _session(tmp_path)
     for image in (fmap, bold):
         _write(image.with_name(image.name.replace('.nii.gz', '.json')), {})
@@ -224,6 +224,8 @@ def test_b0_link_missing_fieldmap_blocks_without_changing_any_sidecars(tmp_path)
     other.parent.mkdir(parents=True)
     other.touch()
     _write(other.with_name(other.name.replace('.nii.gz', '.json')), {})
-    with pytest.raises(StageError, match='missing fieldmap'):
-        b0link.link_b0(tmp_path)
-    assert read(fmap.with_name(fmap.name.replace('.nii.gz', '.json'))) == {}
+    result = b0link.link_b0(tmp_path)
+    assert result.details['no_fmap'] == 1
+    assert result.details['missing_sessions'] == ['sub-s01/ses-02']
+    assert read(fmap.with_name(fmap.name.replace('.nii.gz', '.json')))['B0FieldIdentifier'] == 's01_ses-01'
+    assert 'B0FieldSource' not in read(other.with_name(other.name.replace('.nii.gz', '.json')))
