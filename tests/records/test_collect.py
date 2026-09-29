@@ -204,3 +204,16 @@ def test_fmriprep_output_mismatches_remain_subject_findings(tmp_path):
     assert finding.severity=='error'
     assert 's01' in finding.entity_key
     assert json.loads(finding.evidence_json)['issues']==['confound rows mismatch']
+
+
+def test_fsqc_metrics_are_evidence_not_manual_approval(tmp_path):
+    study=fixture_study(tmp_path)
+    write(study/'derivatives/fsqc-2.1.4+test/code/network_fmri/surface-qc.json',json.dumps({
+        'status':'success','inputs':{'software':{'FSQC':{'version':'2.1.4'}},
+        'source_project':'derivatives/FreeSurfer-8.2.0+test','surface_commit':'b'*40},
+        'subjects':{'s02':{'holes_lh':20,'holes_rh':25}}}))
+    records=collect_study(study,runner=GitRunner())
+    finding=next(f for f in records.findings if f.finding_type=='surface-qc')
+    assert json.loads(finding.evidence_json)['metrics']['holes_lh']==20
+    assert not [d for d in records.decisions if d.entity_key==finding.entity_key]
+    assert any(a.stage=='fsqc' and a.scope=='sub-s02' for a in records.stage_attempts)

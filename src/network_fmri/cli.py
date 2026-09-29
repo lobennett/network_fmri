@@ -74,6 +74,9 @@ def get_parser() -> argparse.ArgumentParser:
     output_review.add_argument("--decision", required=True, choices=("approved", "needs-correction"))
     output_review.add_argument("--reviewer", required=True)
     output_review.add_argument("--notes", default="")
+    surface_qc = processing_commands.add_parser("prepare-surface-qc", help="generate FSQC evidence from merged surfaces")
+    surface_qc.add_argument("config", type=Path)
+    surface_qc.add_argument("--pilot-subject")
     processing_review = processing_commands.add_parser("prepare-review")
     processing_review.add_argument("config", type=Path)
     processing_review.add_argument("--pilot-subject")
@@ -219,6 +222,10 @@ def main(argv: list[str] | None = None) -> int:
         elif parsed.processing_command == "review-output":
             from network_fmri.output_review import record_review
             print(record_review(config, parsed.subject, parsed.decision, parsed.reviewer, parsed.notes))
+        elif parsed.processing_command == "prepare-surface-qc":
+            from network_fmri.surface_evidence import prepare_surface_evidence
+            from network_fmri.surface_qc import prepare_surface_qc
+            print(prepare_surface_qc(config, prepare_surface_evidence(config)))
         elif parsed.processing_command == "prepare-review":
             result = prepare_mriqc_review(config)
             for key in ("evidence_dir", "source_dataset", "source_commit", "input_commit", "archives", "created"):

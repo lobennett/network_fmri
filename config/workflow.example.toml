@@ -64,3 +64,9 @@ cpus = 8
 memory_gb = 32
 time_minutes = 720
 array_concurrency = 4
+
+# Surface metrics and visual evidence after FreeSurfer; no automatic approval.
+[fsqc]
+image = "/absolute/path/fsqcdocker_2.1.4.sif"
+version = "2.1.4"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"

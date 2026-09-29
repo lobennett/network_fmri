@@ -34,7 +34,9 @@ record the image checksum and build source when verifying the container.
 
 Create the study and submit the processing controller from the pinned checkout. It
 runs MRIQC and standalone FreeSurfer independently, merges outputs, and prepares
-both reviews. It finishes other running work before pausing for approval. Restart it after a controller timeout or
+both reviews, including FSQC surface evidence. Configure `[fsqc]` with its image,
+version `2.1.4`, and SHA256. FSQC runs on the controller allocation (8 GB minimum),
+using a private virtual display and read-only reconstruction mount. It finishes other running work before pausing for approval. Restart it after a controller timeout or
 interruption. Only one controller can operate on the study at a time.
 
 The FreeSurfer profile binds job-specific temporary storage to both `/tmp` and

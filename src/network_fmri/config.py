@@ -123,6 +123,7 @@ class WorkflowConfig:
     pydeface: VerifiedContainerConfig
     slurm: SlurmConfig
     mechababs: MechaBABSConfig | None = None
+    fsqc: VerifiedContainerConfig | None = None
 
     @classmethod
     def load(cls, path: Path) -> "WorkflowConfig":
@@ -143,7 +144,7 @@ def parse_config(raw: dict[str, Any], *, base: Path) -> WorkflowConfig:
     _reject_token_keys(raw)
     _unknown_keys(
         raw,
-        {"paths", "subjects_file", "flywheel_project", "behavior", "participants", "validator", "mriqc", "fmriprep", "pydeface", "slurm", "mechababs"},
+        {"paths", "subjects_file", "flywheel_project", "behavior", "participants", "validator", "mriqc", "fmriprep", "pydeface", "slurm", "mechababs", "fsqc"},
         "top-level",
     )
     # Project-owned paths remain relative so the campaign records exactly which
@@ -170,6 +171,7 @@ def parse_config(raw: dict[str, Any], *, base: Path) -> WorkflowConfig:
         slurm=_parse_slurm(_table(raw, "slurm", "top-level")),
         participants=_parse_participants(_table(raw, "participants", "top-level")),
         mechababs=mechababs,
+        fsqc=_parse_verified_container(raw["fsqc"], "fsqc") if "fsqc" in raw else None,
     )
 
 

@@ -109,6 +109,17 @@ def collect_study(study: Path, runner=subprocess.run, *, raw_slot: str = "raw") 
                 json.dumps({'source_commit': value['inputs']['source_commit'],
                             'source_project': value['inputs']['source_project']}, sort_keys=True)))
         artifacts.append(Artifact('fmriprepviz', _relative(path, study), kind='receipt'))
+    for path in sorted(study.glob('derivatives/fsqc-*/code/network_fmri/surface-qc.json')):
+        value = _json(path, 'FSQC receipt')
+        for subject, metrics in value['subjects'].items():
+            entity = Entity('anatomical', subject=subject, suffix='surface')
+            entities[entity.key] = entity
+            attempts.append(StageAttempt('fsqc', f'sub-{subject}', 1, value['status']))
+            findings.append(Finding(entity.key, 'surface-qc', 'metric', _relative(path, study),
+                json.dumps({'metrics': metrics, 'software': value['inputs']['software'],
+                            'source_project': value['inputs']['source_project'],
+                            'surface_commit': value['inputs']['surface_commit']}, sort_keys=True)))
+        artifacts.append(Artifact('fsqc', _relative(path, study), kind='receipt'))
     from network_fmri.output_review import read_review
     for path in sorted(study.glob('code/network_fmri/output_review/sub-*.json')):
         subject = path.stem.removeprefix('sub-')

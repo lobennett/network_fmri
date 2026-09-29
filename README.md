@@ -7,7 +7,7 @@ MechaBABS/BABS.
 ```text
 Flywheel -> defaced BIDS -> behavior/events -> validation
   |-> MRIQC -> scan review -> curation ---------|
-  |-> FreeSurfer 8.2.0 -> surface review -------|-> fMRIPrep -> fmriprepviz
+  |-> FreeSurfer 8.2.0 -> FSQC -> surface review -------|-> fMRIPrep -> fmriprepviz
 ```
 
 Copy [workflow.example.toml](config/workflow.example.toml), replace its placeholder
@@ -21,7 +21,8 @@ sbatch scripts/run_processing.sh workflow.toml --pilot-subject s03
 ```
 
 The controller runs MRIQC and FreeSurfer independently, merges their outputs, and
-prepares both reviews. FreeSurfer requires an unambiguous anatomical selection;
+prepares both reviews. FSQC 2.1.4 supplies surface metrics and boundary overlays;
+its checksum-pinned `[fsqc]` container runs before manual surface approval. FreeSurfer requires an unambiguous anatomical selection;
 fMRIPrep requires approved scans and [surfaces](docs/surface-review.md). Restart the
 controller after approval or interruption. Failed jobs or changed anatomy require
 intervention. Do not start the full sample until the pilot passes.

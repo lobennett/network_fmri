@@ -109,6 +109,8 @@ def _prepare_boundary(config, stage):
         if state and state["phase"] != "ready":
             return {"state": "awaiting-surface-correction", "workspace": state["workspace"]}
         evidence = prepare_surface_evidence(config)
+        from network_fmri.surface_qc import prepare_surface_qc
+        prepare_surface_qc(config, evidence)
         manifest = study / "code/network_fmri/surface_review.tsv"
         result = refresh_surface_review(config, evidence, state)
         if result is not None:

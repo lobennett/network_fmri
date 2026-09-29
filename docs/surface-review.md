@@ -143,3 +143,27 @@ after fMRIPrep has been initialized.
 References: [FreeSurfer 8.2 recon-all](https://github.com/freesurfer/freesurfer/blob/v8.2.0/scripts/recon-all),
 [FreeSurfer editing guide](https://surfer.nmr.mgh.harvard.edu/fswiki/FreeviewGuide/FreeviewWorkingWithData/FreeviewEditingaRecon),
 [8.2 label definitions](https://github.com/freesurfer/freesurfer/blob/v8.2.0/distribution/FreeSurferColorLUT.txt).
+
+## FSQC evidence
+
+The processing controller runs checksum-pinned FSQC 2.1.4 after extracting the
+merged reconstruction, before requesting surface approval. It saves metrics,
+14-slice white/pial overlays, surface renders, logs and input/output hashes in
+`derivatives/fsqc-2.1.4+<campaign>/`, registered with DataLad and published to Oak.
+The dashboard's FreeSurfer stage exposes these files alongside manual decisions.
+
+Pre-correction hole counts, tissue SNR and cohort outliers prioritize inspection;
+none are automatic exclusions or approvals. Cohort outliers are computed only for
+at least 10 subjects. Inspect tissue boundaries in the overlays and use the
+interactive viewer/Freeview for closer review. Final surfaces can be topologically
+correct while following the wrong anatomical boundary.
+
+To backfill evidence for an already merged campaign, run on a compute node:
+
+```bash
+uv run --frozen network-fmri processing prepare-surface-qc workflow.toml
+```
+
+Restarting verifies the saved container/input/output identities and skips completed
+QC. Changed inputs or missing/failed modules stop the handoff; existing reviews
+are preserved. A corrected reconstruction produces new evidence and needs review.

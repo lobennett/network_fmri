@@ -209,6 +209,8 @@ def require_stage_gate(config: WorkflowConfig, stage: str, runner=subprocess.run
             value = json.loads(metadata.read_text())
             if Path(value.get("surface_root", "")).resolve() != evidence.resolve():
                 raise RuntimeError("approval does not refer to the current standalone FreeSurfer evidence")
+            from network_fmri.surface_qc import prepare_surface_qc
+            prepare_surface_qc(config, evidence, runner=runner)
         return
     raise ValueError(f"unknown processing stage: {stage}")
 
