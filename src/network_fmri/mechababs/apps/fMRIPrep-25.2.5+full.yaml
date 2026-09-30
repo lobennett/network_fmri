@@ -18,6 +18,7 @@ bids_app_args:
   --dummy-scans: "0"
   --output-spaces: "MNI152NLin2009cAsym:res-2 T1w fsnative fsaverage6"
   --cifti-output: "91k"
+  --project-goodvoxels: ""
   --random-seed: "12345"
   --skull-strip-fixed-seed: ""
   --skull-strip-t1w: "force"

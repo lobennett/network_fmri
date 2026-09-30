@@ -56,6 +56,9 @@ status. Standalone FreeSurfer can run alongside MRIQC on validated BIDS with one
 T1w and at most one T2w per subject. Full fMRIPrep requires scan approval, curated
 BIDS, and surface approval. App `depends_on` settings enforce surface availability.
 The full app consumes the FreeSurfer derivative to reuse surfaces.
+Full fMRIPrep exports 91k CIFTI with `--project-goodvoxels`. Existing campaign
+copies and generated job scripts must include the flag before submission;
+changing the package template does not change a previously initialized campaign.
 Use `processing advance` to preserve these human gates; calling upstream `iterate`
 directly does not enforce them.
 

@@ -13,7 +13,7 @@ MRIQC evidence and requires explicit approval in `scan_decisions.tsv` before cur
 | Anatomy | more than one T1w or T2w, or no T2w, requires review and an MRIQC recommendation |
 | Echoes | a missing echo-1, echo-2, or echo-3 requires review |
 | FreeSurfer | standalone FreeSurfer 8.2.0 runs `recon-all`; every subject's white and pial surfaces require explicit approval before full fMRIPrep |
-| fMRIPrep | one subject across sessions, `--dummy-scans 0`, `--no-submm-recon` |
+| fMRIPrep | one subject across sessions, `--dummy-scans 0`, `--no-submm-recon`, `--project-goodvoxels` |
 | Output spaces | `MNI152NLin2009cAsym:res-2 T1w fsnative fsaverage6`, with 91k CIFTI |
 
 ## Historical source curation
@@ -69,6 +69,12 @@ subject-task combinations, while `source_manifest.tsv` records hashes and origin
 paths. Existing QA exclusions remain evidence; no available raw behavior was removed.
 
 ## Preprocessing and known limitations
+
+As of 2026-09-30, full fMRIPrep uses `--project-goodvoxels` with 91k CIFTI output.
+The existing sub-s03 pilot derivatives were generated without this flag and must
+be rerun, followed by regenerated fmriprepviz reports and a fresh final review.
+Keep the old outputs labeled as pilot references until their replacements pass review.
+This change does not resolve the separately investigated N4/atlas-initialization issue.
 
 The BOLD tree is trimmed exactly once before event generation. Sidecars record
 `NumberOfVolumesDiscardedByUser: 7`; fMRIPrep must use `--dummy-scans 0`. MRIQC uses
