@@ -4,7 +4,7 @@ script_preamble: |
   export PYTHONNOUSERSITE=1
   export OMP_NUM_THREADS=1
   export MKL_NUM_THREADS=1
-  export JOB_TMP="${SLURM_TMPDIR:-/scratch/users/${USER}/sjob-tmp/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}}"
+  export JOB_TMP="${L_SCRATCH_JOB:-${SLURM_TMPDIR:-/scratch/users/${USER}/sjob-tmp/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}}}"
   mkdir -p "${JOB_TMP}"
   trap 'rm -rf "${JOB_TMP}"' EXIT
 

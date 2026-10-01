@@ -169,6 +169,11 @@ stores `/opt/network/fmriprep-build.json`. Record both image checksums, the reci
 revision, and the DataLad container commit in the study before submission. Do not
 reuse approvals of old fMRIPrep outputs for this corrected build.
 
+Curation binds the approved manifest to a checksum inventory of its resulting BIDS
+files. Later gates verify that result; they do not compare dropped scans with the
+earlier MRIQC inventory. fMRIPrep workers request four CPUs, 32 GB and up to 72 hours
+(the original s03 pilot took 20 hours); temporary files use node-local job storage.
+
 Use a separate `network-v1` configuration for the 46-subject run; retain the
 approved pilot as a reference. Submit raw preparation, then start the processing
 controller with an `afterok` dependency on `bids-precuration-validated`.

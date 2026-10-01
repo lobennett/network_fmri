@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import json
 import os
 import re
 import shutil
@@ -122,6 +123,7 @@ def apply_curation(
     try:
         b0 = _rebuild_b0(bids_dir)
         validation = validate_bids(bids_dir, "curated", validator_image, runner)
+        curated_digest = _curated_inventory_digest(bids_dir)
     except ValidationError:
         _rollback(transaction, metadata)
         # Preserve the validator's result so the stage boundary can save its fresh
@@ -134,8 +136,49 @@ def apply_curation(
     return StageResult(
         "bids-curated-validated",
         (bids_dir, validation.report, validation.log),
-        {"removed_files": len(plan), "dropped_acquisitions": len(drops), "b0": b0},
+        {"removed_files": len(plan), "dropped_acquisitions": len(drops), "b0": b0,
+         "manifest_sha256": approval.manifest_sha256,
+         "metadata_sha256": approval.metadata_sha256,
+         "curated_inventory_sha256": curated_digest},
     )
+
+
+def require_curated_approval(bids_dir: Path, manifest: Path, runner: Runner) -> None:
+    """Verify the approved removal result rather than the pre-removal inventory."""
+    from network_fmri.milestones import receipt_path
+
+    path = receipt_path(bids_dir, 'bids-curated-validated')
+    try:
+        content = path.read_bytes()
+        committed = runner(('git', 'show', f'HEAD:{path.relative_to(bids_dir).as_posix()}'),
+                           cwd=str(bids_dir), check=True, capture_output=True).stdout
+        if isinstance(committed, str):
+            committed = committed.encode()
+        value = json.loads(content)
+        evidence = value['validation']
+        expected = {'manifest_sha256': hashlib.sha256(manifest.read_bytes()).hexdigest(),
+                    'metadata_sha256': hashlib.sha256(manifest.with_suffix('.meta.json').read_bytes()).hexdigest()}
+        if content != committed or value['stage'] != 'bids-curated-validated' or value['status'] != 'success':
+            raise ValueError('curation milestone is not committed')
+        if any(evidence.get(key) != digest for key, digest in expected.items()):
+            raise ValueError('curation does not bind the current scan decisions')
+        if evidence.get('curated_inventory_sha256') != _curated_inventory_digest(bids_dir):
+            raise ValueError('curated inventory differs from its approved result')
+    except (OSError, KeyError, ValueError, TypeError, StageError, subprocess.CalledProcessError) as error:
+        raise RuntimeError(f'curated approval is invalid: {error}') from error
+
+
+def _curated_inventory_digest(bids_dir: Path) -> str:
+    """Bind paths, content and subdataset commits independently of annex links."""
+    from network_qa.compiler import inventory_digest, inventory_records
+
+    records = inventory_records(bids_dir)
+    if any(record['status'] != 'available' for record in records):
+        raise StageError('curated inventory contains unavailable evidence')
+    # DataLad save can replace regular files with annex links without changing
+    # their bytes. Hash the content, not that administrative storage transition.
+    return inventory_digest([{key: value for key, value in row.items() if key != 'symlink'}
+                             for row in records])
 
 
 def _require_dataset(bids_dir: Path) -> None:

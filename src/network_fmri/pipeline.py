@@ -109,6 +109,11 @@ def approval_command(config: WorkflowConfig) -> tuple[str, ...]:
 def require_approved_decisions(config: WorkflowConfig, runner=subprocess.run) -> None:
     """Refuse post-review submission until Network QA accepts the sealed file."""
 
+    from network_fmri.milestones import receipt_path
+    if receipt_path(config.paths.bids_dir, 'bids-curated-validated').exists():
+        from network_fmri.curation import require_curated_approval
+        require_curated_approval(config.paths.bids_dir, decision_manifest(config), runner)
+        return
     try:
         runner(approval_command(config), check=True)
     except (OSError, subprocess.CalledProcessError) as error:
