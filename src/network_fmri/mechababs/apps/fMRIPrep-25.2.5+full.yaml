@@ -5,7 +5,7 @@ mechababs:
     require_positive: [t1w_num, bold_num]
   container:
     source: "{{CONTAINER_DATASET}}"
-    name: bids-fmriprep
+    name: bids-fmriprep-rigidinit1
 
 analysis_path: "."
 input_ria_path: ".babs/input_ria"

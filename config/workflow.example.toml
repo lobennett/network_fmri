@@ -33,7 +33,8 @@ image = "/home/groups/russpold/singularity_images/mriqc_24.0.2.sif"
 version = "24.0.2"
 
 [fmriprep]
-image = "/oak/stanford/groups/russpold/shared/containers/fmriprep-25.2.5.sif"
+# Patched niworkflows initializer; register as bids-fmriprep-rigidinit1 in DataLad.
+image = "/oak/stanford/groups/russpold/shared/containers/fmriprep-25.2.5-rigidinit1.sif"
 version = "25.2.5"
 
 [pydeface]
@@ -44,7 +45,7 @@ sha256 = "8a253111015321ee9bd4c735f1bcaeb40972ac1c5c4d248a83b4cdd64fc851fe"
 
 [mechababs]
 study_dir = "/scratch/users/logben/network-study"
-durable_sibling = "/oak/stanford/groups/russpold/data/network_grant/network-study"
+durable_sibling = "/oak/stanford/groups/russpold/data/network_grant/bids"
 campaign = "network-v1"
 raw_slot = "raw"
 container_dataset = "/scratch/users/logben/mechababs-work/repronim-containers-shim"

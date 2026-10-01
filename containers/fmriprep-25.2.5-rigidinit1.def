@@ -1,0 +1,17 @@
+Bootstrap: localimage
+From: {{ BASE_IMAGE }}
+
+# Build from the repository root using the original checksum-recorded 25.2.5 SIF.
+# No package upgrades, anatomical changes, or license files are included.
+%files
+    src/network_fmri/fmriprep_patch.py /opt/network/fmriprep_patch.py
+
+%post
+    /app/.pixi/envs/fmriprep/bin/python /opt/network/fmriprep_patch.py
+
+%labels
+    NetworkBuild 25.2.5-rigidinit1
+    NetworkCorrection BOLD-atlas-rigid-initialization
+
+%test
+    /app/.pixi/envs/fmriprep/bin/python -c "import ast,inspect,json; from niworkflows.func.util import init_enhance_and_skullstrip_bold_wf; source=inspect.getsource(init_enhance_and_skullstrip_bold_wf); nodes=[n for n in ast.walk(ast.parse(source)) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='AI']; assert len(nodes)==1; assert next(ast.literal_eval(k.value) for k in nodes[0].keywords if k.arg=='transform')==('Rigid',0.1); assert json.load(open('/opt/network/fmriprep-build.json'))['build']=='25.2.5-rigidinit1'"

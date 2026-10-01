@@ -161,6 +161,14 @@ This local setting leaves file contents and Git history on Oak.
 
 ## Full sample and Oak
 
+Full fMRIPrep uses container `bids-fmriprep-rigidinit1`. Build it from the original
+25.2.5 SIF with `containers/fmriprep-25.2.5-rigidinit1.def` and
+`--build-arg BASE_IMAGE=/path/to/original.sif` on a compute node. The recipe checks
+the original niworkflows source, applies the validated initializer correction, and
+stores `/opt/network/fmriprep-build.json`. Record both image checksums, the recipe
+revision, and the DataLad container commit in the study before submission. Do not
+reuse approvals of old fMRIPrep outputs for this corrected build.
+
 Use a separate `network-v1` configuration for the 46-subject run; retain the
 approved pilot as a reference. Submit raw preparation, then start the processing
 controller with an `afterok` dependency on `bids-precuration-validated`.

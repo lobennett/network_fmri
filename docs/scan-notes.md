@@ -74,7 +74,13 @@ As of 2026-09-30, full fMRIPrep uses `--project-goodvoxels` with 91k CIFTI outpu
 The existing sub-s03 pilot derivatives were generated without this flag and must
 be rerun, followed by regenerated fmriprepviz reports and a fresh final review.
 Keep the old outputs labeled as pilot references until their replacements pass review.
-This change does not resolve the separately investigated N4/atlas-initialization issue.
+Use the `25.2.5-rigidinit1` container for new runs. It changes niworkflows 1.14.4's
+BOLD `init_aff` transform from affine to rigid, retaining affine refinement and N4.
+The original affine initializer can misplace the atlas brain weights and severely
+distort BOLD-reference contrast. A matched reference test reproduced the failure;
+the corrected full s03/ses-09 goNogo run restored its final T1w-reference contrast
+(brain median 12 → 1,184). This validates that scan, not every registration in the
+sample. Preserve the original pilot provenance and review regenerated outputs.
 
 The BOLD tree is trimmed exactly once before event generation. Sidecars record
 `NumberOfVolumesDiscardedByUser: 7`; fMRIPrep must use `--dummy-scans 0`. MRIQC uses

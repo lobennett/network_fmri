@@ -36,6 +36,10 @@ Before rendering, it extracts the fMRIPrep reports and checks BOLD/CIFTI lengths
 confound rows and TRs against the trimmed inputs. Mismatches stop the handoff;
 passing checks do not replace visual review.
 
+Full preprocessing uses fMRIPrep 25.2.5 with the validated `rigidinit1` BOLD atlas
+initializer correction. The DataLad container commit and build receipt distinguish
+it from the original image; existing pilot derivatives require reprocessing.
+
 See [Sherlock operations](docs/sherlock.md) for the command sequence and
 [MechaBABS design](docs/mechababs.md) for ownership and review gates. The
 [dashboard records](docs/dashboard-records.md) reference describes the disposable
