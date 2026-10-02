@@ -53,10 +53,9 @@ input_datasets:
 
 cluster_resources:
   interpreting_shell: "/bin/bash"
-  hard_runtime_limit: "72:00:00"
+  hard_runtime_limit: "48:00:00"
   customized_text: |
     #SBATCH --partition=russpold,normal
-    #SBATCH --qos=high_p
     #SBATCH --cpus-per-task=4
     #SBATCH --mem=32G
     #SBATCH --nodes=1
