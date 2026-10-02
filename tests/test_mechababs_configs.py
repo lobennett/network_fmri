@@ -86,3 +86,13 @@ def test_standalone_freesurfer_config():
     assert "depends_on" not in config["mechababs"]
     assert "--anat-only" not in config["bids_app_args"]
     assert config["zip_foldernames"] == {"FreeSurfer-8.2.0": "8-2-0"}
+
+
+def test_upstream_rigid_release_keeps_full_processing_and_goodvoxels():
+    original = load(APPS / "fMRIPrep-25.2.5+full.yaml")
+    corrected = load(APPS / "fMRIPrep-25.2.7-rc1+full.yaml")
+    assert corrected["bids_app_args"] == original["bids_app_args"]
+    assert corrected["bids_app_args"]["--project-goodvoxels"] == ""
+    assert corrected["bids_app_args"]["--cifti-output"] == "91k"
+    assert corrected["mechababs"]["container"]["name"] == "bids-fmriprep-25-2-7-rc1"
+    assert corrected["zip_foldernames"] == {"fMRIPrep-25.2.7-rc1+full": "25-2-7-rc1"}
