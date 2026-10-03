@@ -34,3 +34,17 @@ def test_surface_link_cannot_read_other_external_files(tmp_path):
     (root / "outside").symlink_to(outside)
     with pytest.raises(StageError, match="escapes"):
         reconstruction_inventory(root, "s03")
+
+
+def test_annex_lookup_timeout_is_not_reported_as_an_escaped_link(tmp_path, monkeypatch):
+    root = tmp_path / "subjects/sub-s03"
+    root.mkdir(parents=True)
+    target = tmp_path / "annex/object"
+    target.parent.mkdir()
+    target.write_bytes(b"surface")
+    (root / "surface").symlink_to(target)
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], 5)
+    monkeypatch.setattr(subprocess, "check_output", timeout)
+    with pytest.raises(StageError, match="cannot determine.*annex"):
+        reconstruction_inventory(root, "s03")

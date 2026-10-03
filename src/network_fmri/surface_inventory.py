@@ -21,7 +21,7 @@ def reconstruction_inventory(artifact: Path, subject: str) -> dict[str, str]:
             target = path.resolve()
             if path.is_symlink() and not (target.is_relative_to(root.resolve())
                                          or annex is not None and target.is_relative_to(annex)):
-                raise StageError("surface symlink escapes the subject directory")
+                raise StageError(f"surface symlink escapes the subject directory: {path} -> {target}")
             if path.is_file():
                 with path.open("rb") as stream:
                     inventory[path.relative_to(root).as_posix()] = hashlib.file_digest(stream, "sha256").hexdigest()
@@ -93,8 +93,12 @@ def _annex_store(root: Path) -> Path | None:
     try:
         value = subprocess.check_output(
             ("git", "rev-parse", "--git-path", "annex/objects"), cwd=root,
-            text=True, stderr=subprocess.DEVNULL, timeout=5,
+            text=True, stderr=subprocess.PIPE, timeout=60,
         ).strip()
-    except (OSError, subprocess.SubprocessError):
-        return None
+    except subprocess.CalledProcessError as error:
+        if "not a git repository" in (error.stderr or ""):
+            return None
+        raise StageError(f"cannot determine surface annex store for {root}: {error.stderr}") from error
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise StageError(f"cannot determine surface annex store for {root}: {error}") from error
     return (root / value).resolve()
