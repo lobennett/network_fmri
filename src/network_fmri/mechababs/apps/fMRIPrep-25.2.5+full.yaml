@@ -13,7 +13,7 @@ output_ria_path: ".babs/output_ria"
 
 bids_app_args:
   $SUBJECT_SELECTION_FLAG: "--participant-label"
-  -w: "$BABS_TMPDIR"
+  -w: '"/tmp/fmriprep-${subid}-${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"'
   --level: "full"
   --dummy-scans: "0"
   --output-spaces: "MNI152NLin2009cAsym:res-2 T1w fsnative fsaverage6"

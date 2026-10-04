@@ -173,6 +173,12 @@ Curation binds the approved manifest to a checksum inventory of its resulting BI
 files. Later gates verify that result; they do not compare dropped scans with the
 earlier MRIQC inventory. fMRIPrep workers request four CPUs, 32 GB and up to 72 hours
 (the original s03 pilot took 20 hours); temporary files use node-local job storage.
+The full app's `-w` path is under `/tmp`, bound to a unique directory in
+`$L_SCRATCH_JOB`; `$BABS_TMPDIR` points to shared scratch and must not be used for
+fMRIPrep's working files. The Oct. 2026 campaign's repaired workers require 100 GiB
+free local space and retain crash logs before cleanup. Retry only failed subjects
+with BABS `submit --select sub-XX --skip-running-jobs`, then save the updated
+derivative commit in the parent study before restarting its controller.
 
 Use a separate `network-v1` configuration for the 46-subject run; retain the
 approved pilot as a reference. Submit raw preparation, then start the processing
