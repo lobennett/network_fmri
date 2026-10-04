@@ -171,11 +171,11 @@ reuse approvals of old fMRIPrep outputs for this corrected build.
 
 Curation binds the approved manifest to a checksum inventory of its resulting BIDS
 files. Later gates verify that result; they do not compare dropped scans with the
-earlier MRIQC inventory. fMRIPrep workers request four CPUs, 32 GB and up to 72 hours
+earlier MRIQC inventory. fMRIPrep workers request four CPUs, 32 GB and up to 48 hours
 (the original s03 pilot took 20 hours); temporary files use node-local job storage.
 The full app's `-w` path is under `/tmp`, bound to a unique directory in
 `$L_SCRATCH_JOB`; `$BABS_TMPDIR` points to shared scratch and must not be used for
-fMRIPrep's working files. The Oct. 2026 campaign's repaired workers require 100 GiB
+fMRIPrep's working files. The Oct. 2026 campaign's repaired workers request an exclusive node with at least 2 TiB of temporary disk and require 1 TiB
 free local space and retain crash logs before cleanup. Retry only failed subjects
 with BABS `submit --select sub-XX --skip-running-jobs`, then save the updated
 derivative commit in the parent study before restarting its controller.

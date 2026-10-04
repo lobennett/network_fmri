@@ -60,6 +60,8 @@ cluster_resources:
     #SBATCH --mem=32G
     #SBATCH --nodes=1
     #SBATCH --ntasks=1
+    #SBATCH --tmp=2T
+    #SBATCH --exclusive
 
 all_results_in_one_zip: true
 zip_foldernames:

@@ -96,3 +96,11 @@ def test_upstream_rigid_release_keeps_full_processing_and_goodvoxels():
     assert corrected["bids_app_args"]["--cifti-output"] == "91k"
     assert corrected["mechababs"]["container"]["name"] == "bids-fmriprep-25-2-7-rc1"
     assert corrected["zip_foldernames"] == {"fMRIPrep-25.2.7-rc1+full": "25-2-7-rc1"}
+
+
+def test_full_workers_require_large_exclusive_local_disk():
+    for name in ("fMRIPrep-25.2.5+full.yaml", "fMRIPrep-25.2.7-rc1+full.yaml"):
+        resources = load(APPS / name)["cluster_resources"]
+        assert "#SBATCH --tmp=2T" in resources["customized_text"]
+        assert "#SBATCH --exclusive" in resources["customized_text"]
+        assert resources["hard_runtime_limit"] == "48:00:00"
