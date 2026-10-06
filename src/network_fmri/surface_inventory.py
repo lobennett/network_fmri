@@ -16,9 +16,13 @@ def reconstruction_inventory(artifact: Path, subject: str) -> dict[str, str]:
     if artifact.is_dir():
         root = artifact if artifact.name == f"sub-{subject}" else artifact / f"sub-{subject}"
         inventory = {}
-        annex = _annex_store(root)
+        annex = None
+        annex_checked = False
         for path in sorted(root.rglob("*")):
             target = path.resolve()
+            if path.is_symlink() and not target.is_relative_to(root.resolve()) and not annex_checked:
+                annex = _annex_store(root)
+                annex_checked = True
             if path.is_symlink() and not (target.is_relative_to(root.resolve())
                                          or annex is not None and target.is_relative_to(annex)):
                 raise StageError(f"surface symlink escapes the subject directory: {path} -> {target}")

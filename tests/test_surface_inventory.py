@@ -48,3 +48,13 @@ def test_annex_lookup_timeout_is_not_reported_as_an_escaped_link(tmp_path, monke
     monkeypatch.setattr(subprocess, "check_output", timeout)
     with pytest.raises(StageError, match="cannot determine.*annex"):
         reconstruction_inventory(root, "s03")
+
+
+def test_regular_extracted_files_do_not_query_parent_git(tmp_path, monkeypatch):
+    root = tmp_path / "subjects/sub-s03"
+    root.mkdir(parents=True)
+    (root / "surface").write_bytes(b"surface")
+    def fail(*args, **kwargs):
+        raise AssertionError("regular extracted files do not need Git")
+    monkeypatch.setattr(subprocess, "check_output", fail)
+    assert "surface" in reconstruction_inventory(root, "s03")
