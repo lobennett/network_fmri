@@ -43,3 +43,28 @@ def test_wrong_oak_remote_stops_before_publication(tmp_path):
     with pytest.raises(RuntimeError,match='remote'):
         publication.publish_study(config,runner=runner)
     assert all(c[0]=='git' for c in calls)
+
+
+def test_correct_shared_permissions_are_not_rewritten(tmp_path, monkeypatch):
+    import grp, os
+    from network_fmri.publication import share_permissions
+    tmp_path.chmod(0o750)
+    path=tmp_path/'index';path.write_text('shared');path.chmod(0o640)
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Already-correct collaborator files must not be changed')
+    monkeypatch.setattr(os,'chown',forbidden)
+    monkeypatch.setattr(os,'chmod',forbidden)
+    share_permissions(tmp_path,grp.getgrgid(os.getgid()).gr_name)
+
+
+def test_shared_permissions_repair_private_files_without_following_links(tmp_path):
+    import grp, os, stat
+    from network_fmri.publication import share_permissions
+    root=tmp_path/'dataset';root.mkdir(mode=0o700)
+    path=root/'data';path.write_text('data');path.chmod(0o600)
+    external=tmp_path/'external';external.write_text('external');external.chmod(0o600)
+    (root/'link').symlink_to(external)
+    share_permissions(root,grp.getgrgid(os.getgid()).gr_name)
+    assert stat.S_IMODE(root.stat().st_mode)==0o750
+    assert stat.S_IMODE(path.stat().st_mode)==0o640
+    assert stat.S_IMODE(external.stat().st_mode)==0o600

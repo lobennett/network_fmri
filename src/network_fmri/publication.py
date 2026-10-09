@@ -1,5 +1,7 @@
 """Copy committed study datasets to their durable Oak sibling."""
 import os
+import grp
+import stat
 from pathlib import Path
 import subprocess
 
@@ -14,6 +16,35 @@ def _git(root,*args,runner):
 
 def _identity(root,runner):
     return _git(root,'config','--file','.datalad/config','--get','datalad.dataset.id',runner=runner)
+
+
+def share_permissions(root, group):
+    """Apply group access only where needed; never follow dataset symlinks.
+
+    Collaborators may own Git files that already have the correct permissions.
+    Changing those unnecessarily fails even though the dataset is shared.
+    Permission errors for required changes remain fatal.
+    """
+    gid = grp.getgrnam(group).gr_gid
+    def update(path):
+        info = path.lstat()
+        if info.st_gid != gid:
+            os.chown(path, -1, gid, follow_symlinks=False)
+            info = path.lstat()
+        if stat.S_ISLNK(info.st_mode):
+            return
+        mode = stat.S_IMODE(info.st_mode)
+        desired = (mode | stat.S_IRGRP) & ~stat.S_IRWXO
+        if stat.S_ISDIR(info.st_mode) or mode & 0o111:
+            desired |= stat.S_IXGRP
+        if desired != mode:
+            os.chmod(path, desired)
+    update(Path(root))
+    def fail(error):
+        raise error
+    for directory, folders, files in os.walk(root, onerror=fail, followlinks=False):
+        for name in folders + files:
+            update(Path(directory) / name)
 
 
 def publish_dataset(source,target,*,runner=subprocess.run):
@@ -80,8 +111,7 @@ def publish_study(config,*,index=None,group=None,runner=subprocess.run):
     if _git(destination,'status','--porcelain','--untracked-files=normal',runner=runner):
         raise RuntimeError('Oak study has uncommitted changes after publication')
     if group:
-        _run(('chgrp','-R','--no-dereference',group,destination),runner)
-        _run(('chmod','-R','g+rX,o-rwx',destination),runner)
+        share_permissions(destination,group)
     if index:
         from network_fmri.records import build_index
         cache=study.parent/'.network-fmri-cache'/study.name/'published.sqlite'
