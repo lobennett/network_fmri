@@ -56,6 +56,11 @@ CSV duplicates the file assigned to the separate ses-05 nBack acquisition; it
 must not be reused for ses-04. This finding does not establish who caused the
 duplication.
 
+LB also provisionally excluded s1134/ses-08 flanker from task-first-level models
+on 2026-10-10. Its single omission response is entirely covered by motion-outlier
+regressors, making both designs singular. Retain imaging; revisit eligibility
+after explicit handling of nonestimable contrasts.
+
 Five false starts were resolved in Flywheel by adding `_qa-reject` to their acquisition
 labels. Conversion skips them before assigning run numbers, so the completed acquisition
 is `run-1`. The affected scans are s10/ses-01 goNogo,
