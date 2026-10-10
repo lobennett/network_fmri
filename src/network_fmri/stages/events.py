@@ -38,5 +38,9 @@ def generate_events(
         runner(command, check=True)
     except (OSError, subprocess.CalledProcessError) as error:
         raise StageError("event identity audit or conversion command failed") from error
+    from network_fmri.stages.analysis_exclusions import install_known_exclusions
+    exclusions = install_known_exclusions(bids_dir)
     evidence = bids_dir / "sourcedata" / "events_qc" / "conversion_errors.tsv"
-    return StageResult("bids-events-generated", (bids_dir,), {"conversion_errors": str(evidence)})
+    return StageResult("bids-events-generated", (bids_dir,), {
+        "conversion_errors": str(evidence), "analysis_exclusions": str(exclusions),
+    })

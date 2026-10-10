@@ -47,6 +47,15 @@ canonical sources. These runs remain in BIDS and are recorded in
 s19/ses-11 directedForgettingWFlanker, s1292/ses-04 nBack, s300/ses-08 flanker,
 s180/ses-12 shapeMatchingWCuedTS, and s1175/ses-11 cuedTSWFlanker.
 
+LB approved task-first-level exclusions on 2026-10-10 for s03/ses-01 nBack,
+s29/ses-02 goNogo, s300/ses-08 flanker, and s1292/ses-04 nBack. Event generation
+installs these reviewed rows from the packaged `data/analysis_exclusions.tsv`,
+preserving existing exclusions and rejecting conflicting decisions. Imaging stays
+available for preprocessing and timeseries analyses. The archived s1292/ses-04
+CSV duplicates the file assigned to the separate ses-05 nBack acquisition; it
+must not be reused for ses-04. This finding does not establish who caused the
+duplication.
+
 Five false starts were resolved in Flywheel by adding `_qa-reject` to their acquisition
 labels. Conversion skips them before assigning run numbers, so the completed acquisition
 is `run-1`. The affected scans are s10/ses-01 goNogo,
