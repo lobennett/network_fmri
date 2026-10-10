@@ -22,7 +22,8 @@ def install_known_exclusions(bids_dir: Path, *, source: Path | None = None) -> P
     existing = {tuple(row[key] for key in keys): row for row in rows}
     for row in approved:
         # Do not introduce subjects outside this dataset (including pilot builds).
-        if not (Path(bids_dir) / row["subject"] / row["session"]).is_dir():
+        if not any((root / row["subject"] / row["session"]).is_dir()
+                   for root in (Path(bids_dir), Path(bids_dir) / "sourcedata/raw")):
             continue
         key = tuple(row[name] for name in keys)
         if key in existing:
