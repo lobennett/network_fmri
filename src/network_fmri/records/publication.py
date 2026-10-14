@@ -6,6 +6,50 @@ from pathlib import Path, PurePosixPath
 import zipfile
 
 
+def refresh_restored_checksums(db, roots):
+    """Join restored annex MD5 identities to SHA256 receipts using verified bytes."""
+    db.execute('''CREATE TABLE IF NOT EXISTS artifact_checksum_aliases (
+        original_id TEXT PRIMARY KEY REFERENCES artifact_versions(id),
+        canonical_id TEXT NOT NULL REFERENCES artifact_versions(id)
+    )''')
+    restored = db.execute("""SELECT DISTINCT a.id,a.dataset_id,a.path,a.content_id
+        FROM artifact_versions a JOIN artifact_observations o ON o.artifact_id=a.id
+        WHERE a.content_id LIKE 'md5:%' AND o.commit_hash IS NOT NULL
+          AND o.availability IN ('available','unavailable')
+          AND EXISTS (SELECT 1 FROM artifact_versions s WHERE s.dataset_id=a.dataset_id
+                      AND s.path=a.path AND s.content_id LIKE 'sha256:%')""").fetchall()
+    for identity, dataset, relative, recorded in restored:
+        root = roots.get(dataset)
+        path = PurePosixPath(relative)
+        if path.is_absolute() or '..' in path.parts or '\\' in relative:
+            raise ValueError('Invalid restored file path')
+        if root is None or not (root / path).is_file():
+            continue
+        md5, sha = hashlib.md5(), hashlib.sha256()
+        with (root / path).open('rb') as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                md5.update(chunk)
+                sha.update(chunk)
+        if recorded != 'md5:' + md5.hexdigest():
+            raise ValueError(f'Restored file differs from recorded annex identity: {relative}')
+        match = db.execute('SELECT id FROM artifact_versions WHERE dataset_id=? AND path=? AND content_id=?',
+                           (dataset, relative, 'sha256:' + sha.hexdigest())).fetchone()
+        if match is None:
+            continue  # Filename similarity alone cannot establish equivalence.
+        canonical = match[0]
+        commits = db.execute("SELECT DISTINCT commit_hash FROM artifact_observations WHERE artifact_id=? AND commit_hash IS NOT NULL AND availability IN ('available','unavailable')", (identity,)).fetchall()
+        for (commit,) in commits:
+            db.execute("INSERT INTO artifact_observations SELECT ?,?,'available' WHERE NOT EXISTS (SELECT 1 FROM artifact_observations WHERE artifact_id=? AND commit_hash=? AND availability='available')",
+                       (canonical, commit, canonical, commit))
+        # Preserve the original observation and both hashes; only the exact SHA
+        # version appears in current-file lists and can match its privacy receipt.
+        for (commit,) in commits:
+            db.execute("INSERT INTO artifact_observations SELECT ?,?,'checksum_alias' WHERE NOT EXISTS (SELECT 1 FROM artifact_observations WHERE artifact_id=? AND commit_hash=? AND availability='checksum_alias')",
+                       (identity, commit, identity, commit))
+        db.execute("DELETE FROM artifact_observations WHERE artifact_id=? AND commit_hash IS NOT NULL AND availability IN ('available','unavailable')", (identity,))
+        db.execute('INSERT OR REPLACE INTO artifact_checksum_aliases VALUES (?,?)', (identity, canonical))
+
+
 def add_publication_records(db, study):
     study = Path(study)
     db.executescript('''
@@ -22,6 +66,7 @@ def add_publication_records(db, study):
     roots = {identity.removeprefix('dataset:'): study / path for path,identity in
              db.execute("SELECT path,kind FROM artifacts WHERE kind LIKE 'dataset:%'")}
     roots[db.execute("SELECT value FROM metadata WHERE key='study_id'").fetchone()[0]] = study
+    refresh_restored_checksums(db, roots)
     # Availability is audited at the publication target, not inferred from the working clone.
     db.execute('DELETE FROM artifact_locations')
     for identity,dataset,path in db.execute("SELECT DISTINCT a.id,a.dataset_id,a.path FROM artifact_versions a JOIN artifact_observations o ON a.id=o.artifact_id WHERE o.commit_hash IS NOT NULL AND o.availability IN ('available','unavailable')"):
@@ -97,3 +142,4 @@ def add_publication_records(db, study):
             if set(outputs) != matched:
                 raise ValueError(f'Archive no longer contains the recorded outputs for {subject}')
     db.execute("INSERT OR REPLACE INTO metadata VALUES ('publication_audited_at',?)", (datetime.now(timezone.utc).isoformat(),))
+    db.execute("INSERT OR REPLACE INTO metadata VALUES ('publication_code_sha256',?)", (hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),))

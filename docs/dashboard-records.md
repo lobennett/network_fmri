@@ -40,6 +40,10 @@ Missing images retain SHA256 or MD5 identities from their annex keys so the dash
 can verify downloads. New conversion, trimming, and event receipts record software
 versions; older receipts are not assigned today's versions retroactively.
 
+Publication matches restored MD5 annex files to existing SHA256 receipts only after
+verifying both hashes. The index retains the checksum alias and commit; anatomical
+previews still require the matching defacing receipt.
+
 The separate `network_dashboard` project serves this index locally. It keeps
 analysis exclusions independent of preprocessing and surface approval, and shows
 whether the source snapshot is stale. Study content and indexes belong outside
