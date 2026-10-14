@@ -22,6 +22,7 @@ def test_publication_audits_target_and_indexes_pinned_archive_members(tmp_path):
     db.executemany('INSERT INTO artifact_observations VALUES (?,?,?)',[('zip','abc','available'),('missing','abc','available')])
     evidence={'source_commit':'abc','runs':[{'run':'sub-s03_task-rest','outputs':[{'path':path,'kind':'BOLD','volumes':90,'tr':1.49}]}]}
     db.execute('INSERT INTO findings VALUES (?,?,?)',('derivatives/fMRIPrep+full+review/code/network_fmri/fmriprep-evidence.json',json.dumps(evidence),'fmriprep-output-check'))
+    db.execute('INSERT INTO findings SELECT * FROM findings')
     add_publication_records(db,study)
     assert db.execute("SELECT availability FROM artifact_locations WHERE artifact_id='missing'").fetchone()==('unavailable',)
     row=db.execute('SELECT archive_id,member,details FROM archived_inputs').fetchone()

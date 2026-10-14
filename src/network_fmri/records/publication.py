@@ -40,6 +40,7 @@ def add_publication_records(db, study):
             db.execute('INSERT OR REPLACE INTO artifact_locations VALUES (?,?,?)',
                        (identity,str(location),'available' if (study/location).is_file() else 'unavailable'))
     db.execute('DELETE FROM archived_inputs')
+    inventoried = {}
     for evidence_path,evidence_json in db.execute("SELECT evidence_path,evidence_json FROM findings WHERE finding_type='fmriprep-output-check'"):
         evidence = json.loads(evidence_json)
         review = evidence_path.split('/code/',1)[0]
@@ -58,6 +59,12 @@ def add_publication_records(db, study):
         archive_id,path,content_id = archives[0]
         outputs = {output['path']:output for run in runs for output in run['outputs']}
         outputs.update({path:{'path':path,'kind':'confounds','rows':run['confound_rows']} for run in runs for path in run.get('confounds',[])})
+        identity = (archive_id, evidence['source_commit'])
+        if identity in inventoried:
+            if inventoried[identity] != outputs:
+                raise ValueError(f'Conflicting output inventories for {subject}')
+            continue
+        inventoried[identity] = outputs
         if not (source/path).is_file():
             for relative,output in outputs.items():
                 details = {**output,'archive_content_id':content_id,'dataset_id':dataset,
