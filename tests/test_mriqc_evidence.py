@@ -192,3 +192,29 @@ def test_unmerged_mriqc_blocks_handoff(project):
     with pytest.raises(RuntimeError, match='merged|complete'):
         prepare_mriqc_review(config, runner=runner)
     assert not source.with_name(source.name + '+review').exists()
+
+
+def test_review_extracts_report_figures_without_images(tmp_path):
+    from network_fmri.mriqc import _extract
+    archive=tmp_path/'subject.zip'
+    with zipfile.ZipFile(archive,'w') as stream:
+        stream.writestr('MRIQC/sub-s01_T1w.json','{}')
+        stream.writestr('MRIQC/sub-s01_T1w.html','<object data="sub-s01/figures/sub-s01_T1w.svg"></object>')
+        stream.writestr('MRIQC/sub-s01/figures/sub-s01_T1w.svg','<svg/>')
+        stream.writestr('MRIQC/sub-s01/anat/sub-s01_T1w.nii.gz',b'not copied')
+    target=tmp_path/'evidence';target.mkdir()
+    records=_extract([('sub-s01',archive)],'MRIQC',target)
+    assert (target/'sub-s01/figures/sub-s01_T1w.svg').read_text()=='<svg/>'
+    assert not (target/'sub-s01/anat/sub-s01_T1w.nii.gz').exists()
+    assert any(row['path'].endswith('.svg') for row in records)
+
+
+def test_svg_handoff_preserves_archive_provenance_and_idempotence(project):
+    config,source,archive,raw_commit,runner=project
+    with zipfile.ZipFile(archive,'a') as stream:
+        stream.writestr('MRIQC-24.0.2/sub-s01/figures/sub-s01_T1w.svg','<svg/>')
+    save(source);register_source(config,source)
+    first=prepare_mriqc_review(config,runner=runner)
+    from network_qa.compiler import _archive_evidence_commit
+    assert _archive_evidence_commit(first.evidence_dir)==raw_commit
+    assert not prepare_mriqc_review(config,runner=runner).created

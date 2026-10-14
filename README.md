@@ -46,3 +46,6 @@ See [Sherlock operations](docs/sherlock.md) for the command sequence and
 SQLite index used by the dashboard. Fieldmaps import CNI spiral-recon outputs from Flywheel;
 a BOLD session without its fieldmap blocks preparation. Surface previews retain
 the exact anatomical input hashes recorded by the standalone FreeSurfer adapter.
+
+Publication includes the two pinned behavioral subdatasets and MRIQC report SVGs,
+so the dashboard can inspect raw behavior and fetch reports without whole archives.

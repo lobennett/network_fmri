@@ -67,6 +67,26 @@ def publish_dataset(source,target,*,runner=subprocess.run):
     return revision
 
 
+def publish_behavioral_inputs(source, target, *, runner=subprocess.run):
+    """Install and publish only the two pinned canonical behavioral inputs."""
+    published = {}
+    for relative in ('sourcedata/behavioral/in_scanner', 'sourcedata/behavioral/out_of_scanner'):
+        entry = _git(source, 'ls-tree', 'HEAD', '--', relative, runner=runner)
+        if not entry:
+            continue
+        header, path = entry.split('\t', 1)
+        mode, kind, revision = header.split()
+        if path != relative or mode != '160000' or kind != 'commit':
+            raise RuntimeError(f'canonical behavior is not a pinned subdataset: {relative}')
+        _run(('datalad', 'get', '-n', '-d', source, source / relative), runner)
+        if _git(source / relative, 'rev-parse', 'HEAD', runner=runner) != revision:
+            raise RuntimeError(f'behavioral dataset differs from its pin: {relative}')
+        # Populate the source so its Oak clone can retrieve annexed behavior too.
+        _run(('datalad', 'get', '-d', source / relative, source / relative), runner)
+        published[relative] = publish_dataset(source / relative, target / relative, runner=runner)
+    return published
+
+
 def publish_study(config,*,index=None,group=None,runner=subprocess.run):
     study = config.mechababs.study_dir.resolve()
     destination = config.mechababs.durable_sibling.resolve()
@@ -94,6 +114,9 @@ def publish_study(config,*,index=None,group=None,runner=subprocess.run):
     if f'sourcedata/{config.mechababs.raw_slot}' not in roots:
         raise RuntimeError('canonical BIDS subdataset is not registered')
     published={relative:publish_dataset(study/relative,destination/relative,runner=runner) for relative in roots}
+    raw_path = f'sourcedata/{config.mechababs.raw_slot}'
+    behavior = publish_behavioral_inputs(study / raw_path, destination / raw_path, runner=runner)
+    published.update({f'{raw_path}/{path}': revision for path, revision in behavior.items()})
     changed=False
     for relative in roots:
         key=f'submodule.{relative}.datalad-url'
@@ -116,6 +139,10 @@ def publish_study(config,*,index=None,group=None,runner=subprocess.run):
         from network_fmri.records import build_index
         cache=study.parent/'.network-fmri-cache'/study.name/'published.sqlite'
         build_index(config,cache)
+        import sqlite3
+        from network_fmri.records.publication import add_publication_records
+        with sqlite3.connect(cache) as db:
+            add_publication_records(db, destination)
         target=Path(index)
         target.parent.mkdir(parents=True,exist_ok=True)
         pending=target.with_suffix('.pending')

@@ -107,7 +107,7 @@ def _extract(archives: list[tuple[str, Path]], prefix: str, target: Path) -> lis
                     # Each subject ZIP carries shared metadata. The canonical
                     # evidence derivative receives its own explicit description.
                     continue
-                if relative.suffix not in {'.json', '.html', '.tsv'}:
+                if relative.suffix not in {'.json', '.html', '.tsv', '.svg'}:
                     continue
                 if relative == RECEIPT or parts[1] == 'code':
                     raise ValueError(f'reserved evidence member: {member.filename}')
@@ -179,7 +179,10 @@ def prepare_mriqc_review(config: WorkflowConfig, *, runner=subprocess.run) -> MR
                    'source_dataset_name': source.name, 'source_dataset_id': source_id,
                    'source_dataset_commit': commit, 'raw_gitlink': 'sourcedata/raw',
                    'input_datalad_commit': input_commit, 'archives': archive_records,
-                   'evidence': sorted(evidence, key=lambda row: row['path'])}
+                   # Report graphics are published and indexed, but keep the scientific
+                   # receipt stable: its JSON/HTML/TSV projection binds scan approvals.
+                   'evidence': sorted((row for row in evidence if not row['path'].endswith('.svg')),
+                                      key=lambda row: row['path'])}
         (staging / RECEIPT).parent.mkdir(parents=True)
         (staging / RECEIPT).write_text(_json(receipt))
         if (_git(source, 'rev-parse', 'HEAD', runner=runner) != commit

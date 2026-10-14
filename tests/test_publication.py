@@ -68,3 +68,20 @@ def test_shared_permissions_repair_private_files_without_following_links(tmp_pat
     assert stat.S_IMODE(root.stat().st_mode)==0o750
     assert stat.S_IMODE(path.stat().st_mode)==0o640
     assert stat.S_IMODE(external.stat().st_mode)==0o600
+
+
+def test_behavioral_inputs_are_installed_at_the_pin_and_published(tmp_path, monkeypatch):
+    from network_fmri import publication
+    source=tmp_path/'raw';target=tmp_path/'oak';source.mkdir()
+    calls=[];published=[];revision='a'*40
+    def runner(command, **kwargs):
+        calls.append(command)
+        if 'ls-tree' in command:return SimpleNamespace(stdout=f'160000 commit {revision}\tsourcedata/behavioral/in_scanner\n' if command[-1].endswith('/in_scanner') else '')
+        if 'rev-parse' in command:return SimpleNamespace(stdout=revision)
+        return SimpleNamespace(stdout='')
+    monkeypatch.setattr(publication,'publish_dataset',lambda source,target,**kwargs:published.append((source,target)) or revision)
+    result=publication.publish_behavioral_inputs(source,target,runner=runner)
+    assert any(c[:3]==('datalad','get','-n') for c in calls)
+    assert any(c[:3]==('datalad','get','-d') and c[-1].endswith('/in_scanner') for c in calls)
+    assert published==[(source/'sourcedata/behavioral/in_scanner',target/'sourcedata/behavioral/in_scanner')]
+    assert result['sourcedata/behavioral/in_scanner']==revision
