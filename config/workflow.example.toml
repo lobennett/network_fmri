@@ -33,9 +33,9 @@ image = "/home/groups/russpold/singularity_images/mriqc_24.0.2.sif"
 version = "24.0.2"
 
 [fmriprep]
-# Patched niworkflows initializer; register as bids-fmriprep-rigidinit1 in DataLad.
-image = "/oak/stanford/groups/russpold/shared/containers/fmriprep-25.2.5-rigidinit1.sif"
-version = "25.2.5"
+# Validated upstream rigid initializer; registered as bids-fmriprep-25-2-7-rc1.
+image = "/oak/stanford/groups/russpold/shared/containers/fmriprep-25.2.7-rc1.sif"
+version = "25.2.7-rc1"
 
 [pydeface]
 # Built from containers/pydeface-2.1.0.def.
@@ -55,12 +55,11 @@ cluster_file = "sherlock.yaml"
 apps = [
   { name = "mriqc", file = "MRIQC-24.0.2.yaml" },
   { name = "anatomical", file = "FreeSurfer-8.2.0.yaml" },
-  { name = "fmriprep", file = "fMRIPrep-25.2.5+full.yaml" },
+  { name = "fmriprep", file = "fMRIPrep-25.2.7-rc1+full.yaml" },
 ]
 
 [slurm]
 partition = "russpold,normal"
-account = "russpold"
 cpus = 8
 memory_gb = 32
 time_minutes = 720

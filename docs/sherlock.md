@@ -21,7 +21,7 @@ campaign:
 ```bash
 apptainer exec --cleanenv \
   --bind /home/users/logben/license.txt:/license.txt:ro \
-  /oak/stanford/groups/russpold/shared/containers/fmriprep-25.2.5.sif \
+  /oak/stanford/groups/russpold/shared/containers/fmriprep-25.2.7-rc1.sif \
   bash -lc 'export FS_LICENSE=/license.txt; mri_convert --version'
 ```
 
@@ -61,7 +61,7 @@ Neither controller approves scans or surfaces, or retries failed jobs.
 After full fMRIPrep merges, `processing run` executes fmriprepviz on the controller's
 Slurm allocation. It extracts only T1w BOLD references, checks that the approved
 ribbon comes from the reconstruction used by fMRIPrep, and saves GIF/HTML viewers
-under `derivatives/fmriprepviz-0.1.0-25.2.5+full+<campaign>/`. Each viewer uses seven
+under `derivatives/fmriprepviz-0.1.0-25.2.7-rc1+full+<campaign>/`. Each viewer uses seven
 cuts per orientation and two frames per second. A restart verifies existing output
 checksums and skips rendering; it does not rerun fMRIPrep. The final state is
 `awaiting-output-review` until each subject has a committed final approval
@@ -150,24 +150,21 @@ Use `squeue --me`, `sacct`, `network-fmri processing status`, and the paths prin
 by MechaBABS to investigate jobs. The Oak sibling is the durable copy; scratch is the
 working copy.
 
-If an Oak clone reports SQLite I/O errors, place its disposable annex database
-cache on scratch ([git-annex guidance](https://git-annex.branchable.com/git-annex/)):
+The disposable annex database cache can live on scratch while file contents and
+Git history remain on Oak ([git-annex guidance](https://git-annex.branchable.com/git-annex/)):
 
 ```bash
 git -C /path/to/oak/clone config annex.dbdir /scratch/users/$USER/git-annex-db
 ```
 
-This local setting leaves file contents and Git history on Oak.
-
 ## Full sample and Oak
 
-Full fMRIPrep uses container `bids-fmriprep-rigidinit1`. Build it from the original
-25.2.5 SIF with `containers/fmriprep-25.2.5-rigidinit1.def` and
-`--build-arg BASE_IMAGE=/path/to/original.sif` on a compute node. The recipe checks
-the original niworkflows source, applies the validated initializer correction, and
-stores `/opt/network/fmriprep-build.json`. Record both image checksums, the recipe
-revision, and the DataLad container commit in the study before submission. Do not
-reuse approvals of old fMRIPrep outputs for this corrected build.
+Use the `fMRIPrep-25.2.7-rc1+full.yaml` app and DataLad container
+`bids-fmriprep-25-2-7-rc1`. The validated image uses rigid BOLD atlas initialization,
+`--project-goodvoxels`, and 91k CIFTI output. Record the image checksum, source
+digest, reported package versions and validation evidence in
+`code/network_fmri/fmriprep-build.json`. The older `rigidinit1` recipe remains a
+historical reference; approvals of its outputs do not approve a new campaign.
 
 Curation binds the approved manifest to a checksum inventory of its resulting BIDS
 files. Later gates verify that result; they do not compare dropped scans with the

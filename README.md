@@ -36,15 +36,15 @@ Before rendering, it extracts the fMRIPrep reports and checks BOLD/CIFTI lengths
 confound rows and TRs against the trimmed inputs. Mismatches stop the handoff;
 passing checks do not replace visual review.
 
-Full preprocessing uses fMRIPrep 25.2.5 with the validated `rigidinit1` BOLD atlas
-initializer correction. The DataLad container commit and build receipt distinguish
-it from the original image; existing pilot derivatives require reprocessing.
+The current campaign uses fMRIPrep 25.2.7-rc1 with rigid BOLD atlas initialization
+and `--project-goodvoxels`. The DataLad container commit and
+`code/network_fmri/fmriprep-build.json` record the exact image and package versions.
 
 See [Sherlock operations](docs/sherlock.md) for the command sequence and
 [MechaBABS design](docs/mechababs.md) for ownership and review gates. The
 [dashboard records](docs/dashboard-records.md) reference describes the disposable
 SQLite index used by the dashboard. Fieldmaps import CNI spiral-recon outputs from Flywheel;
-a BOLD session without its fieldmap blocks preparation. Surface previews retain
+missing fieldmaps are recorded without inventing B0 links. Surface previews retain
 the exact anatomical input hashes recorded by the standalone FreeSurfer adapter.
 
 Publication includes the two pinned behavioral subdatasets and MRIQC report SVGs,

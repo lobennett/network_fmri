@@ -49,11 +49,12 @@ analysis exclusions independent of preprocessing and surface approval, and shows
 whether the source snapshot is stale. Study content and indexes belong outside
 GitHub and public hosting.
 
-Still pending: full provenance for fieldmap edits, global-signal reports,
-participant ingestion, and archived derivative members; real-study acceptance on
-Sherlock. Use the [surface review procedure](surface-review.md) for ribbon inspection,
-surface checks, and correction provenance before approving fMRIPrep.
+Publication verifies fMRIPrep archives and records member paths, sizes and CRCs for
+the analysis manifests. Archived inputs require extraction; a pending inventory
+does not mean the data are missing. The dashboard separates preprocessing,
+task-model and timeseries exclusions and previews the recorded behavior and events.
 
-Later: add task-level event timelines and design-matrix views tied to the exact
-events file, model specification, and analysis exclusions. Reconstruction and
-preprocessing review take priority.
+Full file lineage for fieldmap edits, global-signal reports and participant
+ingestion remains incomplete. Unrecorded history is shown explicitly. Use the
+[surface review procedure](surface-review.md) before approving fMRIPrep; design
+matrices and model approval belong to the analysis package.

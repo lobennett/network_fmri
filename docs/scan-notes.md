@@ -84,12 +84,11 @@ paths. Existing QA exclusions remain evidence; no available raw behavior was rem
 
 ## Preprocessing and known limitations
 
-As of 2026-09-30, full fMRIPrep uses `--project-goodvoxels` with 91k CIFTI output.
-The existing sub-s03 pilot derivatives were generated without this flag and must
-be rerun, followed by regenerated fmriprepviz reports and a fresh final review.
-Keep the old outputs labeled as pilot references until their replacements pass review.
-Use the `25.2.5-rigidinit1` container for new runs. It changes niworkflows 1.14.4's
-BOLD `init_aff` transform from affine to rigid, retaining affine refinement and N4.
+The corrected campaign uses fMRIPrep 25.2.7-rc1 with `--project-goodvoxels`, 91k CIFTI,
+and niworkflows 1.15.3. Its BOLD `init_aff` transform is rigid, retaining affine
+refinement and N4. The build receipt records the reported fMRIPrep version
+`25.2.7.dev5+g7cf086b9b` and image checksum. Original sub-s03 pilot derivatives lack
+the good-voxel flag and remain historical references, not the current campaign.
 The original affine initializer can misplace the atlas brain weights and severely
 distort BOLD-reference contrast. A matched reference test reproduced the failure;
 the corrected full s03/ses-09 goNogo run restored its final T1w-reference contrast
