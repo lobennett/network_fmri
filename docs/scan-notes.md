@@ -95,6 +95,103 @@ the corrected full s03/ses-09 goNogo run restored its final T1w-reference contra
 (brain median 12 → 1,184). This validates that scan, not every registration in the
 sample. Preserve the original pilot provenance and review regenerated outputs.
 
+The rigid initializer does not eliminate seed-dependent failures. Historical
+s29/ses-07 shapeMatching diagnostics reproduced a misplaced weighting map with
+Dice overlap 0.037 against the archived brain mask, despite an N4 brain median
+near 1,559. The paired spatialTS reference had overlap 0.905. Consequently, low
+brain median alone is not a sufficient screen. Preserve both registration and
+intensity evidence, including borderline partial-field-of-view cases.
+
+The isolated seed audit replays the pinned enhancement workflow through N4 from
+the archived HMC reference with the recorded ANTs and NumPy seeds. An independent
+AFNI automask of that HMC image is the primary coverage comparator; the archived
+final mask is a second comparator. Neither comparator is supplied to the replayed
+registration. Coverage is the fraction of comparator voxels with probability
+weight greater than 0.5. The screening bands are below 0.25 (flagged),
+0.25 to below 0.75 (borderline), and at least 0.75 (passing). Calibration in the
+exact campaign image reproduced coverage 0.0203 for s29/ses-07 shapeMatching,
+0.9684 for the paired spatialTS run, and 0.8274 for s03/ses-09 goNogo. The two
+s29 archived-mask Dice values exactly matched the prior diagnostic values;
+the failed reference retained central darkening on visual inspection. These
+examples establish separation for the known failure, not accuracy on every
+partial-field-of-view run. Centroid distance describes the truncated mapped mask
+and must not be interpreted as the initializer transform's translation.
+Replay is an imperfect proxy for the original execution: the completed campaign
+audit included displaced replays with visually uniform archived references and
+passing replays with abnormal archived intensity. Therefore also screen the
+archived reference's relative median, `(p50 - p2) / (p98 - p2)`, measured inside
+the independent HMC automask. Require inspection below 0.68 or when its absolute
+difference from the replay exceeds 0.05. In calibration against the whole
+campaign, six passing replays had archived relative medians 0.463–0.517; the
+remaining passing replays were at least 0.704. Visually confirmed failures in
+the coverage-flagged group reached 0.654; retained originals were at least 0.722.
+The 0.68 threshold lies in this observed gap. These conservative thresholds
+identify review candidates, not automatic repair decisions or general-purpose
+fMRIPrep quality thresholds. Invalid intensity measurements block selection.
+Inspect every coverage or intensity candidate against the archived reference;
+retain usable originals when only their replay fails. The audit is evidence for
+repair selection, not scan exclusion or final output approval.
+
+The campaign audit covered all 2,592 acquisitions in the 46-subject roster.
+It found 183 replay coverage flags and 15 borderline runs. Visual comparison
+retained seven flagged originals and every borderline original, while the
+archived-intensity screen identified six additional damaged references with
+passing replays. The combined severe screen therefore flags 189 acquisitions
+(7.29%), and visual adjudication selects 182 acquisitions across 40 subjects
+(7.02%) for staged repair. All 204 coverage/intensity candidates have recorded
+visual decisions. Run-level measurements, image checksums and reasons belong
+with the audit and repair-plan provenance.
+
+A fresh master seed changes the derived ANTs seed used by registration outside
+the BOLD-reference step as well. `--skull-strip-fixed-seed` does not freeze all
+anatomical/template processing. Any targeted repair must preserve the existing
+subject coordinate system, verify reuse of its anatomical and template outputs,
+and record the fresh seeds. Repairs belong in separate staging storage; changing
+the shared derivatives requires a separate integration decision. Stop before
+repair submission if more than 10% of assessed runs are flagged.
+
+Targeted repairs expose only original anatomical derivatives to `--derivatives`;
+functional derivatives and old configuration files are excluded. Validate the
+original T1w grid, mask, tissue maps, both directions of both MNI registrations,
+fsnative-to-T1w transform, and surface registrations before building the full
+workflow. The full workflow must use those inputs and contain a new BOLD
+initializer for exactly one acquisition, with every echo. Native sphere GIFTI
+conversion may run from the unchanged FreeSurfer reconstruction; no new fsLR or
+MSM registration is permitted. This image may recompute T2w preprocessing into
+the original T1w coordinates. Its sMRIPrep surface workflow also derives native
+`lh.midthickness` and `rh.midthickness` when absent, even with `--fs-no-resume`.
+An isolated exact-image reproduction added only those two files, preserving
+every original reconstruction file. Permit those additions only in the
+node-local copy, checking finite vertices and unchanged white-surface topology.
+Record every staged addition, modification and removal with hashes as a warning
+in per-run provenance. These warnings do not stop derivative generation; changes
+beyond the expected midthickness derivation require a consistency report before
+integration. Shared source reconstructions remain read-only throughout.
+The original anatomical midthickness GIFTIs remain the validated reuse inputs.
+New anatomical outputs must not replace the
+originals during integration. Measure the actual rerun N4 weighting map and
+reference intensities, rather than relying only on a second random replay,
+and inspect each repaired reference before proposing integration. Bound retries
+to three distinct master/ANTs seed pairs per acquisition by default. An explicit
+follow-up authorization permits up to ten additional seed pairs for exhausted
+acquisitions, including near-threshold coverage cases. Preserve the initial plan
+and every consumed seed, and retain the same coverage and intensity thresholds.
+Additional retries do not automatically approve borderline outputs or establish
+that a low-coverage result has the catastrophic initializer failure. When the
+additional bound is exhausted, report the images and metrics for a scientific
+decision instead of changing the acceptance threshold.
+
+All 182 selected acquisitions obtained an accepted replacement under these
+unchanged checks and targeted visual review. Actual rerun coverage ranged from
+0.750373 to 0.987755 (median 0.904639). Archived-reference relative intensity
+had median 0.526359 before repair and 0.776383 afterward; every accepted
+replacement was at least 0.702999. The selected s295/ses-03 spatialTS attempt
+passes coverage narrowly at 0.750373. Direct inspection confirms brain-aligned
+weights and a uniform reference; retain that narrow margin in its provenance.
+Other plausible, below-threshold attempts remain unselected rather than being
+reclassified as catastrophic failures. These results establish correction of
+the targeted reference defect, not approval of unrelated scan quality.
+
 The BOLD tree is trimmed exactly once before event generation. Sidecars record
 `NumberOfVolumesDiscardedByUser: 7`; fMRIPrep must use `--dummy-scans 0`. MRIQC uses
 `--fd_thres 0.5`, and the decision generator records `dvars_std` as evidence.
