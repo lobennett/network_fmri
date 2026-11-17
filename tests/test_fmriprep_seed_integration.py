@@ -19,6 +19,54 @@ class Unseekable(io.BytesIO):
         raise OSError('unseekable')
 
 
+def write_surface_records(directory, *, modern=False):
+    before = {'surf/lh.white': 'original-white'}
+    added = {'surf/lh.midthickness': 'derived-mid'}
+    difference = {'added': added, 'changed': {}, 'removed': {}}
+    geometry = {'surf/lh.midthickness': {'sha256': 'derived-mid', 'vertices': 100,
+                'triangles': 196, 'white_topology_unchanged': True}}
+    report = {'difference': difference, 'derived_geometry': geometry,
+              'expected_midthickness_derivation_only': True} if modern else geometry
+    for name, value in [('surface-before.json', before), ('surface-after.json', before | added),
+                        ('surface-diff.json', difference), ('surface-derivations.json', report)]:
+        (directory/name).write_text(json.dumps(value))
+
+
+@pytest.mark.parametrize('modern', [False, True])
+def test_surface_records_support_legacy_pilot_and_current_receipts(tmp_path, modern):
+    from network_fmri.fmriprep_seed_integration import validate_surface_records
+    write_surface_records(tmp_path, modern=modern)
+    receipt = {'surface_changes_expected': True} if modern else {}
+    evidence = validate_surface_records(tmp_path, receipt)
+    assert evidence['legacy_receipt'] is not modern
+    assert len(evidence['evidence_sha256']) == 4
+
+
+@pytest.mark.parametrize('damage', ['changed-white', 'missing-geometry', 'wrong-digest',
+                                  'wrong-topology', 'missing-inventory', 'negative-flag'])
+def test_surface_records_fail_closed_without_consistent_evidence(tmp_path, damage):
+    from network_fmri.fmriprep_seed_integration import validate_surface_records
+    write_surface_records(tmp_path)
+    receipt = {}
+    if damage == 'changed-white':
+        path = tmp_path/'surface-after.json'
+        value = json.loads(path.read_text()); value['surf/lh.white'] = 'changed'
+        path.write_text(json.dumps(value))
+    elif damage == 'missing-geometry':
+        (tmp_path/'surface-derivations.json').write_text('{}')
+    elif damage in {'wrong-digest', 'wrong-topology'}:
+        path = tmp_path/'surface-derivations.json'
+        value = json.loads(path.read_text())
+        value['surf/lh.midthickness']['sha256' if damage == 'wrong-digest' else 'white_topology_unchanged'] = False
+        path.write_text(json.dumps(value))
+    elif damage == 'missing-inventory':
+        (tmp_path/'surface-before.json').unlink()
+    else:
+        receipt['surface_changes_expected'] = False
+    with pytest.raises((ValueError, FileNotFoundError)):
+        validate_surface_records(tmp_path, receipt)
+
+
 @pytest.mark.parametrize('compression', [zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED])
 @pytest.mark.parametrize('descriptor', [False, True])
 def test_zip_overlay_preserves_anatomy_and_unaffected_payloads(tmp_path, compression, descriptor):
@@ -107,6 +155,7 @@ def test_extended_plan_accepts_parent_receipts_only_for_original_seeds(tmp_path,
     from network_fmri.fmriprep_seed_rerun import derived_seeds
     seeds = [derived_seeds(i) for i in range(1, 5)]
     chosen = seeds[attempt-1]
+    write_surface_records(tmp_path)
     run = 'sub-s29_ses-07_task-rest_run-1'
     (tmp_path/'after.json').write_text(json.dumps({'run': run, 'seeds': chosen, 'status': 'pass'}))
     (tmp_path/'derivatives.tar.gz').write_bytes(b'archive')
@@ -144,6 +193,7 @@ def test_complete_subject_build_keeps_original_anatomy_and_good_runs(tmp_path, m
     plan.write_text(json.dumps({'runs': [entry]}))
     attempt = tmp_path/'attempt-2'
     attempt.mkdir()
+    write_surface_records(attempt)
     (attempt/'evidence').mkdir()
     (attempt/'evidence'/'review.png').write_bytes(b'visual evidence')
     after = {'run': run, 'seeds': seeds, 'status': 'pass'}

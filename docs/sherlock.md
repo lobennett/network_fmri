@@ -409,7 +409,11 @@ Before the final save, require all 46 readable subject archives, exactly 2,592
 acquisition identities and all 182 accepted repair decisions. Check ZIP
 membership and unchanged member metadata against the source archives, and
 match embedded repair receipts, measured results and review-image hashes to
-their accepted attempts. Keep dataset-level visual decisions alongside the
+their accepted attempts. Validate surface before/after inventories, their
+recorded difference and derivation geometry together. Earlier pilot receipts
+predate the `surface_changes_expected` summary field; require their complete
+surface evidence rather than treating a missing field as either approval or
+failure. Keep dataset-level visual decisions alongside the
 archives when an archive was already built before its visual review. Record
 whether a checksum was verified during assembly or independently rechecked;
 archive membership alone is not a full-payload checksum verification.

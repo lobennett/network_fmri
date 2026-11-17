@@ -174,6 +174,38 @@ def copy_zip_with_overlay(source, destination, replacements, removed):
             'bytes': destination.stat().st_size}
 
 
+def validate_surface_records(directory, receipt):
+    """Verify retained surface evidence, including receipts predating the summary flag."""
+    from network_fmri.fmriprep_seed_rerun import inventory_difference
+    before, after, difference, report = (
+        json.loads((directory/name).read_text()) for name in (
+            'surface-before.json', 'surface-after.json', 'surface-diff.json', 'surface-derivations.json'))
+    if ('surface_changes_expected' in receipt and receipt['surface_changes_expected'] is not True):
+        raise ValueError('unexpected surface changes need consistency assessment')
+    if difference != inventory_difference(before, after):
+        raise ValueError('surface difference disagrees with retained inventories')
+    allowed = {'surf/lh.midthickness', 'surf/rh.midthickness'}
+    if difference['changed'] or difference['removed'] or set(difference['added']) - allowed:
+        raise ValueError('original surface files changed or unexpected files were added')
+    if 'derived_geometry' in report:
+        if (report['difference'] != difference
+                or report['expected_midthickness_derivation_only'] is not True):
+            raise ValueError('surface derivation report does not confirm expected additions')
+        geometry = report['derived_geometry']
+    else:
+        geometry = report
+    if set(geometry) != set(difference['added']):
+        raise ValueError('surface geometry evidence does not cover every addition')
+    for name, digest in difference['added'].items():
+        item = geometry[name]
+        if (item['sha256'] != digest or item['white_topology_unchanged'] is not True
+                or item['vertices'] <= 0 or item['triangles'] <= 0):
+            raise ValueError('surface geometry evidence differs from expected derivation')
+    return {'legacy_receipt': 'surface_changes_expected' not in receipt,
+            'evidence_sha256': {name: sha256(directory/name) for name in (
+                'surface-before.json', 'surface-after.json', 'surface-diff.json', 'surface-derivations.json')}}
+
+
 def validated_attempt(directory, planned, plan_digest, parent_digest=None):
     proof = json.loads((directory/'provenance.json').read_text())
     receipt = json.loads((directory/'receipt.json').read_text())
@@ -187,8 +219,7 @@ def validated_attempt(directory, planned, plan_digest, parent_digest=None):
             or proof['seeds'] != receipt['seeds'] or proof['seeds'] != after['seeds']
             or not receipt['automatic_checks_passed'] or after['status'] != 'pass'):
         raise ValueError(f'unaccepted or unrelated attempt: {run}')
-    if receipt.get('surface_changes_expected') is False:
-        raise ValueError(f'unexpected surface changes need consistency assessment: {run}')
+    validate_surface_records(directory, receipt)
     if receipt['after_sha256'] != sha256(directory/'after.json'):
         raise ValueError('after metrics differ from accepted receipt')
     if receipt['derivatives_sha256'] != sha256(directory/'derivatives.tar.gz'):
