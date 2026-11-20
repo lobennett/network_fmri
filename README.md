@@ -52,10 +52,12 @@ anatomical coordinates, measures each actual rerun and writes separate staged
 archives and provenance. See the [repair procedure](docs/sherlock.md#isolated-acquisition-repairs)
 for validation and integration requirements, including bounded, explicitly
 authorized retry extensions for exhausted runs. After repairs pass,
-`python -m network_fmri.fmriprep_seed_integration` builds complete subject ZIPs
-in the separate `fMRIPrep-25.2.7-rc1+full+network-v3` folder. It preserves original
-anatomy and unchanged acquisitions, rewrites repaired fieldmap provenance, and
-includes per-run evidence. Use the new folder only when its README says COMPLETE.
+`python -m network_fmri.fmriprep_seed_integration` builds complete ZIPs for
+subjects with repairs in the separate `fMRIPrep-25.2.7-rc1+full+network-v3` folder.
+It preserves original anatomy and unchanged acquisitions, rewrites repaired
+fieldmap provenance, and includes per-run evidence. Dataset finalization used
+one-off task scripts outside the package. Use the new folder only when its
+README says COMPLETE.
 
 See [Sherlock operations](docs/sherlock.md) for the command sequence and
 [MechaBABS design](docs/mechababs.md) for ownership and review gates. The

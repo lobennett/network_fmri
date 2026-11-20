@@ -397,33 +397,48 @@ selected functional files/reportlets, and retains original anatomy. It gives
 new fieldmaps seed-specific identifiers and rewrites their references, resolves
 temporary anatomical reuse links to the retained anatomy, and rebuilds affected
 session reports with the pinned image. Per-run provenance and N4 evidence are
-included in each corrected archive. Each worker writes an atomic archive and
-an integration receipt; only the serial final stage saves the DataLad dataset.
+included in each corrected archive.
+
+Before building, the integrator requires each attempt's provenance, receipt and
+`after.json` to name the planned acquisition and one of its planned seed pairs,
+with passing automatic checks and receipt hashes matching `after.json` and
+`derivatives.tar.gz`. It recomputes the surface difference from the retained
+before/after inventories and accepts only native midthickness additions whose
+geometry evidence matches. Earlier pilot receipts predate the
+`surface_changes_expected` summary field; their complete surface evidence is
+required instead. After writing, it checks ZIP membership against the overlay
+and unchanged member CRC, size and compression metadata against the source
+archive. It copies each attempt's `evidence/` files and any
+`review-decision.json` into the archive without checking them against
+`after.json` or requiring a visual decision. Each worker writes an atomic
+archive and an integration receipt with its checksum. The integrator builds
+only subjects with selected acquisitions and never saves the dataset.
+
+The package has no dataset-level finalization command. For network-v3, one-off
+task scripts outside the package performed the remaining steps.
+`initialize-v3.py` gave the six wholly unchanged subject archives independent
+links to locked annex objects. `validate-v3.py` (SHA-256
+`e496e4fbc3536fb13ce5dd62cfe497e754d9a281e32bb5eed2674d0f9fdd0837`) checked all
+46 archives, the 2,592 acquisition identities, unchanged member metadata,
+original anatomy, all 182 accepted metrics, embedded evidence hashes and
+visual-review decisions. `finalize-v3.py` started the serial DataLad save; the
+save-only `resume-save.py` finished it after a time limit, marked the README
+COMPLETE and recorded the completion milestone. The scripts are preserved in the
+task root `$OAK/data/network_grant/network-fmriprep-seed-rerun`. Its
+`final-validation-52680313/completion-receipt.json` records the validator and
+resume-script hashes and the measured usage (`storage_du_bytes`);
+`shared-archive-storage.json` from the completion readback records the archive
+storage shared with network-v2.
+
 Check `git-annex version --raw` in the serial worker's actual `PATH` before
 saving: this pinned DataLad environment requires at least `10.20230126`.
 Sherlock's `git-annex/8.20210622` module is too old. Prefer an existing compatible
 installation and record its version. A failed save after successful archive
 verification does not require rebuilding the archives or reinitializing the
 dataset; preserve the verification receipts and resume the explicit save.
-Before the final save, require all 46 readable subject archives, exactly 2,592
-acquisition identities and all 182 accepted repair decisions. Check ZIP
-membership and unchanged member metadata against the source archives, and
-match embedded repair receipts, measured results and review-image hashes to
-their accepted attempts. Validate surface before/after inventories, their
-recorded difference and derivation geometry together. Earlier pilot receipts
-predate the `surface_changes_expected` summary field; require their complete
-surface evidence rather than treating a missing field as either approval or
-failure. Keep dataset-level visual decisions alongside the
-archives when an archive was already built before its visual review. Record
-whether a checksum was verified during assembly or independently rechecked;
-archive membership alone is not a full-payload checksum verification.
-Save the new dataset serially with explicit paths (parallel annex hashing via
-`datalad save -J 4` is compatible with this single-writer stage). Mark its README
-complete only after the archive save succeeds, record a final completion
-milestone, and confirm a clean dataset and unchanged source commit. Adoption
-by QA/GLM workflows is a separate version selection; preserve their existing
-inputs and results until that selection is made.
-Share wholly unchanged archives only through locked annex objects with an
-independent link inside the new dataset; do not hardlink writable extracted
-images. The estimated new storage is about 8 TB of rebuilt archives plus
-0.7 TB of staged repairs. Check actual usage before exceeding about 10 TB.
+Corrected ZIP checksums are integrator receipts; archive membership alone is not
+a full-payload checksum verification. Share wholly unchanged archives only
+through locked annex objects with an independent link inside the new dataset;
+do not hardlink writable extracted images. Adoption by QA/GLM workflows is a
+separate version selection; preserve their existing inputs and results until
+that selection is made.
