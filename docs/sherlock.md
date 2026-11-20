@@ -275,9 +275,9 @@ Audit results do not approve replacing shared derivatives.
 ### Isolated acquisition repairs
 
 Record one `reviews.json` entry for every coverage/intensity candidate, keyed by
-the full acquisition identity. Each entry needs `decision` (`rerun` or `keep`),
-a nonempty `reason`, and the inspected image's checksum and reviewer in the
-evidence record. Do not select a usable original just because its replay fails.
+the full acquisition identity. The plan requires `decision` (`rerun` or `keep`)
+and a nonempty `reason`; also record the inspected image's checksum and reviewer
+in the evidence record. Do not select a usable original just because its replay fails.
 On a compute allocation, create a new immutable plan:
 
 ```bash
