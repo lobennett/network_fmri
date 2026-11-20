@@ -40,6 +40,25 @@ The current campaign uses fMRIPrep 25.2.7-rc1 with rigid BOLD atlas initializati
 and `--project-goodvoxels`. The DataLad container commit and
 `code/network_fmri/fmriprep-build.json` record the exact image and package versions.
 
+For suspected seed-dependent BOLD-reference failures, the separate
+`network_fmri.bold_reference_qc` module inventories expected runs and replays the
+N4 weighting-map registration from archived HMC references. It writes per-run
+coverage and intensity evidence, review images, and an exhaustive `runs.tsv`.
+Follow the [isolated audit procedure](docs/sherlock.md#bold-reference-seed-audit)
+before selecting repairs; the audit does not alter campaign derivatives.
+`python -m network_fmri.fmriprep_seed_rerun plan` freezes visually confirmed
+acquisitions and fresh seeds. The isolated Slurm repair worker reuses original
+anatomical coordinates, measures each actual rerun and writes separate staged
+archives and provenance. See the [repair procedure](docs/sherlock.md#isolated-acquisition-repairs)
+for validation and integration requirements, including bounded, explicitly
+authorized retry extensions for exhausted runs. After repairs pass,
+`python -m network_fmri.fmriprep_seed_integration` builds complete ZIPs for
+subjects with repairs in the separate `fMRIPrep-25.2.7-rc1+full+network-v3` folder.
+It preserves original anatomy and unchanged acquisitions, rewrites repaired
+fieldmap provenance, and includes per-run evidence. Dataset finalization used
+one-off task scripts outside the package. Use the new folder only when its
+README says COMPLETE.
+
 See [Sherlock operations](docs/sherlock.md) for the command sequence and
 [MechaBABS design](docs/mechababs.md) for ownership and review gates. The
 [dashboard records](docs/dashboard-records.md) reference describes the disposable

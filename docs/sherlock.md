@@ -197,3 +197,248 @@ Submit it with `--dependency=afterok:<final-raw-job>`. Restart after committing
 review decisions. On Sherlock, set `UV_PROJECT_ENVIRONMENT` to an absolute path
 under `$GROUP_HOME` for campaign initialization; the upstream `.venv` entry point
 links there. Collaborators receive read access to the Oak copy.
+
+## BOLD-reference seed audit
+
+Create an audit directory outside the study and its derivatives. Run inventory,
+tests and image processing on a compute allocation. Use the reviewed full roster,
+the actual raw and archive dataset paths, and the image/checksum from the committed
+build receipt. Do not infer a second campaign from a renamed path or alias.
+
+```bash
+ml system git
+uv sync --frozen
+uv run --frozen pytest -q tests/test_bold_reference_qc.py tests/test_fmriprep_seed_rerun.py
+mkdir -p "$SCRATCH/network-seed-audit/results"
+uv run --frozen python -m network_fmri.bold_reference_qc inventory \
+  --raw /path/to/pinned/raw --archives /path/to/pinned/fmriprep-archives \
+  --subjects-file /path/to/reviewed/subjects-46.txt \
+  --output "$SCRATCH/network-seed-audit/inventory.json"
+```
+
+Verify the imported package path and pinned sibling revisions before calibration.
+The inventory preserves archive availability, incomplete runs, recorded program
+seeds, archive annex keys and Git commits. It rejects ambiguous configurations and
+SBRef acquisitions, whose enhancement input differs from the HMC reference.
+Calibrate known failed and plausible runs in the exact container first. Use the
+`audit --subject SUBJECT --run EXACT_RUN_KEY` options for that limited check, with
+fresh output and node-local work directories.
+
+After calibration, export `FMRIPREP_IMAGE`, `FMRIPREP_IMAGE_SHA256`,
+`TEMPLATEFLOW_HOME` and `NETWORK_FMRI_CODE` (the absolute validated checkout).
+Slurm runs a spooled copy of the job script, so its path cannot locate the source.
+Run one import preflight and verify `AUDIT_PREFLIGHT_PASSED` in its completed log
+before submitting the full array:
+
+```bash
+export NETWORK_FMRI_CODE=/absolute/path/to/validated/network_fmri
+sbatch --partition=russpold,normal --array=0 --time=00:15:00 \
+  --output="$SCRATCH/network-seed-audit/preflight-%A_%a.log" \
+  "$NETWORK_FMRI_CODE/scripts/run_bold_reference_audit.sh" \
+  "$SCRATCH/network-seed-audit/inventory.json" "$SCRATCH/network-seed-audit/results" \
+  --check-only
+```
+
+After that preflight succeeds:
+
+```bash
+sbatch --partition=russpold,normal --array=0-45%4 \
+  --output="$SCRATCH/network-seed-audit/audit-%A_%a.log" \
+  "$NETWORK_FMRI_CODE/scripts/run_bold_reference_audit.sh" \
+  "$SCRATCH/network-seed-audit/inventory.json" "$SCRATCH/network-seed-audit/results"
+```
+
+Each worker uses the recorded ANTs/NumPy seeds to replay the weighting-map step
+and retains metric JSON, weight and comparator images, plus a montage for
+coverage and archived-intensity candidates. A replay can differ from the
+original execution; use the archived reference when adjudicating damage.
+The worker never reuses a work tree or saves the shared raw
+dataset. A failed worker requires diagnosis; existing result directories are not
+silently overwritten.
+
+On a compute allocation, aggregate results into a new summary directory:
+
+```bash
+uv run --frozen python -m network_fmri.bold_reference_qc summarize \
+  --manifest "$SCRATCH/network-seed-audit/inventory.json" \
+  --results "$SCRATCH/network-seed-audit/results" \
+  --output "$SCRATCH/network-seed-audit/summary"
+```
+
+Review `summary.json`, every row of `runs.tsv`, and all montages identified by
+`review_reasons`, including passing replays with abnormal archived intensity.
+Missing audits block repair selection; missing archives and incomplete outputs
+remain explicit rows. Stop before reruns if more than 10% of assessed runs are
+flagged. Preserve durable evidence on Oak and small reports outside purged storage.
+Audit results do not approve replacing shared derivatives.
+
+### Isolated acquisition repairs
+
+Record one `reviews.json` entry for every coverage/intensity candidate, keyed by
+the full acquisition identity. The plan requires `decision` (`rerun` or `keep`)
+and a nonempty `reason`; also record the inspected image's checksum and reviewer
+in the evidence record. Do not select a usable original just because its replay fails.
+On a compute allocation, create a new immutable plan:
+
+```bash
+uv run --frozen python -m network_fmri.fmriprep_seed_rerun plan \
+  --summary "$SCRATCH/network-seed-audit/summary/summary.json" \
+  --reviews "$SCRATCH/network-seed-audit/reviews.json" \
+  --inventory "$SCRATCH/network-seed-audit/inventory.json" \
+  --output "$SCRATCH/network-seed-audit/repair-plan.json"
+```
+
+The plan assigns three fresh master/ANTs seed pairs to each selected acquisition.
+It rejects incomplete audits, missing visual decisions, source mismatches and
+selection above 10%. Keep the plan with the durable evidence; never regenerate
+it to restart a failed attempt without accounting for its previous seeds.
+If an executed attempt stops during validation, resume through the Python
+`run` command with the same plan and a fresh staging root, adding
+`--previous-attempt /path/to/prior/attempt-N` for every consumed attempt.
+The provenance must match the run, plan checksum and planned seed sequence;
+three attempts remains the default total limit across restarts. A preflight-only
+invocation does not consume a seed.
+
+An explicitly authorized retry extension can allocate up to ten additional seeds
+for exhausted acquisitions. Provide an `attempts.json` mapping each requested run
+to all three original attempt directories, then freeze a separate plan:
+
+```bash
+uv run --frozen python -m network_fmri.fmriprep_seed_rerun extend \
+  --plan "$REPAIR_PLAN" --attempts "$EXHAUSTED_ATTEMPTS" \
+  --additional-attempts 10 --output "$RETRY_PLAN"
+```
+
+The extension preserves the parent plan checksum, original scope and consumed
+seed evidence; every added master and ANTs seed differs from all original and
+planned seeds. Run each additional attempt with `--plan "$RETRY_PLAN"` and
+`--attempt-number 4` through `13`, giving parallel attempts separate staging
+roots. Each invocation executes only its assigned seed, retains its archive
+before checking, and uses the same QC thresholds. Inspect passing results before
+selecting one for packing. If none pass, report the bounded failure with images
+and metrics; do not lower the threshold automatically. Integration with the
+extended plan accepts existing original-plan receipts only for original seeds.
+
+Set `NETWORK_FMRI_CODE`, `UV_PROJECT_ENVIRONMENT`, `FMRIPREP_IMAGE`,
+`FMRIPREP_IMAGE_SHA256`, `FREESURFER_SOURCE`, `FREESURFER_LICENSE`, and
+`TEMPLATEFLOW_HOME` to the validated snapshot, frozen environment and original
+campaign inputs. Group pipeline code and environments now live under
+`$GROUP_HOME/projects/network_pipeline`; moved virtual environments can contain
+stale shebangs and editable import paths. Verify the imported package path and
+the pinned sibling revisions. Recreate a task-owned environment with
+`uv sync --frozen` when relocation invalidates it.
+
+Create a separate durable staging root under Oak, outside every source dataset.
+Use the validated acquisition workflow for the selected campaign. Discover
+partition limits with `sh_part`, request sufficient node-local disk, and use:
+
+```bash
+sbatch --array=INDEX-INDEX --partition=VERIFIED_PARTITIONS \
+  --output="$REPAIR_STAGE/pilot-%A_%a.log" \
+  "$NETWORK_FMRI_CODE/scripts/run_fmriprep_seed_rerun.sh" \
+  "$REPAIR_PLAN" "$REPAIR_STAGE"
+```
+
+`INDEX` is zero-based in the plan. `--preflight-only` may be appended for a graph
+check in its own fresh staging root. Each actual attempt repeats that check,
+verifies source revisions and FreeSurfer content lineage, and uses fresh
+node-local output/work directories. The image binds original data read-only.
+Only original anatomy is exposed to derivative reuse; no saved functional work
+or configuration is loaded. Failed program execution requires diagnosis; only
+completed results that fail the measured QC proceed to another planned seed.
+
+Per-attempt staging contains commands and provenance, graph/reuse checks,
+application logs, actual N4 coverage/intensity evidence, a montage and an output
+archive with checksums. Archive completed or partial derivatives immediately
+after the app returns, before later validation can fail; an archive alone is
+not a passing result. Retain execution markers and before/after FreeSurfer
+inventories even for failed attempts. Record exact staged surface changes and
+hashes in per-run provenance as warnings rather than blocking generation.
+Expected additions are the pinned workflow's native `lh.midthickness` and
+`rh.midthickness`, with geometry proof. Report any other difference as a possible
+consistency problem; never write the shared source reconstruction.
+Every automatic pass still needs visual review. Failed
+attempts remain separately labeled. Staging never overwrites campaign outputs.
+Submit the selected plan as an array; Slurm enforces the verified partition and
+user limits. Keep an already-running acquisition in the campaign manifest rather
+than launching a duplicate. Every task stages its own node-local reconstruction,
+including tasks from the same subject.
+
+Before integration, construct a file manifest containing only each approved
+acquisition's functional outputs, transforms, confounds and reportlets. Record
+their new seeds and the original anatomical/template lineage. Keep original
+anatomy, usable acquisitions, and failed attempts out of that replacement
+manifest. Propose a new versioned derivative with an explicit acquisition-level
+overlay and rebuilt QA/GLM inputs. Rewrite the temporary `reuse` dataset link
+to the preserved original anatomical dataset and retain acquisition-specific
+fieldmap provenance: independently seeded jobs can produce different files
+with the same fieldmap basename, so those files cannot be merged by filename.
+The approved campaign target is
+`$OAK/data/network_grant/bids/derivatives/fMRIPrep-25.2.7-rc1+full+network-v3`,
+with the same per-subject ZIP names and archive roots as network-v2. Keep its
+README marked **IN PROGRESS** until all 46 subjects and 2,592 acquisitions are
+present and all 182 repairs have passed their checks and visual review.
+Preserve audit, plan, review decisions and attempt receipts on Oak.
+
+Build a subject once all of its selected acquisitions have accepted attempts.
+The `--attempts` JSON maps each selected run identity to its accepted attempt
+directory. Run on a compute node with enough local space for that subject's
+repaired functional files (the largest original selected set is about 82 GB):
+
+```bash
+uv run --frozen python -m network_fmri.fmriprep_seed_integration \
+  --plan "$REPAIR_PLAN" --attempts "$SUBJECT_ATTEMPTS" --subject s29 \
+  --output "$NEW_DERIVATIVES" --code "$NETWORK_FMRI_CODE" \
+  --image "$FMRIPREP_IMAGE" --image-sha256 "$FMRIPREP_IMAGE_SHA256"
+```
+
+The builder copies unchanged compressed ZIP entries verbatim, replaces only
+selected functional files/reportlets, and retains original anatomy. It gives
+new fieldmaps seed-specific identifiers and rewrites their references, resolves
+temporary anatomical reuse links to the retained anatomy, and rebuilds affected
+session reports with the pinned image. Per-run provenance and N4 evidence are
+included in each corrected archive.
+
+Before building, the integrator requires each attempt's provenance, receipt and
+`after.json` to name the planned acquisition and one of its planned seed pairs,
+with passing automatic checks and receipt hashes matching `after.json` and
+`derivatives.tar.gz`. It recomputes the surface difference from the retained
+before/after inventories and accepts only native midthickness additions whose
+geometry evidence matches. Earlier pilot receipts predate the
+`surface_changes_expected` summary field; their complete surface evidence is
+required instead. After writing, it checks ZIP membership against the overlay
+and unchanged member CRC, size and compression metadata against the source
+archive. It copies each attempt's `evidence/` files and any
+`review-decision.json` into the archive without checking them against
+`after.json` or requiring a visual decision. Each worker writes an atomic
+archive and an integration receipt with its checksum. The integrator builds
+only subjects with selected acquisitions and never saves the dataset.
+
+The package has no dataset-level finalization command. For network-v3, one-off
+task scripts outside the package performed the remaining steps.
+`initialize-v3.py` gave the six wholly unchanged subject archives independent
+links to locked annex objects. `validate-v3.py` (SHA-256
+`e496e4fbc3536fb13ce5dd62cfe497e754d9a281e32bb5eed2674d0f9fdd0837`) checked all
+46 archives, the 2,592 acquisition identities, unchanged member metadata,
+original anatomy, all 182 accepted metrics, embedded evidence hashes and
+visual-review decisions. `finalize-v3.py` started the serial DataLad save; the
+save-only `resume-save.py` finished it after a time limit, marked the README
+COMPLETE and recorded the completion milestone. The scripts are preserved in the
+task root `$OAK/data/network_grant/network-fmriprep-seed-rerun`. Its
+`final-validation-52680313/completion-receipt.json` records the validator and
+resume-script hashes and the measured usage (`storage_du_bytes`);
+`shared-archive-storage.json` from the completion readback records the archive
+storage shared with network-v2.
+
+Check `git-annex version --raw` in the serial worker's actual `PATH` before
+saving: this pinned DataLad environment requires at least `10.20230126`.
+Sherlock's `git-annex/8.20210622` module is too old. Prefer an existing compatible
+installation and record its version. A failed save after successful archive
+verification does not require rebuilding the archives or reinitializing the
+dataset; preserve the verification receipts and resume the explicit save.
+Corrected ZIP checksums are integrator receipts; archive membership alone is not
+a full-payload checksum verification. Share wholly unchanged archives only
+through locked annex objects with an independent link inside the new dataset;
+do not hardlink writable extracted images. Adoption by QA/GLM workflows is a
+separate version selection; preserve their existing inputs and results until
+that selection is made.
